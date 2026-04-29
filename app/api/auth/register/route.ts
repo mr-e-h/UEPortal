@@ -1,0 +1,56 @@
+import { NextRequest, NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
+import { randomUUID } from 'crypto'
+import { readJson, writeJson } from '@/lib/data'
+import type { User, Invitation } from '@/types'
+
+export async function POST(request: NextRequest) {
+  const { email, password, full_name, token } = await request.json() as {
+    email: string
+    password: string
+    full_name: string
+    token?: string
+  }
+
+  if (!email || !password || !full_name) {
+    return NextResponse.json({ error: 'E-post, passord og navn er påkrevd' }, { status: 400 })
+  }
+  if (password.length < 8) {
+    return NextResponse.json({ error: 'Passord må være minst 8 tegn' }, { status: 400 })
+  }
+
+  const users = readJson<User>('users.json')
+
+  if (users.find((u) => u.email.toLowerCase() === email.toLowerCase())) {
+    return NextResponse.json({ error: 'E-postadressen er allerede i bruk' }, { status: 409 })
+  }
+
+  let role: User['role'] = 'subcontractor'
+
+  if (token) {
+    const invitations = readJson<Invitation>('invitations.json')
+    const idx = invitations.findIndex((i) => i.token === token)
+    if (idx === -1) return NextResponse.json({ error: 'Ugyldig invitasjonstoken' }, { status: 400 })
+    const inv = invitations[idx]
+    if (inv.accepted_at) return NextResponse.json({ error: 'Invitasjonen er allerede brukt' }, { status: 410 })
+    if (new Date(inv.expires_at) < new Date()) return NextResponse.json({ error: 'Invitasjonen har utløpt' }, { status: 410 })
+    role = inv.role
+    invitations[idx] = { ...inv, accepted_at: new Date().toISOString() }
+    writeJson('invitations.json', invitations)
+  }
+
+  const hashedPassword = await bcrypt.hash(password, 10)
+
+  const newUser: User = {
+    id: randomUUID(),
+    email: email.toLowerCase(),
+    password: hashedPassword,
+    role,
+    full_name,
+    subcontractor_id: null,
+  }
+
+  writeJson('users.json', [...users, newUser])
+
+  return NextResponse.json({ ok: true, role })
+}

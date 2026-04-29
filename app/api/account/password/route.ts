@@ -1,0 +1,32 @@
+import { NextRequest, NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
+import { readJson, writeJson } from '@/lib/data'
+import type { User } from '@/types'
+import { getSession } from '@/lib/auth'
+
+export async function POST(request: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+
+  const { old_password, new_password } = await request.json() as { old_password: string; new_password: string }
+
+  if (!new_password || new_password.length < 8) {
+    return NextResponse.json({ error: 'Passord må være minst 8 tegn' }, { status: 400 })
+  }
+
+  const users = readJson<User>('users.json')
+  const user = users.find((u) => u.id === session.id)
+  if (!user) return NextResponse.json({ error: 'Bruker ikke funnet' }, { status: 404 })
+
+  const oldValid = user.password.startsWith('$2')
+    ? await bcrypt.compare(old_password, user.password)
+    : user.password === old_password
+
+  if (!oldValid) {
+    return NextResponse.json({ error: 'Feil nåværende passord' }, { status: 400 })
+  }
+
+  const hashed = await bcrypt.hash(new_password, 10)
+  writeJson('users.json', users.map((u) => u.id === session.id ? { ...u, password: hashed } : u))
+  return NextResponse.json({ ok: true })
+}

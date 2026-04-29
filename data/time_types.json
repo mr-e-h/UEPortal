@@ -1,0 +1,20 @@
+[
+  {
+    "id": "1",
+    "name": "Prosjektleder",
+    "cost_per_hour": 600,
+    "active": true
+  },
+  {
+    "id": "2",
+    "name": "Byggeleder",
+    "cost_per_hour": 600,
+    "active": true
+  },
+  {
+    "id": "3",
+    "name": "Dokumentasjon",
+    "cost_per_hour": 600,
+    "active": true
+  }
+]

@@ -1,0 +1,17 @@
+import { NextRequest, NextResponse } from 'next/server'
+import { readJson, writeJson } from '@/lib/data'
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const { status } = await request.json() as { status: string }
+  const reports = readJson<Record<string, unknown>>('reports.json')
+
+  const idx = reports.findIndex((r) => r.id === params.id)
+  if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  reports[idx] = { ...reports[idx], status, updated_at: new Date().toISOString() }
+  writeJson('reports.json', reports)
+
+  return NextResponse.json(reports[idx])
+}

@@ -1,0 +1,272 @@
+[
+  {
+    "id": "1777373756908",
+    "name": "Diverse materiell fastpris (spesifiseres i arbeidsbeskrivelsen)",
+    "description": "CDM0001",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 611869,
+    "active": true
+  },
+  {
+    "id": "1777373756910",
+    "name": "Markundersøkelse -og posisjonering av ff-stolper med 3.partssøknad",
+    "description": "UD002",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 348,
+    "active": true
+  },
+  {
+    "id": "1777373756912",
+    "name": "Utreise ifbm markundersøkelse",
+    "description": "UD002A",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 2488,
+    "active": true
+  },
+  {
+    "id": "1777373756914",
+    "name": "Stedfesting/posisjonering av innhold i grøft",
+    "description": "UD005",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 26,
+    "active": true
+  },
+  {
+    "id": "1777373756916",
+    "name": "Riggtillegg stedfesting",
+    "description": "UD005A",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 4337,
+    "active": true
+  },
+  {
+    "id": "1777373756918",
+    "name": "Trekking av mikrorør-DL / multirør / subrør pr.m",
+    "description": "ULD03",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 47,
+    "active": true
+  },
+  {
+    "id": "1777373756920",
+    "name": "Montasje av oppføring på stolpe",
+    "description": "ULF09",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 1296,
+    "active": true
+  },
+  {
+    "id": "1777373756922",
+    "name": "Gjennomslag/pressing under vei pr. m",
+    "description": "ULG25",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 3483,
+    "active": true
+  },
+  {
+    "id": "1777373756924",
+    "name": "Oppgraving av trekke-/skjøtehull, Rør",
+    "description": "ULG27",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 5687,
+    "active": true
+  },
+  {
+    "id": "1777373756926",
+    "name": "Oppgraving av trekke-/skjøtehull i asfalt, Rør",
+    "description": "ULG27A",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 6670,
+    "active": true
+  },
+  {
+    "id": "1777373756928",
+    "name": "Fresing/ fortanning av asfalt pr. m",
+    "description": "ULG35",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 279,
+    "active": true
+  },
+  {
+    "id": "1777373756930",
+    "name": "Riggkostnader ved fresing/ fortanning",
+    "description": "ULG35A",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 8707,
+    "active": true
+  },
+  {
+    "id": "1777373756932",
+    "name": "Skjøting av 2-8 fibre",
+    "description": "ULJ01",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 3412,
+    "active": true
+  },
+  {
+    "id": "1777373756934",
+    "name": "Etablering av skjøteboks, fiber (alle typer)",
+    "description": "ULJ07",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 2959,
+    "active": true
+  },
+  {
+    "id": "1777373756936",
+    "name": "Spredenett jordanlegg i boligfelt FTTH urban Pr HP",
+    "description": "UPFA2302",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 3092,
+    "active": true
+  },
+  {
+    "id": "1777373756938",
+    "name": "Spredenett luftanlegg i boligfelt FTTH urban Pr HP",
+    "description": "UPFA2303",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 4185,
+    "active": true
+  },
+  {
+    "id": "1777373756940",
+    "name": "Droppkabel jordanlegg urban og rural FTTH pr HC",
+    "description": "UPFA2306",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 2149,
+    "active": true
+  },
+  {
+    "id": "1777373756942",
+    "name": "Droppkabel luftanlegg urban og rural FTTH pr HC",
+    "description": "UPFA2307",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 2835,
+    "active": true
+  },
+  {
+    "id": "1777373756944",
+    "name": "Graving av grøft pr. meter",
+    "description": "UPFA2310",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 363,
+    "active": true
+  },
+  {
+    "id": "1777373756946",
+    "name": "Asfaltarbeid pr. kvadratmeter tom 5 cm",
+    "description": "UPFA2312",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 530,
+    "active": true
+  },
+  {
+    "id": "1777373756948",
+    "name": "Asfaltarbeid pr. kvadratmeter 6-10 cm",
+    "description": "UPFA2313",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 736,
+    "active": true
+  },
+  {
+    "id": "1777373756950",
+    "name": "Estimert pris for tilleggsarbeid",
+    "description": "U0000A",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 156676,
+    "active": true
+  },
+  {
+    "id": "1777373756953",
+    "name": "Estimerte tilleggskostnader graving",
+    "description": "ULG39B",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 53270,
+    "active": true
+  },
+  {
+    "id": "1777373756956",
+    "name": "Estimerte kommunale, offentlige gebyrer",
+    "description": "ULG39C",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 72000,
+    "active": true
+  },
+  {
+    "id": "1777373756958",
+    "name": "Utskifting av stolpe eller strever",
+    "description": "ULF10",
+    "unit": "stk",
+    "county": "Østfold",
+    "customer_price": 8300,
+    "active": true
+  },
+  {
+    "id": "1777380441804",
+    "name": "Maskinpigging av grøft pr. m",
+    "description": "ULG24",
+    "unit": "stk",
+    "county": "",
+    "customer_price": 1149,
+    "active": true
+  },
+  {
+    "id": "1777405987191",
+    "name": "Timearbeid montasje",
+    "description": "U0001",
+    "unit": "stk",
+    "county": "Vestfold",
+    "customer_price": 819,
+    "active": true
+  },
+  {
+    "id": "1777405987194",
+    "name": "Nedsetting av minibrønn, pr. stk (L=ca. 210, B=ca.80, H=ca 80)",
+    "description": "ULG29",
+    "unit": "stk",
+    "county": "Vestfold",
+    "customer_price": 7960,
+    "active": true
+  },
+  {
+    "id": "1777405987202",
+    "name": "Fremføring av kabel/rør spredenett/tilførsel jordanlegg FTTH Pr Meter",
+    "description": "UPFA2308",
+    "unit": "stk",
+    "county": "Vestfold",
+    "customer_price": 76,
+    "active": true
+  },
+  {
+    "id": "1777405987212",
+    "name": "Fast avtalt pris for tilleggsarbeid",
+    "description": "U0000",
+    "unit": "stk",
+    "county": "Vestfold",
+    "customer_price": 7800,
+    "active": true
+  }
+]

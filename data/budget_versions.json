@@ -1,0 +1,61 @@
+[
+  {
+    "id": "c6487b68-621e-4c6f-8581-d409d07b298f",
+    "project_id": "1777424028528",
+    "version": 0,
+    "total_sales_value": 5334989,
+    "total_cost_value": 0,
+    "uploaded_by": "Admin Bruker",
+    "uploaded_at": "2026-04-29T00:54:44.083Z"
+  },
+  {
+    "id": "e0571a0d-f1de-4e42-b87b-8eebd50aedc5",
+    "project_id": "1777424386204",
+    "version": 0,
+    "total_sales_value": 5334989,
+    "total_cost_value": 0,
+    "uploaded_by": "Admin Bruker",
+    "uploaded_at": "2026-04-29T01:00:01.455Z",
+    "file_name": "e0571a0d-f1de-4e42-b87b-8eebd50aedc5_Arbeidsprodukter__3_.xlsx"
+  },
+  {
+    "id": "91cf7191-fbf4-4c0f-a425-910ee18b1626",
+    "project_id": "1777424458654",
+    "version": 0,
+    "total_sales_value": 5272227,
+    "total_cost_value": 0,
+    "uploaded_by": "Admin Bruker",
+    "uploaded_at": "2026-04-29T01:06:31.657Z",
+    "file_name": "91cf7191-fbf4-4c0f-a425-910ee18b1626_Arbeidsprodukter__3_.xlsx"
+  },
+  {
+    "id": "5635445e-d600-4770-a2d1-72793400c16c",
+    "project_id": "1777424458654",
+    "version": 1,
+    "total_sales_value": 5334989,
+    "total_cost_value": 0,
+    "uploaded_by": "Admin Bruker",
+    "uploaded_at": "2026-04-29T01:06:39.733Z",
+    "file_name": "5635445e-d600-4770-a2d1-72793400c16c_Arbeidsprodukter__4_.xlsx"
+  },
+  {
+    "id": "0a59f408-a2be-4673-be40-e9be545b07e0",
+    "project_id": "1777424458654",
+    "version": 2,
+    "total_sales_value": 5334989,
+    "total_cost_value": 0,
+    "uploaded_by": "Admin Bruker",
+    "uploaded_at": "2026-04-29T01:09:12.715Z",
+    "file_name": "0a59f408-a2be-4673-be40-e9be545b07e0_Arbeidsprodukter__4_.xlsx"
+  },
+  {
+    "id": "d9f11f14-1a79-4ce9-92a3-7e5efb98b94e",
+    "project_id": "1777424458654",
+    "version": 3,
+    "total_sales_value": 5472819,
+    "total_cost_value": 0,
+    "uploaded_by": "Admin Bruker",
+    "uploaded_at": "2026-04-29T01:12:40.261Z",
+    "file_name": "d9f11f14-1a79-4ce9-92a3-7e5efb98b94e_Arbeidsprodukter__4_.xlsx"
+  }
+]

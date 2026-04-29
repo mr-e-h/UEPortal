@@ -2,26 +2,57 @@
 @tailwind components;
 @tailwind utilities;
 
+html {
+  font-size: 90%;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
-}
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+  --color-bg-page: #F7F8FA;
+  --color-bg-card: #FFFFFF;
+  --color-bg-muted: #F1F3F6;
+
+  --color-primary: #E30613;
+  --color-primary-hover: #C20510;
+  --color-primary-soft: #FEE2E4;
+
+  --color-text-primary: #0F172A;
+  --color-text-secondary: #64748B;
+  --color-text-muted: #94A3B8;
+
+  --color-border: #E5E7EB;
+  --color-border-strong: #CBD5E1;
+
+  --color-success: #10B981;
+  --color-success-soft: #D1FAE5;
+
+  --color-warning: #F59E0B;
+  --color-warning-soft: #FEF3C7;
+
+  --color-danger: #EF4444;
+  --color-danger-soft: #FEE2E2;
 }
 
 body {
-  color: var(--foreground);
+  color: var(--color-text-primary);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
 @layer utilities {
   .text-balance {
     text-wrap: balance;
   }
+}
+
+input, textarea, select {
+  color: #111;
+}
+
+table td, table th {
+  white-space: nowrap;
+}
+table td:last-child, table th:last-child {
+  width: 1%;
 }

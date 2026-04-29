@@ -1,0 +1,25 @@
+[
+  {
+    "id": "1777406214428",
+    "forecast_period_id": "fp-2026-p1",
+    "project_id": "1777373756908",
+    "project_manager_id": "1",
+    "total_sales_value_snapshot": 8448970,
+    "already_invoiced_snapshot": 0,
+    "remaining_invoice_value_snapshot": 8448970,
+    "expected_revenue": 0,
+    "expected_ue_cost": 0,
+    "expected_internal_cost": 0,
+    "expected_other_cost": 0,
+    "risk_amount": 0,
+    "expected_profit": 0,
+    "comment": "",
+    "status": "draft",
+    "submitted_at": null,
+    "approved_at": null,
+    "approved_by": null,
+    "returned_comment": null,
+    "created_at": "2026-04-28T19:56:54.428Z",
+    "updated_at": "2026-04-28T19:56:54.428Z"
+  }
+]

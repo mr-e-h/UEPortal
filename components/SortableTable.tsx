@@ -1,0 +1,97 @@
+'use client'
+import { useState } from 'react'
+
+type SortDirection = 'asc' | 'desc' | null
+
+export interface Column<T> {
+  key: string
+  label: string
+  sortable?: boolean
+  render?: (row: T) => React.ReactNode
+  getValue?: (row: T) => string | number | Date
+  tdClassName?: string
+}
+
+interface Props<T extends { id: string }> {
+  columns: Column<T>[]
+  data: T[]
+  emptyText?: string
+  tableClassName?: string
+  colWidths?: (string | undefined)[]
+  rowClassName?: (row: T) => string
+  onRowClick?: (row: T) => void
+}
+
+export default function SortableTable<T extends { id: string }>({ columns, data, emptyText, tableClassName, colWidths, rowClassName, onRowClick }: Props<T>) {
+  const [sortKey, setSortKey] = useState<string | null>(null)
+  const [sortDir, setSortDir] = useState<SortDirection>(null)
+
+  function handleSort(key: string) {
+    if (sortKey === key) {
+      setSortDir((d) => (d === 'asc' ? 'desc' : d === 'desc' ? null : 'asc'))
+      if (sortDir === 'desc') setSortKey(null)
+    } else {
+      setSortKey(key)
+      setSortDir('asc')
+    }
+  }
+
+  const sorted = [...data].sort((a, b) => {
+    if (!sortKey || !sortDir) return 0
+    const col = columns.find((c) => c.key === sortKey)
+    const av = col?.getValue ? col.getValue(a) : (a as Record<string, unknown>)[sortKey]
+    const bv = col?.getValue ? col.getValue(b) : (b as Record<string, unknown>)[sortKey]
+    if (av == null || bv == null) return 0
+    if (av < bv) return sortDir === 'asc' ? -1 : 1
+    if (av > bv) return sortDir === 'asc' ? 1 : -1
+    return 0
+  })
+
+  return (
+    <div>
+      <table className={`w-full text-sm${tableClassName ? ` ${tableClassName}` : ''}`}>
+        {colWidths && (
+          <colgroup>
+            {colWidths.map((w, i) => <col key={i} className={w ?? ''} />)}
+          </colgroup>
+        )}
+        <thead>
+          <tr className="border-b border-gray-200">
+            {columns.map((col) => (
+              <th
+                key={col.key}
+                onClick={() => col.sortable && handleSort(col.key)}
+                className={`px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap ${col.sortable ? 'cursor-pointer select-none hover:text-gray-800' : ''}`}
+              >
+                {col.label}
+                {col.sortable && sortKey === col.key && (
+                  <span className="ml-1 text-gray-400">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                )}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {sorted.length === 0 && (
+            <tr>
+              <td colSpan={columns.length} className="px-3 py-6 text-center text-gray-400 text-sm">
+                {emptyText ?? 'Ingen data'}
+              </td>
+            </tr>
+          )}
+          {sorted.map((row) => (
+            <tr key={row.id} onClick={() => onRowClick?.(row)} className={rowClassName ? rowClassName(row) : 'border-b border-gray-100 hover:bg-gray-50'}>
+              {columns.map((col) => (
+                <td key={col.key} className={`px-3 py-2 text-sm text-gray-700${col.tdClassName ? ` ${col.tdClassName}` : ''}`}>
+                  {col.render
+                    ? col.render(row)
+                    : String((row as Record<string, unknown>)[col.key] ?? '')}
+                </td>
+              ))}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}

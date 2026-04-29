@@ -1,0 +1,133 @@
+import { readJson } from '@/lib/data'
+import type { WeeklyReport, Project, Subcontractor } from '@/types'
+import { formatWeekLabel } from '@/lib/utils/weeks'
+import Link from 'next/link'
+import Card from '@/components/ui/Card'
+import Badge from '@/components/ui/Badge'
+
+const STATUS_LABEL: Record<string, string> = {
+  draft: 'Kladd',
+  submitted: 'Til godkjenning',
+  approved: 'Godkjent',
+  partially_approved: 'Delvis godkjent',
+  rejected: 'Avslått',
+}
+
+export default function WeeklyReportsPage() {
+  const activeProjectIds = new Set(
+    readJson<Project>('projects.json').filter((p) => !p.deleted).map((p) => p.id)
+  )
+  const reports = readJson<WeeklyReport>('weekly_reports.json')
+    .filter((r) => r.status !== 'draft' && activeProjectIds.has(r.project_id))
+    .sort((a, b) => (b.submitted_at ?? '').localeCompare(a.submitted_at ?? ''))
+
+  const projects = readJson<Project>('projects.json')
+  const subcontractors = readJson<Subcontractor>('subcontractors.json')
+
+  const projMap = new Map(projects.map((p) => [p.id, p]))
+  const subMap = new Map(subcontractors.map((s) => [s.id, s]))
+
+  const pending = reports.filter((r) => r.status === 'submitted')
+  const approved = reports.filter((r) => r.status === 'approved' || r.status === 'partially_approved')
+  const rejected = reports.filter((r) => r.status === 'rejected')
+
+  return (
+    <div className="p-6 space-y-6">
+      <div className="flex items-center justify-between">
+        <div>
+          <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Ukesrapporter</h1>
+          <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
+            {pending.length} venter · {approved.length} godkjent · {rejected.length} avslått
+          </p>
+        </div>
+      </div>
+
+      {pending.length > 0 && (
+        <Card>
+          <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Venter godkjenning</h2>
+            <span className="bg-primary text-white text-xs font-medium px-1.5 py-0.5 rounded-full">
+              {pending.length}
+            </span>
+          </div>
+          <ReportTable reports={pending} projMap={projMap} subMap={subMap} />
+        </Card>
+      )}
+
+      <Card>
+        <div className="px-6 py-4 border-b border-border">
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Alle innsendte rapporter</h2>
+        </div>
+        <ReportTable reports={reports} projMap={projMap} subMap={subMap} />
+      </Card>
+    </div>
+  )
+}
+
+function ReportTable({
+  reports,
+  projMap,
+  subMap,
+}: {
+  reports: WeeklyReport[]
+  projMap: Map<string, Project>
+  subMap: Map<string, Subcontractor>
+}) {
+  if (reports.length === 0) {
+    return <div className="py-10 text-center text-sm text-[var(--color-text-muted)]">Ingen rapporter</div>
+  }
+  return (
+    <div className="overflow-x-auto">
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b border-border">
+            {['Prosjekt', 'Underentreprenør', 'Uke', '#', 'Innsendt', 'Status', ''].map((h) => (
+              <th
+                key={h}
+                className="px-6 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide"
+              >
+                {h}
+              </th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {reports.map((r) => (
+            <tr key={r.id} className="border-b border-border last:border-0 hover:bg-muted transition-colors">
+              <td className="px-6 py-3 font-medium text-[var(--color-text-primary)]">
+                {projMap.get(r.project_id)?.name ?? '–'}
+              </td>
+              <td className="px-6 py-3 text-[var(--color-text-secondary)]">
+                {subMap.get(r.subcontractor_id)?.company_name ?? '–'}
+              </td>
+              <td className="px-6 py-3 text-[var(--color-text-secondary)]">
+                {formatWeekLabel(r.year, r.week_number)}
+              </td>
+              <td className="px-6 py-3 text-[var(--color-text-muted)]">#{r.submission_number ?? 1}</td>
+              <td className="px-6 py-3 text-[var(--color-text-muted)]">
+                {r.submitted_at ? r.submitted_at.split('T')[0] : '–'}
+              </td>
+              <td className="px-6 py-3">
+                <Badge
+                  status={
+                    r.status === 'approved' ? 'approved'
+                    : r.status === 'rejected' ? 'rejected'
+                    : 'pending'
+                  }
+                />
+              </td>
+              <td className="px-6 py-3 text-right">
+                <Link
+                  href={`/admin/weekly-reports/${r.id}`}
+                  className="text-xs text-primary hover:underline font-medium"
+                >
+                  Detaljer →
+                </Link>
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  )
+}

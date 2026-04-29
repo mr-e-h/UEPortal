@@ -1,0 +1,46 @@
+[
+  {
+    "id": "fp-2026-p1",
+    "name": "P1",
+    "year": 2026,
+    "start_month": 1,
+    "end_month": 12,
+    "status": "locked",
+    "locked": true,
+    "locked_at": "2026-04-29T00:58:59.208Z",
+    "locked_by": "Admin Bruker"
+  },
+  {
+    "id": "fp-2026-p2",
+    "name": "P2",
+    "year": 2026,
+    "start_month": 1,
+    "end_month": 12,
+    "status": "open",
+    "locked": false,
+    "locked_at": null,
+    "locked_by": null
+  },
+  {
+    "id": "fp-2026-p3",
+    "name": "P3",
+    "year": 2026,
+    "start_month": 1,
+    "end_month": 12,
+    "status": "open",
+    "locked": false,
+    "locked_at": null,
+    "locked_by": null
+  },
+  {
+    "id": "fp-2026-p4",
+    "name": "P4",
+    "year": 2026,
+    "start_month": 1,
+    "end_month": 12,
+    "status": "open",
+    "locked": false,
+    "locked_at": null,
+    "locked_by": null
+  }
+]
