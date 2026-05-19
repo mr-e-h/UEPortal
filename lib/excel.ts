@@ -1,4 +1,5 @@
 import * as XLSX from 'xlsx'
+import { isLumpSumCode } from '@/lib/lump-sum-codes'
 
 export type ParsedExcelLine = {
   product_code: string
@@ -18,14 +19,6 @@ function extractAfterColon(raw: string): string {
   const idx = raw.indexOf(':')
   return idx >= 0 ? raw.slice(idx + 1).trim() : raw.trim()
 }
-
-// Lump-sum product codes: qty = largest of (fastpris, antall2, pris2), price = 1 kr always.
-const LUMP_SUM_CODES = new Set([
-  'U0000', 'U0000A', 'U0000B', 'U0000C',
-  'ULG39A', 'ULG39B', 'ULG39C', 'ULG39D',
-  'CDM0001', 'CMD0001',
-  'ULG17', 'ULG17A', 'ULG17B', 'ULG17C',
-])
 
 export function parseExcelBuffer(buffer: Buffer): ParsedExcelResult {
   const workbook = XLSX.read(buffer, { type: 'buffer' })
@@ -61,7 +54,8 @@ export function parseExcelBuffer(buffer: Buffer): ParsedExcelResult {
       budget_quantity = antall2
     }
 
-    if (LUMP_SUM_CODES.has(product_code)) {
+    // Lump-sum product codes: qty = largest of (fastpris, antall2, pris2), price = 1 kr always.
+    if (isLumpSumCode(product_code)) {
       budget_quantity = Math.max(fastpris, antall2, pris2)
       unit_price = 1
     }

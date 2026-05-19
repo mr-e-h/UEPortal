@@ -5,7 +5,7 @@ const cls: Record<BadgeStatus, string> = {
   pending: 'bg-warning-soft text-warning',
   submitted: 'bg-warning-soft text-warning',
   rejected: 'bg-danger-soft text-danger',
-  active: 'bg-[#FEE2E4] text-[#E30613]',
+  active: 'bg-primary-soft text-primary',
   draft: 'bg-muted text-[var(--color-text-muted)]',
   completed: 'bg-success-soft text-success',
   archived: 'bg-muted text-[var(--color-text-muted)]',

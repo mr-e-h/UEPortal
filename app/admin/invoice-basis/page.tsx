@@ -3,6 +3,9 @@
 import { useEffect, useState, useCallback } from 'react'
 import { Download, RefreshCw } from 'lucide-react'
 import type { Project, Subcontractor } from '@/types'
+import { fmtNOK as fmt, fmtNumber } from '@/lib/format'
+
+const fmtQty = (n: number) => fmtNumber(n, 2)
 
 type LineItem = {
   report_line_id?: string
@@ -28,14 +31,6 @@ type Summary = {
   total_sales_value: number
   profit: number
   margin: string
-}
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
-}
-
-function fmtQty(n: number) {
-  return new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 2 }).format(n)
 }
 
 export default function InvoiceBasisPage() {

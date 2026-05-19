@@ -12,6 +12,7 @@ type BudgetLineOption = {
   product_id: string
   product_name: string
   unit: string
+  cost_price?: number
 }
 
 type Props = {
@@ -21,6 +22,10 @@ type Props = {
   initialDraft?: UEChangeOrder
   onClose: () => void
   onSuccess: () => void
+}
+
+function fmt(n: number) {
+  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
 }
 
 export default function ChangeOrderModal({
@@ -245,7 +250,7 @@ export default function ChangeOrderModal({
             <select
               value={productId}
               onChange={(e) => setProductId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-[#E30613]"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
             >
               {budgetLines.map((bl) => (
                 <option key={bl.product_id} value={bl.product_id}>
@@ -263,8 +268,28 @@ export default function ChangeOrderModal({
               value={quantity}
               onChange={(raw) => setQuantity(raw)}
               placeholder="0"
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-[#E30613]"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
             />
+            {(() => {
+              const selectedLine = budgetLines.find((bl) => bl.product_id === productId)
+              const unitPrice = selectedLine?.cost_price ?? 0
+              const qty = Number(quantity) || 0
+              if (qty <= 0) return null
+              return (
+                <div className={`mt-2 px-3 py-2 rounded-lg text-sm flex items-center justify-between ${
+                  unitPrice > 0 ? 'bg-green-50 border border-green-200' : 'bg-orange-50 border border-orange-200'
+                }`}>
+                  <span className={unitPrice > 0 ? 'text-green-700' : 'text-orange-700'}>
+                    {unitPrice > 0
+                      ? `Estimert sum: ${unitPrice.toLocaleString('nb-NO')} × ${qty} ${selectedLine?.unit ?? ''}`
+                      : 'Pris ikke satt — sum beregnes av administrator'}
+                  </span>
+                  {unitPrice > 0 && (
+                    <span className="font-semibold text-green-800">{fmt(unitPrice * qty)}</span>
+                  )}
+                </div>
+              )
+            })()}
           </div>
 
           <div>
@@ -276,7 +301,7 @@ export default function ChangeOrderModal({
               onChange={(e) => setReason(e.target.value)}
               rows={3}
               placeholder="Beskriv årsaken til endringsmeldingen..."
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-[#E30613] resize-none"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary resize-none"
             />
           </div>
 
@@ -290,7 +315,7 @@ export default function ChangeOrderModal({
               onDrop={handleDrop}
               className={`rounded-lg border-2 p-4 text-center transition-colors ${
                 isDragOver
-                  ? 'border-[#E30613] bg-[#FEE2E4]'
+                  ? 'border-primary bg-primary-soft'
                   : 'border-dashed border-gray-300 bg-[var(--color-bg-muted)]'
               }`}
             >

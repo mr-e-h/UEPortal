@@ -6,6 +6,9 @@ import Link from 'next/link'
 import type { WeeklyReport, WeeklyReportLine, ActivityEntry } from '@/types'
 import { formatWeekLabel } from '@/lib/utils/weeks'
 import SortableTable from '@/components/SortableTable'
+import { fmtNOK as fmt } from '@/lib/format'
+import { weeklyReportStatus, weeklyReportLineStatus } from '@/lib/statuses'
+import { activityActionLabel } from '@/lib/activity-actions'
 
 type EnrichedLine = WeeklyReportLine & {
   product_name: string
@@ -21,39 +24,6 @@ type BudgetLine = { id: string; subcontractor_cost_price_snapshot: number }
 
 type Subcontractor = { id: string; company_name: string }
 type Project = { id: string; name: string; project_number: string }
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
-}
-
-const STATUS_CLS: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-500',
-  submitted: 'bg-yellow-100 text-yellow-700',
-  approved: 'bg-green-100 text-green-700',
-  partially_approved: 'bg-blue-100 text-blue-700',
-  rejected: 'bg-red-100 text-red-700',
-}
-const STATUS_LABEL: Record<string, string> = {
-  draft: 'Kladd',
-  submitted: 'Sendt inn',
-  approved: 'Godkjent',
-  partially_approved: 'Delvis godkjent',
-  rejected: 'Avslått',
-}
-const LINE_STATUS_CLS: Record<string, string> = {
-  pending: 'bg-gray-100 text-gray-500',
-  approved: 'bg-green-100 text-green-700',
-  rejected: 'bg-red-100 text-red-700',
-}
-const LINE_STATUS_LABEL: Record<string, string> = {
-  pending: 'Venter', approved: 'Godkjent', rejected: 'Avslått',
-}
-const ACTION_LABEL: Record<string, string> = {
-  approved: 'Godkjente',
-  rejected: 'Avslo',
-  reverted: 'Angret',
-  commented: 'Kommenterte',
-}
 
 export default function AdminWeeklyReportPage() {
   const { id } = useParams<{ id: string }>()
@@ -180,7 +150,7 @@ export default function AdminWeeklyReportPage() {
           </p>
         </div>
         <div className="flex items-center gap-2">
-          <span className={`text-sm px-3 py-1 rounded ${STATUS_CLS[report.status]}`}>{STATUS_LABEL[report.status]}</span>
+          {(() => { const m = weeklyReportStatus(report.status); return <span className={`text-sm px-3 py-1 rounded ${m.cls}`}>{m.label}</span> })()}
           {isReviewed && (
             <button
               onClick={revert}
@@ -260,11 +230,10 @@ export default function AdminWeeklyReportPage() {
               key: 'status',
               label: 'Status',
               sortable: true,
-              render: (r: LineRow) => (
-                <span className={`text-xs px-2 py-0.5 rounded ${LINE_STATUS_CLS[r.status] ?? 'bg-gray-100 text-gray-500'}`}>
-                  {LINE_STATUS_LABEL[r.status] ?? r.status}
-                </span>
-              ),
+              render: (r: LineRow) => {
+                const m = weeklyReportLineStatus(r.status)
+                return <span className={`text-xs px-2 py-0.5 rounded ${m.cls}`}>{m.label}</span>
+              },
             },
             {
               key: 'actions',
@@ -297,7 +266,7 @@ export default function AdminWeeklyReportPage() {
                 <span>
                   <span className="font-medium text-gray-800">{entry.actor}</span>
                   {' '}
-                  <span className="text-gray-600">{ACTION_LABEL[entry.action] ?? entry.action}</span>
+                  <span className="text-gray-600">{activityActionLabel(entry.action)}</span>
                   {entry.comment && (
                     <span className="text-gray-500"> — &quot;{entry.comment}&quot;</span>
                   )}
@@ -353,11 +322,10 @@ export default function AdminWeeklyReportPage() {
                       key: 'status',
                       label: 'Status',
                       sortable: true,
-                      render: (r: SibRow) => (
-                        <span className={`text-xs px-2 py-0.5 rounded ${STATUS_CLS[r.status] ?? 'bg-gray-100 text-gray-500'}`}>
-                          {STATUS_LABEL[r.status] ?? r.status}
-                        </span>
-                      ),
+                      render: (r: SibRow) => {
+                        const m = weeklyReportStatus(r.status)
+                        return <span className={`text-xs px-2 py-0.5 rounded ${m.cls}`}>{m.label}</span>
+                      },
                     },
                     { key: 'line_count', label: 'Antall linjer', sortable: true },
                     { key: 'total_cost', label: 'Verdi', sortable: true, getValue: (r: SibRow) => r.total_cost, render: (r: SibRow) => fmt(r.total_cost) },

@@ -4,17 +4,7 @@ import { useState, useEffect, useRef } from 'react'
 import type { GanttMilestone, Subcontractor } from '@/types'
 import { Plus, Trash2, X, Check, GripVertical, ChevronRight, Pencil } from 'lucide-react'
 import ConfirmDialog from '@/components/ConfirmDialog'
-
-const COLORS = [
-  { label: 'Blå', value: '#3B82F6' },
-  { label: 'Grønn', value: '#10B981' },
-  { label: 'Rød', value: '#EF4444' },
-  { label: 'Oransje', value: '#F59E0B' },
-  { label: 'Lilla', value: '#8B5CF6' },
-  { label: 'Teal', value: '#14B8A6' },
-  { label: 'Rosa', value: '#EC4899' },
-  { label: 'Grå', value: '#6B7280' },
-]
+import { MILESTONE_COLORS as COLORS, DEFAULT_MILESTONE_COLOR } from '@/lib/milestone-colors'
 
 function toMs(date: string) { return new Date(date).getTime() }
 
@@ -49,7 +39,7 @@ function formatDate(d: string) {
   return new Date(d).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: '2-digit' })
 }
 
-const BLANK_FORM = { title: '', start_date: '', end_date: '', color: '#3B82F6', subcontractor_id: '' }
+const BLANK_FORM = { title: '', start_date: '', end_date: '', color: DEFAULT_MILESTONE_COLOR, subcontractor_id: '' }
 type RowForm = typeof BLANK_FORM
 
 interface Props {

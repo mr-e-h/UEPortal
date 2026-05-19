@@ -4,6 +4,8 @@ import { useState } from 'react'
 import Link from 'next/link'
 import type { ChangeOrder, Product, Subcontractor } from '@/types'
 import SortableTable from '@/components/SortableTable'
+import { fmtNOK as fmt } from '@/lib/format'
+import { changeOrderStatus } from '@/lib/statuses'
 
 type CORow = {
   id: string
@@ -15,21 +17,6 @@ type CORow = {
   total_cost: number
   total_customer_value: number
   submitted_date: string
-}
-
-const STATUS_CLS: Record<string, string> = {
-  submitted: 'bg-yellow-100 text-yellow-700',
-  approved: 'bg-green-100 text-green-700',
-  rejected: 'bg-red-100 text-red-700',
-  draft: 'bg-gray-100 text-gray-600',
-  pending: 'bg-yellow-100 text-yellow-700',
-}
-const STATUS_LABEL: Record<string, string> = {
-  submitted: 'Innsendt', approved: 'Godkjent', rejected: 'Avvist', draft: 'Utkast', pending: 'Venter',
-}
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
 }
 
 interface Props {
@@ -73,11 +60,10 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
       key: 'status',
       label: 'Status',
       sortable: true,
-      render: (row: CORow) => (
-        <span className={`text-xs px-2 py-0.5 rounded ${STATUS_CLS[row.status] ?? 'bg-gray-100 text-gray-600'}`}>
-          {STATUS_LABEL[row.status] ?? row.status}
-        </span>
-      ),
+      render: (row: CORow) => {
+        const m = changeOrderStatus(row.status)
+        return <span className={`text-xs px-2 py-0.5 rounded ${m.cls}`}>{m.label}</span>
+      },
     },
     {
       key: 'sub_name',

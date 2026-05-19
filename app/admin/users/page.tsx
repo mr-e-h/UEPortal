@@ -5,6 +5,7 @@ import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { Trash2, Plus, X } from 'lucide-react'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import { roleLabel } from '@/lib/roles'
 
 type SafeUser = {
   id: string
@@ -17,14 +18,6 @@ type SafeUser = {
 type Subcontractor = {
   id: string
   company_name: string
-}
-
-const ROLE_LABELS: Record<string, string> = {
-  main: 'Admin (main)',
-  sub: 'Underentreprenør (sub)',
-  project_manager: 'Prosjektleder',
-  subcontractor: 'UE (legacy)',
-  company: 'Selskap',
 }
 
 export default function UsersPage() {
@@ -214,7 +207,7 @@ export default function UsersPage() {
                           ? 'bg-amber-50 text-amber-700'
                           : 'bg-gray-100 text-gray-600'
                       }`}>
-                        {ROLE_LABELS[u.role] ?? u.role}
+                        {roleLabel(u.role)}
                       </span>
                     </td>
                     <td className="px-6 py-3 text-[var(--color-text-secondary)]">

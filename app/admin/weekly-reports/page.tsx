@@ -5,14 +5,6 @@ import Link from 'next/link'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 
-const STATUS_LABEL: Record<string, string> = {
-  draft: 'Kladd',
-  submitted: 'Til godkjenning',
-  approved: 'Godkjent',
-  partially_approved: 'Delvis godkjent',
-  rejected: 'Avslått',
-}
-
 export default function WeeklyReportsPage() {
   const activeProjectIds = new Set(
     readJson<Project>('projects.json').filter((p) => !p.deleted).map((p) => p.id)

@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Download } from 'lucide-react'
+import BudgetLineChart from '@/components/BudgetLineChart'
 import type { Project, Product, ProjectBudgetLine, ReportLine, ProjectSubcontractor, Subcontractor, ChangeOrder, WeeklyReport, WeeklyReportLine, ProjectInternalCostEntry, SubcontractorProductPrice, GanttMilestone, BudgetVersion, ProjectMonthPlan } from '@/types'
 import SortableTable from '@/components/SortableTable'
 import NumberInput from '@/components/NumberInput'
@@ -11,6 +12,21 @@ import ConfirmDialog from '@/components/ConfirmDialog'
 import InvoicesSection from './InvoicesSection'
 import ChangeOrdersSection from './ChangeOrdersSection'
 import GanttSection from './GanttSection'
+import { fmtNOK as fmt } from '@/lib/format'
+import { reportLineStatus } from '@/lib/statuses'
+import { lineTypeLabel } from '@/lib/line-types'
+
+const TABS = [
+  { id: 'oversikt', label: 'Oversikt' },
+  { id: 'budsjettlinjer', label: 'Budsjettlinjer' },
+  { id: 'prognose', label: 'Prognose' },
+  { id: 'interne', label: 'Interne kostnader' },
+  { id: 'materiell', label: 'Materiell' },
+  { id: 'rapporteringer', label: 'Rapporteringer' },
+  { id: 'endringsmeldinger', label: 'Endringsmeldinger' },
+  { id: 'fakturagrunnlag', label: 'Fakturagrunnlag' },
+] as const
+type ActiveTab = (typeof TABS)[number]['id']
 
 type BLRow = {
   id: string
@@ -26,6 +42,7 @@ type BLRow = {
   subcontractor_cost_price_snapshot: number
   cost_value: number
   profit: number
+  line_type: string
 }
 
 type RLRow = {
@@ -38,24 +55,11 @@ type RLRow = {
   status: string
 }
 
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
-}
-
-const STATUS_CLS: Record<string, string> = {
-  submitted: 'bg-yellow-100 text-yellow-700',
-  approved: 'bg-green-100 text-green-700',
-  rejected: 'bg-red-100 text-red-700',
-  draft: 'bg-gray-100 text-gray-600',
-  pending: 'bg-yellow-100 text-yellow-700',
-}
-const STATUS_LABEL: Record<string, string> = {
-  submitted: 'Innsendt', approved: 'Godkjent', rejected: 'Avvist', draft: 'Utkast', pending: 'Venter',
-}
-
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
+
+  const [activeTab, setActiveTab] = useState<ActiveTab>('oversikt')
 
   const [project, setProject] = useState<Project | null>(null)
   const [allProducts, setAllProducts] = useState<Product[]>([])
@@ -66,9 +70,8 @@ export default function ProjectDetailPage() {
   const [changeOrders, setChangeOrders] = useState<ChangeOrder[]>([])
   const [loading, setLoading] = useState(true)
 
-
   const [showAddLine, setShowAddLine] = useState(false)
-  const [newLine, setNewLine] = useState({ product_id: '', budget_quantity: '' })
+  const [newLine, setNewLine] = useState({ product_id: '', budget_quantity: '', line_type: 'subcontractor_work' })
   const [savingLine, setSavingLine] = useState(false)
 
   const [subPrices, setSubPrices] = useState<SubcontractorProductPrice[]>([])
@@ -90,11 +93,14 @@ export default function ProjectDetailPage() {
 
   const [confirmRemoveSubId, setConfirmRemoveSubId] = useState<string | null>(null)
   const [confirmDeleteCostId, setConfirmDeleteCostId] = useState<string | null>(null)
+  const [chartLineId, setChartLineId] = useState<string | null>(null)
+
+  // Line type filter for Budsjettlinjer tab
+  const [lineTypeFilter, setLineTypeFilter] = useState<string>('all')
 
   type WRWithLines = WeeklyReport & { lines: WeeklyReportLine[] }
   const [weeklyReportsWL, setWeeklyReportsWL] = useState<WRWithLines[]>([])
   const [expandedSub, setExpandedSub] = useState<string | null>(null)
-
 
   // Excel post-import
   const importFileRef = useRef<HTMLInputElement>(null)
@@ -148,8 +154,24 @@ export default function ProjectDetailPage() {
 
   useEffect(() => {
     setAdminName(localStorage.getItem('user_name') ?? 'Admin')
+
+    // Restore pending assignment if coming back from the prices page
+    try {
+      const pending = sessionStorage.getItem('pending_assignment')
+      if (pending) {
+        const { projectId: savedId, selected: savedSelected, bulkSubcontractor: savedSub } = JSON.parse(pending) as {
+          projectId: string; selected: string[]; bulkSubcontractor: string
+        }
+        if (savedId === id) {
+          setSelected(savedSelected)
+          setBulkSubcontractor(savedSub)
+          sessionStorage.removeItem('pending_assignment')
+        }
+      }
+    } catch {}
+
     fetchAll()
-  }, [fetchAll])
+  }, [fetchAll, id])
 
   async function addBudgetLine(e: React.FormEvent) {
     e.preventDefault()
@@ -157,9 +179,9 @@ export default function ProjectDetailPage() {
     await fetch('/api/budget-lines', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: id, product_id: newLine.product_id, budget_quantity: Number(newLine.budget_quantity) }),
+      body: JSON.stringify({ project_id: id, product_id: newLine.product_id, budget_quantity: Number(newLine.budget_quantity), line_type: newLine.line_type }),
     })
-    setNewLine({ product_id: '', budget_quantity: '' })
+    setNewLine({ product_id: '', budget_quantity: '', line_type: 'subcontractor_work' })
     setShowAddLine(false)
     setSavingLine(false)
     fetchAll()
@@ -170,7 +192,6 @@ export default function ProjectDetailPage() {
     setBulkError('')
 
     if (bulkSubcontractor !== '__intern__') {
-      // Check client-side for missing prices before calling the API
       const missingProducts = selected
         .map((lineId) => budgetLines.find((b) => b.id === lineId)?.product_id)
         .filter((pid): pid is string => !!pid)
@@ -286,12 +307,10 @@ export default function ProjectDetailPage() {
     fetchAll()
   }
 
-
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-500">Laster...</div>
   if (!project) return <div className="flex items-center justify-center h-64 text-gray-500">Prosjekt ikke funnet</div>
 
   const manualLines = budgetLines.filter((bl) => !bl.source || bl.source === 'manual')
-  const coLines = budgetLines.filter((bl) => bl.source === 'change_order')
 
   const originalBudgetSales = manualLines.reduce((s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot, 0)
   const originalBudgetCost = manualLines.filter((bl) => bl.assigned_subcontractor_id).reduce((s, bl) => s + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0)
@@ -302,17 +321,6 @@ export default function ProjectDetailPage() {
 
   const totalSales = originalBudgetSales + coAddedSales
   const totalCost = originalBudgetCost + coAddedCost
-  const pctIncrease = originalBudgetSales > 0 ? Math.round((coAddedSales / originalBudgetSales) * 100) : 0
-
-  const approvedRL = reportLines.filter((rl) => rl.status === 'approved')
-  const reportedSales = approvedRL.reduce((s, rl) => {
-    const bl = budgetLines.find((b) => b.id === rl.project_budget_line_id)
-    return s + rl.reported_quantity * (bl?.customer_price_snapshot ?? 0)
-  }, 0)
-  const reportedCost = approvedRL.reduce((s, rl) => {
-    const bl = budgetLines.find((b) => b.id === rl.project_budget_line_id)
-    return s + rl.reported_quantity * (bl?.subcontractor_cost_price_snapshot ?? 0)
-  }, 0)
 
   const assignedSubIds = new Set(projectSubs.map((ps) => ps.subcontractor_id))
   const projectSubDetails = allSubs.filter((s) => assignedSubIds.has(s.id))
@@ -397,8 +405,118 @@ export default function ProjectDetailPage() {
 
   const toggleRow = (rowId: string) => setSelected((prev) => prev.includes(rowId) ? prev.filter((x) => x !== rowId) : [...prev, rowId])
 
+  // Build BLRows
+  const buildBLRows = (lines: ProjectBudgetLine[]): BLRow[] => lines.map((bl) => {
+    const product = allProducts.find((p) => p.id === bl.product_id)
+    const isIntern = bl.assigned_subcontractor_id === '__intern__'
+    const assignedSub = isIntern ? null : allSubs.find((s) => s.id === bl.assigned_subcontractor_id)
+    const salesValue = bl.budget_quantity * bl.customer_price_snapshot
+    const costValue = bl.assigned_subcontractor_id && !isIntern ? bl.budget_quantity * bl.subcontractor_cost_price_snapshot : 0
+    return {
+      id: bl.id,
+      product_code: product?.description ?? '–',
+      product_name: product?.name ?? '–',
+      unit: product?.unit ?? '–',
+      source: bl.source ?? 'manual',
+      budget_quantity: bl.budget_quantity,
+      customer_price_snapshot: bl.customer_price_snapshot,
+      sales_value: salesValue,
+      assigned_subcontractor_id: bl.assigned_subcontractor_id,
+      assigned_name: isIntern ? 'Intern / Netel' : (assignedSub?.company_name ?? ''),
+      subcontractor_cost_price_snapshot: bl.subcontractor_cost_price_snapshot,
+      cost_value: costValue,
+      profit: salesValue - costValue,
+      line_type: bl.line_type ?? 'subcontractor_work',
+    }
+  })
+
+  const expandedRowRenderFn = (row: BLRow) => {
+    const bl = budgetLines.find((b) => b.id === row.id)
+    if (!bl) return null
+    const product = allProducts.find((p) => p.id === bl.product_id)
+    const sub = allSubs.find((s) => s.id === bl.assigned_subcontractor_id)
+    const cos = changeOrders
+      .filter((co) =>
+        co.product_id === bl.product_id &&
+        co.subcontractor_id === bl.assigned_subcontractor_id &&
+        co.status === 'approved' &&
+        co.reviewed_at != null
+      )
+      .sort((a, b) => a.reviewed_at!.localeCompare(b.reviewed_at!))
+    const coTotal = cos.reduce((s, co) => s + co.requested_quantity, 0)
+    return (
+      <BudgetLineChart
+        productName={product?.name ?? row.product_name}
+        productCode={product?.description}
+        unit={product?.unit ?? row.unit}
+        subName={sub?.company_name}
+        importQty={bl.budget_quantity - coTotal}
+        projectStart={project?.start_date ?? ''}
+        approvedCOs={cos}
+      />
+    )
+  }
+
+  const blColumns = [
+    {
+      key: 'select',
+      label: '',
+      render: (row: BLRow) => (
+        <input
+          type="checkbox"
+          checked={selected.includes(row.id)}
+          onChange={() => toggleRow(row.id)}
+          onClick={(e) => e.stopPropagation()}
+          className="h-4 w-4"
+        />
+      ),
+    },
+    { key: 'product_code', label: 'Kode', sortable: true },
+    { key: 'product_name', label: 'Produkt', sortable: true, tdClassName: 'truncate max-w-0' },
+    { key: 'unit', label: 'Enhet' },
+    {
+      key: 'line_type',
+      label: 'Type',
+      sortable: true,
+      render: (row: BLRow) => {
+        const colors: Record<string, string> = {
+          subcontractor_work: 'bg-blue-50 text-blue-700',
+          internal_cost: 'bg-indigo-50 text-indigo-700',
+          material: 'bg-orange-50 text-orange-700',
+        }
+        return (
+          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${colors[row.line_type] ?? 'bg-gray-100 text-gray-600'}`}>
+            {lineTypeLabel(row.line_type)}
+          </span>
+        )
+      },
+    },
+    { key: 'budget_quantity', label: 'Mengde', sortable: true },
+    { key: 'customer_price_snapshot', label: 'Utsalgspris', sortable: true, render: (row: BLRow) => fmt(row.customer_price_snapshot) },
+    { key: 'sales_value', label: 'Salgsverdi', sortable: true, getValue: (row: BLRow) => row.sales_value, render: (row: BLRow) => <span className="font-medium">{fmt(row.sales_value)}</span> },
+    {
+      key: 'assigned_subcontractor_id',
+      label: 'Tildelt UE',
+      sortable: true,
+      getValue: (row: BLRow) => row.assigned_name,
+      render: (row: BLRow) => row.assigned_subcontractor_id
+        ? <span className="text-sm text-gray-900">{row.assigned_name}</span>
+        : <span className="text-xs text-orange-400">Ikke tildelt</span>,
+    },
+    { key: 'cost_value', label: 'Kostnad', sortable: true, getValue: (row: BLRow) => row.cost_value, render: (row: BLRow) => row.assigned_subcontractor_id ? fmt(row.cost_value) : '–' },
+    {
+      key: 'profit',
+      label: 'Fortjeneste',
+      sortable: true,
+      getValue: (row: BLRow) => row.profit,
+      render: (row: BLRow) => row.assigned_subcontractor_id
+        ? <span className={row.profit >= 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>{fmt(row.profit)}</span>
+        : '–',
+    },
+  ]
+
   return (
-    <main className="px-4 sm:px-6 py-8 space-y-8">
+    <main className="px-4 sm:px-6 py-8 space-y-6">
       {/* Missing price dialog */}
       {missingPriceDialog && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
@@ -416,20 +534,14 @@ export default function ProjectDetailPage() {
                 </li>
               ))}
             </ul>
-            <p className="text-sm text-gray-600">
-              Vil du gå til prislisten for å legge inn manglende priser?
-            </p>
+            <p className="text-sm text-gray-600">Vil du gå til prislisten for å legge inn manglende priser?</p>
             <div className="flex gap-3 justify-end">
-              <button
-                onClick={() => setMissingPriceDialog(null)}
-                className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50"
-              >
-                Avbryt
-              </button>
+              <button onClick={() => setMissingPriceDialog(null)} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50">Avbryt</button>
               <button
                 onClick={() => {
                   const productIds = missingPriceDialog.products.map((p) => p.id).join(',')
-                  router.push(`/admin/subcontractors/${missingPriceDialog.subId}/prices?highlight=${productIds}`)
+                  sessionStorage.setItem('pending_assignment', JSON.stringify({ projectId: id, selected, bulkSubcontractor }))
+                  router.push(`/admin/subcontractors/${missingPriceDialog.subId}/prices?highlight=${productIds}&from_project=${id}`)
                   setMissingPriceDialog(null)
                 }}
                 className="px-3 py-1.5 text-sm bg-blue-600 text-white rounded hover:bg-blue-700"
@@ -452,702 +564,475 @@ export default function ProjectDetailPage() {
             {` · ${project.customer} · ${project.county}`}
           </p>
         </div>
-        <Link
-          href={`/admin/projects/${id}/edit`}
-          className="text-sm text-gray-600 border border-gray-200 px-3 py-1 rounded hover:bg-gray-50"
-        >
-          Rediger
-        </Link>
-        <Link
-          href={`/admin/projects/${id}/forecast`}
-          className="text-sm text-blue-600 border border-blue-200 px-3 py-1 rounded hover:bg-blue-50"
-        >
-          Prognose →
-        </Link>
+        <Link href={`/admin/projects/${id}/edit`} className="text-sm text-gray-600 border border-gray-200 px-3 py-1 rounded hover:bg-gray-50">Rediger</Link>
       </div>
 
+      {/* Tab navigation */}
+      <div className="border-b border-gray-200 -mb-2">
+        <nav className="flex gap-1 overflow-x-auto">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                activeTab === tab.id
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+              }`}
+            >
+              {tab.label}
+            </button>
+          ))}
+        </nav>
+      </div>
 
-      {/* Section 0 — Prosjektstatistikk */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Prosjektstatistikk</h2>
-
-        {/* Top KPIs */}
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-          <div className="bg-blue-600 rounded-xl shadow p-4 text-white">
-            <p className="text-xs font-semibold uppercase tracking-wide opacity-80">Salgsverdi</p>
-            <p className="text-2xl font-bold mt-1">{fmt(totalSales)}</p>
-            <p className="text-xs opacity-70 mt-0.5">inkl. godkjente EM</p>
-          </div>
-          <div className="bg-white rounded-xl shadow p-4 border border-gray-100">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">UE-kostnad</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalCost)}</p>
-            <p className="text-xs text-gray-400 mt-0.5">tildelte budsjettlinjer</p>
-          </div>
-          <div className="bg-white rounded-xl shadow p-4 border border-gray-100">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Internkostnad</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalInternalCost)}</p>
-            <p className="text-xs text-gray-400 mt-0.5">egne timer</p>
-          </div>
-          <div className={`rounded-xl shadow p-4 border ${(totalSales - totalCost - totalInternalCost) >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Reell fortjeneste</p>
-            <p className={`text-2xl font-bold mt-1 ${(totalSales - totalCost - totalInternalCost) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-              {fmt(totalSales - totalCost - totalInternalCost)}
-            </p>
-            <p className="text-xs text-gray-400 mt-0.5">salg − UE − intern</p>
-          </div>
-        </div>
-
-        {/* Prognose KPIs — from monthly plan */}
-        {hasForecast && (
-          <>
-            <div className="flex items-center gap-2 mb-2 mt-1">
-              <span className="text-xs font-semibold text-gray-400 uppercase tracking-widest">Prognose — månedlig plan</span>
-              <div className="flex-1 h-px bg-gray-100" />
-              {forecastRevenue > 0 && totalSales > 0 && (
-                <span className={`text-xs font-medium px-2 py-0.5 rounded-full ${forecastRevenue <= totalSales ? 'bg-amber-100 text-amber-700' : 'bg-red-100 text-red-600'}`}>
-                  {forecastRevenue < totalSales ? `−${fmt(totalSales - forecastRevenue)} vs. kontrakt` : `+${fmt(forecastRevenue - totalSales)} vs. kontrakt`}
-                </span>
-              )}
-            </div>
+      {/* ── OVERSIKT ─────────────────────────────────────────────────── */}
+      {activeTab === 'oversikt' && (
+        <div className="space-y-8">
+          {/* Top KPIs */}
+          <section>
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Prosjektstatistikk</h2>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-              <div className="bg-indigo-50 border border-indigo-200 rounded-xl shadow-sm p-4">
-                <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Forventet inntekt</p>
-                <p className="text-2xl font-bold text-indigo-900 mt-1">{fmt(forecastRevenue)}</p>
-                <p className="text-xs text-indigo-400 mt-0.5">fra månedlig plan</p>
+              <div className="bg-blue-600 rounded-xl shadow p-4 text-white">
+                <p className="text-xs font-semibold uppercase tracking-wide opacity-80">Salgsverdi</p>
+                <p className="text-2xl font-bold mt-1">{fmt(totalSales)}</p>
+                <p className="text-xs opacity-70 mt-0.5">inkl. godkjente EM</p>
               </div>
-              <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Forventet UE-kost</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(forecastUECost)}</p>
-                <p className="text-xs text-gray-400 mt-0.5">fra månedlig plan</p>
+              <div className="bg-white rounded-xl shadow p-4 border border-gray-100">
+                <p className="text-xs text-gray-500 uppercase tracking-wide">UE-kostnad</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalCost)}</p>
+                <p className="text-xs text-gray-400 mt-0.5">tildelte budsjettlinjer</p>
               </div>
-              <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Forventet internkost</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(forecastInternalCost)}</p>
-                {forecastOtherCost > 0 && <p className="text-xs text-gray-400 mt-0.5">+ {fmt(forecastOtherCost)} andre kost.</p>}
+              <div className="bg-white rounded-xl shadow p-4 border border-gray-100">
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Internkostnad</p>
+                <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalInternalCost)}</p>
+                <p className="text-xs text-gray-400 mt-0.5">egne timer</p>
               </div>
-              <div className={`rounded-xl shadow-sm p-4 border ${forecastProfit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Forventet fortjeneste</p>
-                <p className={`text-2xl font-bold mt-1 ${forecastProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                  {fmt(forecastProfit)}
+              <div className={`rounded-xl shadow p-4 border ${(totalSales - totalCost - totalInternalCost) >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                <p className="text-xs text-gray-500 uppercase tracking-wide">Reell fortjeneste</p>
+                <p className={`text-2xl font-bold mt-1 ${(totalSales - totalCost - totalInternalCost) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
+                  {fmt(totalSales - totalCost - totalInternalCost)}
                 </p>
-                <p className="text-xs text-gray-400 mt-0.5">inntekt − alle kostn.</p>
+                <p className="text-xs text-gray-400 mt-0.5">salg − UE − intern</p>
               </div>
             </div>
-          </>
-        )}
 
-        {/* Budsjettversjoner + Import */}
-        <div className="grid grid-cols-3 gap-4">
-          <div className="col-span-2 bg-white rounded-xl shadow border border-gray-100 overflow-hidden">
-            <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
-              <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Budsjettversjonhistorikk</h3>
-            </div>
-            {budgetVersions.length === 0 ? (
-              <div className="px-5 py-6 text-sm text-gray-400 text-center">
-                Ingen budsjettfiler lastet opp ennå. Last opp en Excel-fil for å starte historikken.
-              </div>
-            ) : (
-              <div className="overflow-x-auto">
-                <table className="w-full text-sm">
-                  <thead>
-                    <tr className="border-b border-gray-100">
-                      <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-left">Versjon</th>
-                      <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Salgsverdi</th>
-                      <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Kostnad</th>
-                      <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Fortjeneste</th>
-                      <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Endring</th>
-                      <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-left">Lastet opp</th>
-                      <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-center">Fil</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {budgetVersions.map((bver, idx) => {
-                      const prev = idx > 0 ? budgetVersions[idx - 1] : null
-                      const delta = prev != null ? bver.total_sales_value - prev.total_sales_value : null
-                      const profit = bver.total_sales_value - bver.total_cost_value
-                      const isLatest = idx === budgetVersions.length - 1
-                      const label = bver.version === 0 ? 'Originalbudsjett' : `V${bver.version}`
-                      const dateStr = new Date(bver.uploaded_at).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
-                      const timeStr = new Date(bver.uploaded_at).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
-                      return (
-                        <tr key={bver.id} className={`border-b border-gray-100 ${isLatest ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-                          <td className="px-5 py-3">
-                            <span className={`font-medium ${isLatest ? 'text-blue-700' : 'text-gray-900'}`}>{label}</span>
-                            {isLatest && <span className="ml-2 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-medium">Gjeldende</span>}
-                          </td>
-                          <td className="px-5 py-3 text-right text-gray-700">{fmt(bver.total_sales_value)}</td>
-                          <td className="px-5 py-3 text-right text-gray-700">{fmt(bver.total_cost_value)}</td>
-                          <td className={`px-5 py-3 text-right font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                            {fmt(profit)}
-                          </td>
-                          <td className="px-5 py-3 text-right">
-                            {delta == null ? (
-                              <span className="text-gray-300">—</span>
-                            ) : (
-                              <span className={`font-medium text-xs ${delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                                {delta > 0 ? '+' : ''}{fmt(delta)}
-                              </span>
-                            )}
-                          </td>
-                          <td className="px-5 py-3">
-                            <div className="text-gray-700">{bver.uploaded_by}</div>
-                            <div className="text-xs text-gray-400">{dateStr} {timeStr}</div>
-                          </td>
-                          <td className="px-5 py-3 text-center">
-                            {bver.file_name ? (
-                              <a
-                                href={`/api/budget-versions/${bver.id}/file`}
-                                download
-                                title="Last ned Excel-fil"
-                                className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-green-100 text-green-600 hover:text-green-700 transition-colors"
-                              >
-                                <Download size={14} />
-                              </a>
-                            ) : (
-                              <span className="text-gray-300 text-xs">–</span>
-                            )}
-                          </td>
-                        </tr>
-                      )
-                    })}
-                  </tbody>
-                </table>
-              </div>
-            )}
-          </div>
-
-          {/* Import card — click or drag & drop */}
-          <div
-            onClick={() => !importing && importFileRef.current?.click()}
-            onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-            onDragEnter={(e) => { e.preventDefault(); setDragOver(true) }}
-            onDragLeave={() => setDragOver(false)}
-            onDrop={(e) => {
-              e.preventDefault()
-              setDragOver(false)
-              const file = e.dataTransfer.files?.[0]
-              if (file) handlePostImport(file)
-            }}
-            className={`rounded-xl p-6 flex flex-col items-center justify-center text-center gap-4 cursor-pointer transition-colors border-2 border-dashed select-none ${
-              dragOver
-                ? 'bg-blue-100 border-blue-500'
-                : importing
-                ? 'bg-blue-50 border-blue-200 cursor-default'
-                : 'bg-blue-50 border-blue-300 hover:bg-blue-100 hover:border-blue-400'
-            }`}
-          >
-            <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${dragOver ? 'bg-blue-200' : 'bg-blue-100'}`}>
-              <svg xmlns="http://www.w3.org/2000/svg" className={`w-7 h-7 transition-colors ${dragOver ? 'text-blue-700' : 'text-blue-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4m0 0L8 8m4-4l4 4" />
-              </svg>
-            </div>
-            <div>
-              <p className="font-semibold text-blue-900 text-base">
-                {importing ? 'Importerer...' : dragOver ? 'Slipp filen her' : 'Last inn oppdatert budsjettfil'}
-              </p>
-              <p className="text-sm text-blue-700 mt-1 max-w-xs">
-                {importing
-                  ? 'Behandler Excel-filen…'
-                  : 'Dra og slipp en .xlsx-fil hit, eller klikk for å velge'}
-              </p>
-            </div>
-            {!importing && (
-              <span className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg shadow-sm pointer-events-none">
-                Velg fil
-              </span>
-            )}
-            {importMsg && (
-              <p className={`text-xs font-medium ${importMsg.toLowerCase().includes('feil') ? 'text-red-600' : 'text-green-600'}`}>
-                {importMsg}
-              </p>
-            )}
-          </div>
-        </div>
-      </section>
-
-      {/* Gantt fremdriftsplan */}
-      {project.start_date && project.end_date && (
-        <GanttSection
-          projectId={id}
-          projectStart={project.start_date}
-          projectEnd={project.end_date}
-          milestones={milestones}
-          allSubs={allSubs}
-          projectSubs={projectSubs.map((ps) => ps.subcontractor_id)}
-          onRefresh={fetchAll}
-        />
-      )}
-
-      {/* Section 0b — Fakturaer */}
-      <InvoicesSection projectId={id} />
-
-      {/* Section 1b — UE-kostnadsflyt */}
-      {(subFlowData.length > 0 || internLines.length > 0) && (
-        <section>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Kostnadsflyt</h2>
-
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <p className="text-xs text-blue-700 font-semibold uppercase tracking-wide mb-1">Salgsverdi</p>
-              <p className="text-xl font-bold text-blue-900">{fmt(totalSales)}</p>
-              <p className="text-xs text-blue-500 mt-0.5">inkl. godkjente EM</p>
-            </div>
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-              <p className="text-xs text-gray-600 font-semibold uppercase tracking-wide mb-1">UE-kostnad</p>
-              <p className="text-xl font-bold text-gray-900">{fmt(totalUEBudgetCost)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">Rapportert: {fmt(totalUEReportedCost)}</p>
-            </div>
-            <div className={`border rounded-xl p-4 ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-              <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                Forventet fortjeneste
-              </p>
-              <p className={`text-xl font-bold ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'text-green-900' : 'text-red-900'}`}>
-                {fmt(totalSales - totalUEBudgetCost - totalInternalCost)}
-              </p>
-              <p className={`text-xs mt-0.5 ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'text-green-500' : 'text-red-500'}`}>
-                salg − UE − intern
-              </p>
-            </div>
-          </div>
-
-          {/* UE bubbles */}
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {internLines.length > 0 && (
-              <div className="bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-semibold text-gray-900 text-sm">Intern / Netel</span>
-                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-medium">Intern</span>
-                  </div>
-                  <div className="mb-2">
-                    <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <span>Internkost brukt {internPct}%</span>
-                      <span>{fmt(totalInternalCost)} / {fmt(internBudgetSales)}</span>
-                    </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${internPct > 100 ? 'bg-red-500' : internPct > 80 ? 'bg-orange-400' : 'bg-indigo-500'}`}
-                        style={{ width: `${Math.min(internPct, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-0.5 text-xs mt-2">
-                    <span className="text-gray-500">Salgsverdi intern: <span className="font-medium text-gray-900">{fmt(internBudgetSales)}</span></span>
-                    <span className="text-gray-500">Registrert internkost: <span className="font-medium text-gray-900">{fmt(totalInternalCost)}</span></span>
-                    <span className={`font-medium ${internBudgetSales - totalInternalCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-                      Fortjeneste: {fmt(internBudgetSales - totalInternalCost)}
-                    </span>
-                  </div>
+            {/* Budsjettversjoner + Import */}
+            <div className="grid grid-cols-3 gap-4">
+              <div className="col-span-2 bg-white rounded-xl shadow border border-gray-100 overflow-hidden">
+                <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
+                  <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Budsjettversjonhistorikk</h3>
                 </div>
-              </div>
-            )}
-            {subFlowData.map((sf) => (
-              <div key={sf.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                <button
-                  onClick={() => setExpandedSub(expandedSub === sf.id ? null : sf.id)}
-                  className="w-full text-left p-4 hover:bg-gray-50 transition-colors"
-                >
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-semibold text-gray-900 text-sm">{sf.name}</span>
-                    <span className="text-xs text-gray-400">{expandedSub === sf.id ? '▲' : '▼'}</span>
-                  </div>
-
-                  {/* Progress bar */}
-                  <div className="mb-2">
-                    <div className="flex justify-between text-xs text-gray-500 mb-1">
-                      <span>Rapportert {sf.pct}%</span>
-                      <span>{fmt(sf.reportedCost)} / {fmt(sf.budgetCost)}</span>
-                    </div>
-                    <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                      <div
-                        className={`h-full rounded-full transition-all ${sf.pct > 90 ? 'bg-red-500' : sf.pct > 70 ? 'bg-orange-400' : 'bg-green-500'}`}
-                        style={{ width: `${Math.min(sf.pct, 100)}%` }}
-                      />
-                    </div>
-                  </div>
-
-                  <div className="flex gap-3 text-xs">
-                    <span className="text-gray-500">Gjenstår: <span className="font-medium text-gray-900">{fmt(sf.remaining)}</span></span>
-                    <span className="text-gray-400">|</span>
-                    <span className="text-gray-500">Budsjett: <span className="font-medium text-gray-900">{fmt(sf.budgetCost)}</span></span>
-                  </div>
-                </button>
-
-                {expandedSub === sf.id && (
-                  <div className="border-t border-gray-100 overflow-x-auto">
-                    <table className="w-full text-xs">
+                {budgetVersions.length === 0 ? (
+                  <div className="px-5 py-6 text-sm text-gray-400 text-center">Ingen budsjettfiler lastet opp ennå.</div>
+                ) : (
+                  <div className="overflow-x-auto">
+                    <table className="w-full text-sm">
                       <thead>
-                        <tr className="bg-gray-50 border-b border-gray-100">
-                          <th className="px-3 py-2 text-left font-medium text-gray-500">Produkt</th>
-                          <th className="px-3 py-2 text-right font-medium text-gray-500">Budsjett</th>
-                          <th className="px-3 py-2 text-right font-medium text-gray-500">Rapportert</th>
-                          <th className="px-3 py-2 text-right font-medium text-gray-500">%</th>
+                        <tr className="border-b border-gray-100">
+                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-left">Versjon</th>
+                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Salgsverdi</th>
+                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Kostnad</th>
+                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Fortjeneste</th>
+                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Endring</th>
+                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-left">Lastet opp</th>
+                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-center">Fil</th>
                         </tr>
                       </thead>
                       <tbody>
-                        {sf.products.map((prod) => (
-                          <tr key={prod.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                            <td className="px-3 py-2 text-gray-900 max-w-[140px] truncate" title={prod.name}>
-                              {prod.name}
-                              <span className="text-gray-400 ml-1">({prod.unit})</span>
-                            </td>
-                            <td className="px-3 py-2 text-right text-gray-700">{prod.budgetQty}</td>
-                            <td className="px-3 py-2 text-right text-gray-700">{prod.reportedQty}</td>
-                            <td className={`px-3 py-2 text-right font-semibold ${prod.pct > 90 ? 'text-red-600' : prod.pct > 70 ? 'text-orange-500' : 'text-green-600'}`}>
-                              {prod.pct}%
-                            </td>
-                          </tr>
-                        ))}
-                        <tr className="bg-gray-50 border-t border-gray-200">
-                          <td className="px-3 py-2 text-xs font-semibold text-gray-600 uppercase">Totalt kostnad</td>
-                          <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmt(sf.budgetCost)}</td>
-                          <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmt(sf.reportedCost)}</td>
-                          <td className={`px-3 py-2 text-right font-bold ${sf.pct > 90 ? 'text-red-600' : sf.pct > 70 ? 'text-orange-500' : 'text-green-600'}`}>
-                            {sf.pct}%
-                          </td>
-                        </tr>
+                        {budgetVersions.map((bver, idx) => {
+                          const prev = idx > 0 ? budgetVersions[idx - 1] : null
+                          const delta = prev != null ? bver.total_sales_value - prev.total_sales_value : null
+                          const profit = bver.total_sales_value - bver.total_cost_value
+                          const isLatest = idx === budgetVersions.length - 1
+                          const label = bver.version === 0 ? 'Originalbudsjett' : `V${bver.version}`
+                          const dateStr = new Date(bver.uploaded_at).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
+                          const timeStr = new Date(bver.uploaded_at).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
+                          return (
+                            <tr key={bver.id} className={`border-b border-gray-100 ${isLatest ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                              <td className="px-5 py-3">
+                                <span className={`font-medium ${isLatest ? 'text-blue-700' : 'text-gray-900'}`}>{label}</span>
+                                {isLatest && <span className="ml-2 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-medium">Gjeldende</span>}
+                              </td>
+                              <td className="px-5 py-3 text-right text-gray-700">{fmt(bver.total_sales_value)}</td>
+                              <td className="px-5 py-3 text-right text-gray-700">{fmt(bver.total_cost_value)}</td>
+                              <td className={`px-5 py-3 text-right font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(profit)}</td>
+                              <td className="px-5 py-3 text-right">
+                                {delta == null ? (
+                                  <span className="text-gray-300">—</span>
+                                ) : (
+                                  <span className={`font-medium text-xs ${delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                                    {delta > 0 ? '+' : ''}{fmt(delta)}
+                                  </span>
+                                )}
+                              </td>
+                              <td className="px-5 py-3">
+                                <div className="text-gray-700">{bver.uploaded_by}</div>
+                                <div className="text-xs text-gray-400">{dateStr} {timeStr}</div>
+                              </td>
+                              <td className="px-5 py-3 text-center">
+                                {bver.file_name ? (
+                                  <a href={`/api/budget-versions/${bver.id}/file`} download title="Last ned Excel-fil" className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-green-100 text-green-600 hover:text-green-700 transition-colors">
+                                    <Download size={14} />
+                                  </a>
+                                ) : (
+                                  <span className="text-gray-300 text-xs">–</span>
+                                )}
+                              </td>
+                            </tr>
+                          )
+                        })}
                       </tbody>
                     </table>
                   </div>
                 )}
               </div>
-            ))}
+
+              {/* Import card */}
+              <div
+                onClick={() => !importing && importFileRef.current?.click()}
+                onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+                onDragEnter={(e) => { e.preventDefault(); setDragOver(true) }}
+                onDragLeave={() => setDragOver(false)}
+                onDrop={(e) => { e.preventDefault(); setDragOver(false); const file = e.dataTransfer.files?.[0]; if (file) handlePostImport(file) }}
+                className={`rounded-xl p-6 flex flex-col items-center justify-center text-center gap-4 cursor-pointer transition-colors border-2 border-dashed select-none ${dragOver ? 'bg-blue-100 border-blue-500' : importing ? 'bg-blue-50 border-blue-200 cursor-default' : 'bg-blue-50 border-blue-300 hover:bg-blue-100 hover:border-blue-400'}`}
+              >
+                <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${dragOver ? 'bg-blue-200' : 'bg-blue-100'}`}>
+                  <svg xmlns="http://www.w3.org/2000/svg" className={`w-7 h-7 transition-colors ${dragOver ? 'text-blue-700' : 'text-blue-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4m0 0L8 8m4-4l4 4" />
+                  </svg>
+                </div>
+                <div>
+                  <p className="font-semibold text-blue-900 text-base">{importing ? 'Importerer...' : dragOver ? 'Slipp filen her' : 'Last inn oppdatert budsjettfil'}</p>
+                  <p className="text-sm text-blue-700 mt-1 max-w-xs">{importing ? 'Behandler Excel-filen…' : 'Dra og slipp en .xlsx-fil hit, eller klikk for å velge'}</p>
+                </div>
+                {!importing && <span className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg shadow-sm pointer-events-none">Velg fil</span>}
+                {importMsg && <p className={`text-xs font-medium ${importMsg.toLowerCase().includes('feil') ? 'text-red-600' : 'text-green-600'}`}>{importMsg}</p>}
+              </div>
+            </div>
+          </section>
+
+          {/* Gantt */}
+          {project.start_date && project.end_date && (
+            <GanttSection
+              projectId={id}
+              projectStart={project.start_date}
+              projectEnd={project.end_date}
+              milestones={milestones}
+              allSubs={allSubs}
+              projectSubs={projectSubs.map((ps) => ps.subcontractor_id)}
+              onRefresh={fetchAll}
+            />
+          )}
+
+          {/* Kostnadsflyt */}
+          {(subFlowData.length > 0 || internLines.length > 0) && (
+            <section>
+              <h2 className="text-lg font-semibold text-gray-900 mb-4">Kostnadsflyt</h2>
+              <div className="grid grid-cols-3 gap-4 mb-6">
+                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
+                  <p className="text-xs text-blue-700 font-semibold uppercase tracking-wide mb-1">Salgsverdi</p>
+                  <p className="text-xl font-bold text-blue-900">{fmt(totalSales)}</p>
+                  <p className="text-xs text-blue-500 mt-0.5">inkl. godkjente EM</p>
+                </div>
+                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
+                  <p className="text-xs text-gray-600 font-semibold uppercase tracking-wide mb-1">UE-kostnad</p>
+                  <p className="text-xl font-bold text-gray-900">{fmt(totalUEBudgetCost)}</p>
+                  <p className="text-xs text-gray-500 mt-0.5">Rapportert: {fmt(totalUEReportedCost)}</p>
+                </div>
+                <div className={`border rounded-xl p-4 ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                  <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'text-green-700' : 'text-red-700'}`}>Forventet fortjeneste</p>
+                  <p className={`text-xl font-bold ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'text-green-900' : 'text-red-900'}`}>{fmt(totalSales - totalUEBudgetCost - totalInternalCost)}</p>
+                  <p className={`text-xs mt-0.5 ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'text-green-500' : 'text-red-500'}`}>salg − UE − intern</p>
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+                {internLines.length > 0 && (
+                  <div className="bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
+                    <div className="p-4">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-semibold text-gray-900 text-sm">Intern / Netel</span>
+                        <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-medium">Intern</span>
+                      </div>
+                      <div className="mb-2">
+                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                          <span>Internkost brukt {internPct}%</span>
+                          <span>{fmt(totalInternalCost)} / {fmt(internBudgetSales)}</span>
+                        </div>
+                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all ${internPct > 100 ? 'bg-red-500' : internPct > 80 ? 'bg-orange-400' : 'bg-indigo-500'}`} style={{ width: `${Math.min(internPct, 100)}%` }} />
+                        </div>
+                      </div>
+                      <div className="flex flex-col gap-0.5 text-xs mt-2">
+                        <span className="text-gray-500">Salgsverdi intern: <span className="font-medium text-gray-900">{fmt(internBudgetSales)}</span></span>
+                        <span className="text-gray-500">Registrert internkost: <span className="font-medium text-gray-900">{fmt(totalInternalCost)}</span></span>
+                        <span className={`font-medium ${internBudgetSales - totalInternalCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>Fortjeneste: {fmt(internBudgetSales - totalInternalCost)}</span>
+                      </div>
+                    </div>
+                  </div>
+                )}
+                {subFlowData.map((sf) => (
+                  <div key={sf.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+                    <button onClick={() => setExpandedSub(expandedSub === sf.id ? null : sf.id)} className="w-full text-left p-4 hover:bg-gray-50 transition-colors">
+                      <div className="flex items-center justify-between mb-3">
+                        <span className="font-semibold text-gray-900 text-sm">{sf.name}</span>
+                        <span className="text-xs text-gray-400">{expandedSub === sf.id ? '▲' : '▼'}</span>
+                      </div>
+                      <div className="mb-2">
+                        <div className="flex justify-between text-xs text-gray-500 mb-1">
+                          <span>Rapportert {sf.pct}%</span>
+                          <span>{fmt(sf.reportedCost)} / {fmt(sf.budgetCost)}</span>
+                        </div>
+                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
+                          <div className={`h-full rounded-full transition-all ${sf.pct > 90 ? 'bg-red-500' : sf.pct > 70 ? 'bg-orange-400' : 'bg-green-500'}`} style={{ width: `${Math.min(sf.pct, 100)}%` }} />
+                        </div>
+                      </div>
+                      <div className="flex gap-3 text-xs">
+                        <span className="text-gray-500">Gjenstår: <span className="font-medium text-gray-900">{fmt(sf.remaining)}</span></span>
+                        <span className="text-gray-400">|</span>
+                        <span className="text-gray-500">Budsjett: <span className="font-medium text-gray-900">{fmt(sf.budgetCost)}</span></span>
+                      </div>
+                    </button>
+                    {expandedSub === sf.id && (
+                      <div className="border-t border-gray-100 overflow-x-auto">
+                        <table className="w-full text-xs">
+                          <thead>
+                            <tr className="bg-gray-50 border-b border-gray-100">
+                              <th className="px-3 py-2 text-left font-medium text-gray-500">Produkt</th>
+                              <th className="px-3 py-2 text-right font-medium text-gray-500">Budsjett</th>
+                              <th className="px-3 py-2 text-right font-medium text-gray-500">Rapportert</th>
+                              <th className="px-3 py-2 text-right font-medium text-gray-500">%</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {sf.products.map((prod) => (
+                              <tr key={prod.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
+                                <td className="px-3 py-2 text-gray-900 max-w-[140px] truncate" title={prod.name}>{prod.name}<span className="text-gray-400 ml-1">({prod.unit})</span></td>
+                                <td className="px-3 py-2 text-right text-gray-700">{prod.budgetQty}</td>
+                                <td className="px-3 py-2 text-right text-gray-700">{prod.reportedQty}</td>
+                                <td className={`px-3 py-2 text-right font-semibold ${prod.pct > 90 ? 'text-red-600' : prod.pct > 70 ? 'text-orange-500' : 'text-green-600'}`}>{prod.pct}%</td>
+                              </tr>
+                            ))}
+                            <tr className="bg-gray-50 border-t border-gray-200">
+                              <td className="px-3 py-2 text-xs font-semibold text-gray-600 uppercase">Totalt kostnad</td>
+                              <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmt(sf.budgetCost)}</td>
+                              <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmt(sf.reportedCost)}</td>
+                              <td className={`px-3 py-2 text-right font-bold ${sf.pct > 90 ? 'text-red-600' : sf.pct > 70 ? 'text-orange-500' : 'text-green-600'}`}>{sf.pct}%</td>
+                            </tr>
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
+
+          {/* Underentreprenører */}
+          <section>
+            <h2 className="text-lg font-semibold text-gray-900 mb-3">Underentreprenører på prosjektet</h2>
+            <div className="bg-white rounded-lg shadow p-5 space-y-4">
+              <div className="flex gap-2 items-center">
+                <select value={addSubId} onChange={(e) => setAddSubId(e.target.value)} className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500">
+                  <option value="">Velg underentreprenør</option>
+                  {availableSubs.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
+                </select>
+                <button onClick={addSubToProject} disabled={!addSubId} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-40">Legg til</button>
+              </div>
+              {projectSubDetails.length > 0 ? (
+                <ul className="space-y-2">
+                  {projectSubDetails.map((s) => {
+                    const link = projectSubs.find((ps) => ps.subcontractor_id === s.id)!
+                    return (
+                      <li key={s.id} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
+                        <div>
+                          <span className="text-sm font-medium text-gray-900">{s.company_name}</span>
+                          <span className="text-xs text-gray-500 ml-2">{s.contact_person} · {s.county}</span>
+                        </div>
+                        <button onClick={() => setConfirmRemoveSubId(link.id)} className="text-xs text-red-500 hover:text-red-700">Fjern</button>
+                      </li>
+                    )
+                  })}
+                </ul>
+              ) : (
+                <p className="text-sm text-gray-400">Ingen UE-er tildelt ennå</p>
+              )}
+            </div>
+          </section>
+        </div>
+      )}
+
+      {/* ── BUDSJETTLINJER ───────────────────────────────────────────── */}
+      {activeTab === 'budsjettlinjer' && (
+        <section className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-semibold text-gray-900">Budsjettlinjer</h2>
+            <div className="flex gap-2 items-center">
+              {importMsg && <span className={`text-xs ${importMsg.startsWith('Importerte') ? 'text-green-600' : 'text-red-600'}`}>{importMsg}</span>}
+              <button onClick={() => importFileRef.current?.click()} disabled={importing} className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200 disabled:opacity-50">
+                {importing ? 'Importerer...' : '↑ Importer fra Excel'}
+              </button>
+              <input ref={importFileRef} type="file" accept=".xlsx" className="hidden" onChange={(e) => { const f = e.target.files?.[0]; if (f) { handlePostImport(f); e.target.value = '' } }} />
+              <button onClick={() => setShowAddLine(!showAddLine)} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
+                {showAddLine ? 'Avbryt' : '+ Legg til linje'}
+              </button>
+            </div>
           </div>
+
+          {showAddLine && (
+            <form onSubmit={addBudgetLine} className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex flex-wrap gap-4 items-end">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Produkt</label>
+                <select required value={newLine.product_id} onChange={(e) => setNewLine((p) => ({ ...p, product_id: e.target.value }))} className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500">
+                  <option value="">Velg produkt</option>
+                  {allProducts.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.unit}</option>)}
+                </select>
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Mengde</label>
+                <NumberInput required value={newLine.budget_quantity} onChange={(raw) => setNewLine((p) => ({ ...p, budget_quantity: raw }))} className="w-28 px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500" />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
+                <select value={newLine.line_type} onChange={(e) => setNewLine((p) => ({ ...p, line_type: e.target.value }))} className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500">
+                  <option value="subcontractor_work">UE-arbeid</option>
+                  <option value="internal_cost">Intern</option>
+                  <option value="material">Materiell</option>
+                </select>
+              </div>
+              <button type="submit" disabled={savingLine} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+                {savingLine ? 'Lagrer...' : 'Lagre'}
+              </button>
+            </form>
+          )}
+
+          {bulkError && <div className="px-4 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">{bulkError}</div>}
+
+          {/* Filter + bulk assign */}
+          <div className="flex flex-wrap items-center gap-3 p-2 bg-gray-50 border border-gray-200 rounded">
+            <input type="checkbox" checked={allChecked} onChange={toggleAll} className="h-4 w-4" title="Velg alle" />
+            <span className="text-sm text-gray-500">{selected.length > 0 ? `${selected.length} valgt` : 'Velg rader'}</span>
+            {selected.length > 0 && (
+              <>
+                <select value={bulkSubcontractor} onChange={(e) => setBulkSubcontractor(e.target.value)} className="text-sm border border-gray-300 rounded px-2 py-1">
+                  <option value="">— Velg underentreprenør —</option>
+                  <option value="__intern__">Intern / Netel</option>
+                  {projectSubDetails.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
+                </select>
+                <button onClick={handleBulkAssign} disabled={!bulkSubcontractor} className="text-sm bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-40">Tildel</button>
+                <button onClick={() => setSelected([])} className="text-sm text-gray-500 hover:text-gray-700">Avbryt</button>
+              </>
+            )}
+            <div className="ml-auto flex items-center gap-2">
+              <span className="text-xs text-gray-500">Filtrer type:</span>
+              <select value={lineTypeFilter} onChange={(e) => setLineTypeFilter(e.target.value)} className="text-sm border border-gray-300 rounded px-2 py-1">
+                <option value="all">Alle</option>
+                <option value="subcontractor_work">UE-arbeid</option>
+                <option value="internal_cost">Intern</option>
+                <option value="material">Materiell</option>
+              </select>
+            </div>
+          </div>
+
+          {(() => {
+            const allRows = buildBLRows(budgetLines)
+            const filteredRows = lineTypeFilter === 'all' ? allRows : allRows.filter((r) => r.line_type === lineTypeFilter)
+            return (
+              <div className="bg-white rounded-lg shadow">
+                <SortableTable
+                  columns={blColumns}
+                  data={filteredRows}
+                  emptyText="Ingen budsjettlinjer ennå"
+                  tableClassName="table-fixed"
+                  colWidths={['w-8', 'w-24', undefined, 'w-16', 'w-24', 'w-20', 'w-24', 'w-28', 'w-36', 'w-28', 'w-28']}
+                  rowClassName={(row: BLRow) => row.assigned_subcontractor_id ? 'border-b border-gray-100 hover:bg-blue-50' : 'border-b border-orange-100 bg-orange-50 hover:bg-orange-100'}
+                  expandedRowId={chartLineId}
+                  onRowExpand={(rowId) => setChartLineId(rowId)}
+                  expandedRowRender={expandedRowRenderFn}
+                />
+              </div>
+            )
+          })()}
         </section>
       )}
 
-      {/* Section 2 — Project subcontractors */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Underentreprenører på prosjektet</h2>
-        <div className="bg-white rounded-lg shadow p-5 space-y-4">
-          <div className="flex gap-2 items-center">
-            <select
-              value={addSubId}
-              onChange={(e) => setAddSubId(e.target.value)}
-              className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
-            >
-              <option value="">Velg underentreprenør</option>
-              {availableSubs.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
-            </select>
-            <button onClick={addSubToProject} disabled={!addSubId} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-40">
-              Legg til
-            </button>
-          </div>
-          {projectSubDetails.length > 0 ? (
-            <ul className="space-y-2">
-              {projectSubDetails.map((s) => {
-                const link = projectSubs.find((ps) => ps.subcontractor_id === s.id)!
-                return (
-                  <li key={s.id} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
-                    <div>
-                      <span className="text-sm font-medium text-gray-900">{s.company_name}</span>
-                      <span className="text-xs text-gray-500 ml-2">{s.contact_person} · {s.county}</span>
-                    </div>
-                    <button onClick={() => setConfirmRemoveSubId(link.id)} className="text-xs text-red-500 hover:text-red-700">Fjern</button>
-                  </li>
-                )
-              })}
-            </ul>
-          ) : (
-            <p className="text-sm text-gray-400">Ingen UE-er tildelt ennå</p>
-          )}
-        </div>
-      </section>
-
-      {/* Section 5 — Endringsmeldinger (moved up) */}
-      <ChangeOrdersSection
-        changeOrders={changeOrders}
-        allProducts={allProducts}
-        allSubs={allSubs}
-        onStatusChange={updateCOStatus}
-      />
-
-      {/* Section 3 — Budget lines */}
-      <section>
-        <div className="flex justify-between items-center mb-3">
-          <h2 className="text-lg font-semibold text-gray-900">Budsjettlinjer</h2>
-          <div className="flex gap-2 items-center">
-            {importMsg && (
-              <span className={`text-xs ${importMsg.startsWith('Importerte') ? 'text-green-600' : 'text-red-600'}`}>
-                {importMsg}
-              </span>
-            )}
-            <button
-              onClick={() => importFileRef.current?.click()}
-              disabled={importing}
-              className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200 disabled:opacity-50"
-            >
-              {importing ? 'Importerer...' : '↑ Importer fra Excel'}
-            </button>
-            <input
-              ref={importFileRef}
-              type="file"
-              accept=".xlsx"
-              className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) { handlePostImport(f); e.target.value = '' } }}
-            />
-            <button onClick={() => setShowAddLine(!showAddLine)} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700">
-              {showAddLine ? 'Avbryt' : '+ Legg til linje'}
-            </button>
-          </div>
-        </div>
-
-        {showAddLine && (
-          <form onSubmit={addBudgetLine} className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-4 items-end mb-4">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Produkt</label>
-              <select
-                required
-                value={newLine.product_id}
-                onChange={(e) => setNewLine((p) => ({ ...p, product_id: e.target.value }))}
-                className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
-              >
-                <option value="">Velg produkt</option>
-                {allProducts.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.unit}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Mengde</label>
-              <NumberInput
-                required
-                value={newLine.budget_quantity}
-                onChange={(raw) => setNewLine((p) => ({ ...p, budget_quantity: raw }))}
-                className="w-28 px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500"
-              />
-            </div>
-            <button type="submit" disabled={savingLine} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
-              {savingLine ? 'Lagrer...' : 'Lagre'}
-            </button>
-          </form>
-        )}
-
-        {bulkError && (
-          <div className="mb-3 px-4 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">{bulkError}</div>
-        )}
-
-        <div className="flex items-center gap-3 mb-2 p-2 bg-gray-50 border border-gray-200 rounded">
-          <input
-            type="checkbox"
-            checked={allChecked}
-            onChange={toggleAll}
-            className="h-4 w-4"
-            title="Velg alle"
-          />
-          <span className="text-sm text-gray-500">
-            {selected.length > 0 ? `${selected.length} valgt` : 'Velg rader'}
-          </span>
-          {selected.length > 0 && (
-            <>
-              <select
-                value={bulkSubcontractor}
-                onChange={(e) => setBulkSubcontractor(e.target.value)}
-                className="text-sm border border-gray-300 rounded px-2 py-1"
-              >
-                <option value="">— Velg underentreprenør —</option>
-                <option value="__intern__">Intern / Netel</option>
-                {projectSubDetails.map((s) => (
-                  <option key={s.id} value={s.id}>{s.company_name}</option>
-                ))}
-              </select>
-              <button
-                onClick={handleBulkAssign}
-                disabled={!bulkSubcontractor}
-                className="text-sm bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-40"
-              >
-                Tildel
-              </button>
-              <button
-                onClick={() => setSelected([])}
-                className="text-sm text-gray-500 hover:text-gray-700"
-              >
-                Avbryt
-              </button>
-            </>
-          )}
-        </div>
-
-        {(() => {
-          const blRows: BLRow[] = budgetLines.map((bl) => {
-            const product = allProducts.find((p) => p.id === bl.product_id)
-            const isIntern = bl.assigned_subcontractor_id === '__intern__'
-            const assignedSub = isIntern ? null : allSubs.find((s) => s.id === bl.assigned_subcontractor_id)
-            const salesValue = bl.budget_quantity * bl.customer_price_snapshot
-            const costValue = bl.assigned_subcontractor_id && !isIntern ? bl.budget_quantity * bl.subcontractor_cost_price_snapshot : 0
-            return {
-              id: bl.id,
-              product_code: product?.description ?? '–',
-              product_name: product?.name ?? '–',
-              unit: product?.unit ?? '–',
-              source: bl.source ?? 'manual',
-              budget_quantity: bl.budget_quantity,
-              customer_price_snapshot: bl.customer_price_snapshot,
-              sales_value: salesValue,
-              assigned_subcontractor_id: bl.assigned_subcontractor_id,
-              assigned_name: isIntern ? 'Intern / Netel' : (assignedSub?.company_name ?? ''),
-              subcontractor_cost_price_snapshot: bl.subcontractor_cost_price_snapshot,
-              cost_value: costValue,
-              profit: salesValue - costValue,
-            }
-          })
-
-          const blColumns = [
-            {
-              key: 'select',
-              label: '',
-              render: (row: BLRow) => (
-                <input
-                  type="checkbox"
-                  checked={selected.includes(row.id)}
-                  onChange={() => toggleRow(row.id)}
-                  className="h-4 w-4"
-                />
-              ),
-            },
-            { key: 'product_code', label: 'Kode', sortable: true },
-            { key: 'product_name', label: 'Produkt', sortable: true, tdClassName: 'truncate max-w-0' },
-            { key: 'unit', label: 'Enhet' },
-            { key: 'budget_quantity', label: 'Mengde', sortable: true },
-            { key: 'customer_price_snapshot', label: 'Utsalgspris', sortable: true, render: (row: BLRow) => fmt(row.customer_price_snapshot) },
-            { key: 'sales_value', label: 'Salgsverdi', sortable: true, getValue: (row: BLRow) => row.sales_value, render: (row: BLRow) => <span className="font-medium">{fmt(row.sales_value)}</span> },
-            {
-              key: 'assigned_subcontractor_id',
-              label: 'Tildelt UE',
-              sortable: true,
-              getValue: (row: BLRow) => row.assigned_name,
-              render: (row: BLRow) => row.assigned_subcontractor_id
-                ? <span className="text-sm text-gray-900">{row.assigned_name}</span>
-                : <span className="text-xs text-orange-400">Ikke tildelt</span>,
-            },
-            { key: 'cost_value', label: 'Kostnad', sortable: true, getValue: (row: BLRow) => row.cost_value, render: (row: BLRow) => row.assigned_subcontractor_id ? fmt(row.cost_value) : '–' },
-            {
-              key: 'profit',
-              label: 'Fortjeneste',
-              sortable: true,
-              getValue: (row: BLRow) => row.profit,
-              render: (row: BLRow) => row.assigned_subcontractor_id
-                ? <span className={row.profit >= 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>{fmt(row.profit)}</span>
-                : '–',
-            },
-          ]
-
-          return (
-            <div className="bg-white rounded-lg shadow">
-              <SortableTable
-                columns={blColumns}
-                data={blRows}
-                emptyText="Ingen budsjettlinjer ennå"
-                tableClassName="table-fixed"
-                colWidths={['w-8', 'w-24', undefined, 'w-16', 'w-20', 'w-24', 'w-28', 'w-36', 'w-28', 'w-28']}
-                rowClassName={(row: BLRow) =>
-                  row.assigned_subcontractor_id
-                    ? 'border-b border-gray-100 hover:bg-gray-50'
-                    : 'border-b border-orange-100 bg-orange-50 hover:bg-orange-100'
-                }
-              />
-            </div>
-          )
-        })()}
-      </section>
-
-      {/* Section 4 — Report lines */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Rapporteringer</h2>
-        {(() => {
-          const rlRows: RLRow[] = reportLines.map((rl) => {
-            const bl = budgetLines.find((b) => b.id === rl.project_budget_line_id)
-            const product = allProducts.find((p) => p.id === bl?.product_id)
-            const sub = allSubs.find((s) => s.id === rl.subcontractor_id)
-            return {
-              id: rl.id,
-              product_code: product?.description ?? '–',
-              product_name: product?.name ?? '–',
-              sub_name: sub?.company_name ?? '–',
-              quantity_str: `${rl.reported_quantity} ${product?.unit ?? ''}`,
-              report_date: rl.report_date,
-              status: rl.status,
-            }
-          })
-          const rlColumns = [
-            { key: 'product_code', label: 'Kode', sortable: true },
-            { key: 'product_name', label: 'Produkt', sortable: true },
-            { key: 'sub_name', label: 'Underentreprenør', sortable: true },
-            { key: 'quantity_str', label: 'Mengde' },
-            { key: 'report_date', label: 'Dato', sortable: true },
-            {
-              key: 'status',
-              label: 'Status',
-              sortable: true,
-              render: (row: RLRow) => (
-                <span className={`text-xs px-2 py-0.5 rounded ${STATUS_CLS[row.status] ?? ''}`}>{STATUS_LABEL[row.status] ?? row.status}</span>
-              ),
-            },
-            {
-              key: 'actions',
-              label: '',
-              render: (row: RLRow) => row.status === 'submitted' ? (
-                <div className="flex gap-2">
-                  <button onClick={() => updateReportStatus(row.id, 'approved')} className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">Godkjenn</button>
-                  <button onClick={() => updateReportStatus(row.id, 'rejected')} className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">Avvis</button>
+      {/* ── PROGNOSE ─────────────────────────────────────────────────── */}
+      {activeTab === 'prognose' && (
+        <div className="space-y-6">
+          {hasForecast && (
+            <section>
+              <h2 className="text-lg font-semibold text-gray-900 mb-3">Prognose — månedlig plan</h2>
+              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+                <div className="bg-indigo-50 border border-indigo-200 rounded-xl shadow-sm p-4">
+                  <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Forventet inntekt</p>
+                  <p className="text-2xl font-bold text-indigo-900 mt-1">{fmt(forecastRevenue)}</p>
+                  {forecastRevenue > 0 && totalSales > 0 && (
+                    <p className={`text-xs mt-0.5 font-medium ${forecastRevenue <= totalSales ? 'text-amber-600' : 'text-red-500'}`}>
+                      {forecastRevenue < totalSales ? `−${fmt(totalSales - forecastRevenue)} vs. kontrakt` : `+${fmt(forecastRevenue - totalSales)} vs. kontrakt`}
+                    </p>
+                  )}
                 </div>
-              ) : null,
-            },
-          ]
-          return (
-            <div className="bg-white rounded-lg shadow">
-              <SortableTable columns={rlColumns} data={rlRows} emptyText="Ingen rapporteringer ennå" />
-            </div>
-          )
-        })()}
-      </section>
+                <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Forventet UE-kost</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(forecastUECost)}</p>
+                </div>
+                <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4">
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Forventet internkost</p>
+                  <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(forecastInternalCost)}</p>
+                  {forecastOtherCost > 0 && <p className="text-xs text-gray-400 mt-0.5">+ {fmt(forecastOtherCost)} andre kost.</p>}
+                </div>
+                <div className={`rounded-xl shadow-sm p-4 border ${forecastProfit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
+                  <p className="text-xs text-gray-500 uppercase tracking-wide">Forventet fortjeneste</p>
+                  <p className={`text-2xl font-bold mt-1 ${forecastProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>{fmt(forecastProfit)}</p>
+                </div>
+              </div>
+            </section>
+          )}
 
-      {/* Section 6 — Internkostnader */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-4">Internkostnader</h2>
-        <div className="space-y-4">
+          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 flex flex-col items-center gap-4 text-center">
+            <div className="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center">
+              <svg className="w-8 h-8 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
+              </svg>
+            </div>
+            <div>
+              <h3 className="text-base font-semibold text-gray-900">Prognoseside</h3>
+              <p className="text-sm text-gray-500 mt-1">Legg inn månedlige prognose-tall, forventet inntekt og kostnader per periode.</p>
+            </div>
+            <Link
+              href={`/admin/projects/${id}/forecast`}
+              className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              Åpne prognose →
+            </Link>
+          </div>
+        </div>
+      )}
+
+      {/* ── INTERNE KOSTNADER ────────────────────────────────────────── */}
+      {activeTab === 'interne' && (
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900">Internkostnader</h2>
           <form onSubmit={addInternalCost} className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex flex-wrap gap-4 items-end">
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">År</label>
-              <input
-                type="number"
-                required
-                min="2020"
-                max="2040"
-                value={newInternalCost.year}
-                onChange={(e) => setNewInternalCost((p) => ({ ...p, year: Number(e.target.value) }))}
-                className="w-24 px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500"
-              />
+              <input type="number" required min="2020" max="2040" value={newInternalCost.year} onChange={(e) => setNewInternalCost((p) => ({ ...p, year: Number(e.target.value) }))} className="w-24 px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Måned</label>
-              <select
-                required
-                value={newInternalCost.month}
-                onChange={(e) => setNewInternalCost((p) => ({ ...p, month: Number(e.target.value) }))}
-                className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
-              >
-                {['Jan','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des'].map((m, i) => (
-                  <option key={i + 1} value={i + 1}>{m}</option>
-                ))}
+              <select required value={newInternalCost.month} onChange={(e) => setNewInternalCost((p) => ({ ...p, month: Number(e.target.value) }))} className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500">
+                {['Jan','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des'].map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
               </select>
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Beløp (NOK)</label>
-              <NumberInput
-                required
-                value={newInternalCost.amount}
-                onChange={(raw) => setNewInternalCost((p) => ({ ...p, amount: raw }))}
-                className="w-36 px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500"
-              />
+              <NumberInput required value={newInternalCost.amount} onChange={(raw) => setNewInternalCost((p) => ({ ...p, amount: raw }))} className="w-36 px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500" />
             </div>
             <div>
               <label className="block text-xs font-medium text-gray-700 mb-1">Kommentar</label>
-              <input
-                type="text"
-                value={newInternalCost.comment}
-                onChange={(e) => setNewInternalCost((p) => ({ ...p, comment: e.target.value }))}
-                className="w-48 px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500"
-                placeholder="Valgfri kommentar"
-              />
+              <input type="text" value={newInternalCost.comment} onChange={(e) => setNewInternalCost((p) => ({ ...p, comment: e.target.value }))} className="w-48 px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500" placeholder="Valgfri kommentar" />
             </div>
             <button type="submit" disabled={savingInternalCost} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
               {savingInternalCost ? 'Lagrer...' : '+ Legg til'}
@@ -1166,25 +1051,17 @@ export default function ProjectDetailPage() {
               </thead>
               <tbody>
                 {internalCosts.length === 0 ? (
-                  <tr>
-                    <td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">
-                      Ingen internkostnader registrert
-                    </td>
-                  </tr>
+                  <tr><td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">Ingen internkostnader registrert</td></tr>
                 ) : (
                   [...internalCosts]
                     .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
                     .map((c) => (
                       <tr key={c.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                        <td className="px-4 py-2.5 font-medium text-gray-900">
-                          {['Jan','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des'][c.month - 1]} {c.year}
-                        </td>
+                        <td className="px-4 py-2.5 font-medium text-gray-900">{['Jan','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des'][c.month - 1]} {c.year}</td>
                         <td className="px-4 py-2.5 text-right text-gray-900 font-medium">{fmt(c.amount)}</td>
                         <td className="px-4 py-2.5 text-gray-500 text-xs">{c.comment}</td>
                         <td className="px-4 py-2.5 text-right">
-                          <button onClick={() => setConfirmDeleteCostId(c.id)} className="text-xs text-red-500 hover:text-red-700">
-                            Slett
-                          </button>
+                          <button onClick={() => setConfirmDeleteCostId(c.id)} className="text-xs text-red-500 hover:text-red-700">Slett</button>
                         </td>
                       </tr>
                     ))
@@ -1201,8 +1078,112 @@ export default function ProjectDetailPage() {
               )}
             </table>
           </div>
-        </div>
-      </section>
+        </section>
+      )}
+
+      {/* ── MATERIELL ────────────────────────────────────────────────── */}
+      {activeTab === 'materiell' && (
+        <section className="space-y-4">
+          <div className="flex items-center justify-between">
+            <h2 className="text-lg font-semibold text-gray-900">Materiell</h2>
+            <span className="text-xs text-gray-400">Viser budsjettlinjer av type «Materiell»</span>
+          </div>
+          {(() => {
+            const materialRows = buildBLRows(budgetLines.filter((bl) => bl.line_type === 'material'))
+            if (materialRows.length === 0) {
+              return (
+                <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center">
+                  <p className="text-sm text-gray-400">Ingen materiell-linjer lagt til ennå.</p>
+                  <p className="text-xs text-gray-400 mt-1">Gå til <button className="text-blue-600 hover:underline" onClick={() => setActiveTab('budsjettlinjer')}>Budsjettlinjer</button> og legg til linjer av type «Materiell».</p>
+                </div>
+              )
+            }
+            const matColumns = blColumns.filter((c) => c.key !== 'select' && c.key !== 'line_type')
+            return (
+              <div className="bg-white rounded-lg shadow">
+                <SortableTable
+                  columns={matColumns}
+                  data={materialRows}
+                  emptyText="Ingen materiell-linjer"
+                  rowClassName={() => 'border-b border-gray-100 hover:bg-orange-50'}
+                  expandedRowId={chartLineId}
+                  onRowExpand={(rowId) => setChartLineId(rowId)}
+                  expandedRowRender={expandedRowRenderFn}
+                />
+              </div>
+            )
+          })()}
+        </section>
+      )}
+
+      {/* ── RAPPORTERINGER ───────────────────────────────────────────── */}
+      {activeTab === 'rapporteringer' && (
+        <section className="space-y-4">
+          <h2 className="text-lg font-semibold text-gray-900">Rapporteringer</h2>
+          {(() => {
+            const rlRows: RLRow[] = reportLines.map((rl) => {
+              const bl = budgetLines.find((b) => b.id === rl.project_budget_line_id)
+              const product = allProducts.find((p) => p.id === bl?.product_id)
+              const sub = allSubs.find((s) => s.id === rl.subcontractor_id)
+              return {
+                id: rl.id,
+                product_code: product?.description ?? '–',
+                product_name: product?.name ?? '–',
+                sub_name: sub?.company_name ?? '–',
+                quantity_str: `${rl.reported_quantity} ${product?.unit ?? ''}`,
+                report_date: rl.report_date,
+                status: rl.status,
+              }
+            })
+            const rlColumns = [
+              { key: 'product_code', label: 'Kode', sortable: true },
+              { key: 'product_name', label: 'Produkt', sortable: true },
+              { key: 'sub_name', label: 'Underentreprenør', sortable: true },
+              { key: 'quantity_str', label: 'Mengde' },
+              { key: 'report_date', label: 'Dato', sortable: true },
+              {
+                key: 'status',
+                label: 'Status',
+                sortable: true,
+                render: (row: RLRow) => {
+                  const meta = reportLineStatus(row.status)
+                  return <span className={`text-xs px-2 py-0.5 rounded ${meta.cls}`}>{meta.label}</span>
+                },
+              },
+              {
+                key: 'actions',
+                label: '',
+                render: (row: RLRow) => row.status === 'submitted' ? (
+                  <div className="flex gap-2">
+                    <button onClick={() => updateReportStatus(row.id, 'approved')} className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">Godkjenn</button>
+                    <button onClick={() => updateReportStatus(row.id, 'rejected')} className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">Avvis</button>
+                  </div>
+                ) : null,
+              },
+            ]
+            return (
+              <div className="bg-white rounded-lg shadow">
+                <SortableTable columns={rlColumns} data={rlRows} emptyText="Ingen rapporteringer ennå" />
+              </div>
+            )
+          })()}
+        </section>
+      )}
+
+      {/* ── ENDRINGSMELDINGER ────────────────────────────────────────── */}
+      {activeTab === 'endringsmeldinger' && (
+        <ChangeOrdersSection
+          changeOrders={changeOrders}
+          allProducts={allProducts}
+          allSubs={allSubs}
+          onStatusChange={updateCOStatus}
+        />
+      )}
+
+      {/* ── FAKTURAGRUNNLAG ──────────────────────────────────────────── */}
+      {activeTab === 'fakturagrunnlag' && (
+        <InvoicesSection projectId={id} />
+      )}
 
       {confirmRemoveSubId && (
         <ConfirmDialog

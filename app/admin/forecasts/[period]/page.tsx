@@ -7,6 +7,8 @@ import { ChevronDown, ChevronRight, AlertTriangle, CheckCircle, RotateCcw, Lock,
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import NumberInput from '@/components/NumberInput'
+import { MONTHS_SHORT as MONTH_NAMES, fmtNOK as fmt } from '@/lib/format'
+import { forecastStatus } from '@/lib/statuses'
 import type {
   Project,
   ProjectBudgetLine,
@@ -58,31 +60,7 @@ type ForecastEntry = {
 
 // ─── Constants ────────────────────────────────────────────────────────────────
 
-const MONTH_NAMES = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des']
-
-const STATUS_LABEL: Record<ForecastStatus, string> = {
-  not_started: 'Ikke påbegynt',
-  draft: 'Påbegynt',
-  submitted: 'Sendt inn',
-  approved: 'Godkjent',
-  returned: 'Returnert',
-  locked: 'Låst',
-}
-
-const STATUS_CLS: Record<ForecastStatus, string> = {
-  not_started: 'bg-gray-100 text-gray-500',
-  draft: 'bg-blue-50 text-blue-600',
-  submitted: 'bg-yellow-100 text-yellow-700',
-  approved: 'bg-green-100 text-green-700',
-  returned: 'bg-red-100 text-red-700',
-  locked: 'bg-gray-200 text-gray-600',
-}
-
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
-}
 
 function num(v: string | number): number {
   const n = typeof v === 'string' ? parseFloat(v.replace(/\s/g, '').replace(',', '.')) : v
@@ -483,9 +461,7 @@ export default function ForecastPeriodPage() {
                     <p className={`font-medium ${p >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(p)}</p>
                   </div>
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${STATUS_CLS[e.status]}`}>
-                  {STATUS_LABEL[e.status]}
-                </span>
+                {(() => { const m = forecastStatus(e.status); return <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${m.cls}`}>{m.label}</span> })()}
               </div>
 
               {/* Expanded form */}

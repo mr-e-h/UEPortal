@@ -8,6 +8,7 @@ import Badge from '@/components/ui/Badge'
 import Card from '@/components/ui/Card'
 import SortableTable from '@/components/SortableTable'
 import type { Column } from '@/components/SortableTable'
+import { fmtNOK as fmt } from '@/lib/format'
 
 type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'>
 
@@ -40,10 +41,6 @@ type EMRow = {
   status: string
   submitted_at: string | null
   attachment_url: string | null
-}
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
 }
 
 export default function SubcontractorChangeOrdersPage() {
@@ -131,7 +128,7 @@ export default function SubcontractorChangeOrdersPage() {
             href={row.attachment_url}
             target="_blank"
             rel="noreferrer"
-            className="text-[#E30613] text-xs hover:underline"
+            className="text-primary text-xs hover:underline"
             onClick={(e) => e.stopPropagation()}
           >
             Se vedlegg
@@ -145,7 +142,7 @@ export default function SubcontractorChangeOrdersPage() {
       label: '',
       render: (row) => (
         <button
-          className="text-xs text-[#E30613] hover:underline"
+          className="text-xs text-primary hover:underline"
           onClick={(e) => { e.stopPropagation(); router.push(`/subcontractor/projects/${row.project_id}`) }}
         >
           Gå til prosjekt →
@@ -174,7 +171,7 @@ export default function SubcontractorChangeOrdersPage() {
             <select
               value={statusFilter}
               onChange={(e) => setStatusFilter(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-[#E30613]"
+              className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-primary"
             >
               <option value="all">Alle</option>
               <option value="draft">Kladd</option>
@@ -188,7 +185,7 @@ export default function SubcontractorChangeOrdersPage() {
             <select
               value={projectFilter}
               onChange={(e) => setProjectFilter(e.target.value)}
-              className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-[#E30613]"
+              className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-primary"
             >
               <option value="all">Alle prosjekter</option>
               {projects.map((p) => (

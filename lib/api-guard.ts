@@ -1,13 +1,11 @@
 import { NextResponse } from 'next/server'
 import { getSession } from './auth'
-import type { User, UserRole } from '@/types'
+import { ADMIN_ROLES, SUB_ROLES } from './roles'
+import type { User } from '@/types'
 
 export type AuthResult =
   | { ok: true; user: User }
   | { ok: false; response: NextResponse }
-
-const ADMIN_ROLES: UserRole[] = ['main', 'project_manager', 'company']
-const SUB_ROLES: UserRole[] = ['subcontractor', 'sub']
 
 export async function requireAuth(): Promise<AuthResult> {
   const user = await getSession()

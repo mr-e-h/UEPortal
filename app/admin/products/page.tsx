@@ -5,14 +5,12 @@ import { Search, Pencil, Check, X, PowerOff, Trash2 } from 'lucide-react'
 import type { Product, SubcontractorProductPrice } from '@/types'
 import NumberInput from '@/components/NumberInput'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import { COUNTIES } from '@/lib/counties'
+import { fmtNumber } from '@/lib/format'
 
 const empty = { name: '', description: '', unit: 'meter', county: '', customer_price: '' }
 
-const COUNTIES = ['Østfold', 'Viken', 'Oslo', 'Innlandet', 'Vestfold', 'Telemark', 'Agder', 'Rogaland', 'Vestland', 'Møre og Romsdal', 'Trøndelag', 'Nordland', 'Troms', 'Finnmark']
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 2 }).format(n)
-}
+const fmt = (n: number) => fmtNumber(n, 2)
 
 export default function ProductsPage() {
   const [products, setProducts] = useState<Product[]>([])

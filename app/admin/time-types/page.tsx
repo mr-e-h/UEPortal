@@ -4,10 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import type { TimeType, Subcontractor, SubcontractorProductPrice } from '@/types'
 import SortableTable from '@/components/SortableTable'
 import NumberInput from '@/components/NumberInput'
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
-}
+import { fmtNOK as fmt } from '@/lib/format'
 
 export default function TimeTypesPage() {
   const [timeTypes, setTimeTypes] = useState<TimeType[]>([])

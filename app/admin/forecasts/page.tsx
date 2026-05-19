@@ -2,24 +2,8 @@ import { readJson } from '@/lib/data'
 import type { ForecastPeriod, ProjectForecast, Project, ProjectInvoice, ProjectBudgetLine } from '@/types'
 import Link from 'next/link'
 import Card from '@/components/ui/Card'
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
-}
-
-const STATUS_LABEL: Record<string, string> = {
-  open: 'Åpen',
-  locked: 'Låst',
-}
-
-const FORECAST_STATUS_LABEL: Record<string, string> = {
-  not_started: 'Ikke påbegynt',
-  draft: 'Påbegynt',
-  submitted: 'Sendt inn',
-  approved: 'Godkjent',
-  returned: 'Returnert',
-  locked: 'Låst',
-}
+import { fmtNOK as fmt } from '@/lib/format'
+import { forecastPeriodStatus } from '@/lib/statuses'
 
 
 export default function ForecastsOverviewPage() {
@@ -64,7 +48,7 @@ export default function ForecastsOverviewPage() {
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
                     period.locked ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-700'
                   }`}>
-                    {STATUS_LABEL[period.status]}
+                    {forecastPeriodStatus(period.status).label}
                   </span>
                 </div>
                 <p className="text-xs text-[var(--color-text-muted)] mb-3">Jan – Des {period.year}</p>
@@ -142,7 +126,7 @@ export default function ForecastsOverviewPage() {
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
                         period.locked ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-700'
                       }`}>
-                        {STATUS_LABEL[period.status]}
+                        {forecastPeriodStatus(period.status).label}
                       </span>
                     </td>
                   </tr>

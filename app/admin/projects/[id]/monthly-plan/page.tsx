@@ -5,20 +5,13 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Save, ArrowLeft, CalendarDays } from 'lucide-react'
 import type { Project, ProjectMonthPlan } from '@/types'
+import { MONTHS_SHORT, parseNorwegianNumber } from '@/lib/format'
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 
-const MONTH_NAMES = ['', 'Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des']
+const MONTH_NAMES = MONTHS_SHORT
 
-function fmtKr(n: number) {
-  if (n === 0) return ''
-  return new Intl.NumberFormat('nb-NO', { maximumFractionDigits: 0 }).format(n)
-}
-
-function num(v: string): number {
-  const n = parseFloat(v.replace(/\s/g, '').replace(',', '.'))
-  return isNaN(n) ? 0 : n
-}
+const num = parseNorwegianNumber
 
 function buildMonthGrid(startDate: string, endDate: string): { year: number; month: number }[] {
   const start = new Date(startDate)

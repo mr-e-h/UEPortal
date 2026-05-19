@@ -5,10 +5,7 @@ import { Trash2, Plus, X } from 'lucide-react'
 import type { ProjectInvoice } from '@/types'
 import NumberInput from '@/components/NumberInput'
 import ConfirmDialog from '@/components/ConfirmDialog'
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
-}
+import { fmtNOK as fmt } from '@/lib/format'
 
 export default function InvoicesSection({ projectId }: { projectId: string }) {
   const [invoices, setInvoices] = useState<ProjectInvoice[]>([])

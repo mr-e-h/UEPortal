@@ -3,10 +3,7 @@ import type { ChangeOrder, Project, Subcontractor, Product } from '@/types'
 import Link from 'next/link'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
-}
+import { fmtNOK as fmt } from '@/lib/format'
 
 export default function ChangeOrdersPage() {
   const activeProjectIds = new Set(

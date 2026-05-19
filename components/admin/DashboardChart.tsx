@@ -1,6 +1,7 @@
 'use client'
 
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts'
+import { CHART_AXIS_TICK, CHART_BRAND, CHART_TEXT_SECONDARY, CHART_BORDER } from '@/lib/chart-colors'
 
 export type WeekPoint = { week: string; omsetning: number; kostnad: number }
 
@@ -16,13 +17,13 @@ export default function DashboardChart({ data }: { data: WeekPoint[] }) {
       <LineChart data={data} margin={{ top: 4, right: 16, bottom: 0, left: 0 }}>
         <XAxis
           dataKey="week"
-          tick={{ fontSize: 11, fill: '#94A3B8' }}
+          tick={CHART_AXIS_TICK}
           axisLine={false}
           tickLine={false}
         />
         <YAxis
           tickFormatter={fmtAxis}
-          tick={{ fontSize: 11, fill: '#94A3B8' }}
+          tick={CHART_AXIS_TICK}
           axisLine={false}
           tickLine={false}
           width={44}
@@ -32,7 +33,7 @@ export default function DashboardChart({ data }: { data: WeekPoint[] }) {
             (Number(v)).toLocaleString('nb-NO') + ' kr',
             name === 'omsetning' ? 'Omsetning' : 'UE-kostnad',
           ]}
-          contentStyle={{ fontSize: 12, borderRadius: 8, border: '1px solid #E5E7EB', boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}
+          contentStyle={{ fontSize: 12, borderRadius: 8, border: `1px solid ${CHART_BORDER}`, boxShadow: '0 2px 8px rgba(0,0,0,.08)' }}
         />
         <Legend
           iconType="line"
@@ -43,18 +44,18 @@ export default function DashboardChart({ data }: { data: WeekPoint[] }) {
         <Line
           type="monotone"
           dataKey="omsetning"
-          stroke="#E30613"
+          stroke={CHART_BRAND}
           strokeWidth={2}
           dot={false}
-          activeDot={{ r: 4, fill: '#E30613' }}
+          activeDot={{ r: 4, fill: CHART_BRAND }}
         />
         <Line
           type="monotone"
           dataKey="kostnad"
-          stroke="#64748B"
+          stroke={CHART_TEXT_SECONDARY}
           strokeWidth={2}
           dot={false}
-          activeDot={{ r: 4, fill: '#64748B' }}
+          activeDot={{ r: 4, fill: CHART_TEXT_SECONDARY }}
         />
       </LineChart>
     </ResponsiveContainer>

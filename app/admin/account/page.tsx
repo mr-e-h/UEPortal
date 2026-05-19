@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import { roleLabel } from '@/lib/roles'
 
 export default function AccountPage() {
   const [name, setName] = useState('')
@@ -15,14 +16,6 @@ export default function AccountPage() {
   const [pwError, setPwError] = useState<string | null>(null)
   const [pwSuccess, setPwSuccess] = useState(false)
   const [saving, setSaving] = useState(false)
-
-  const ROLE_LABELS: Record<string, string> = {
-    main: 'Admin',
-    project_manager: 'Prosjektleder',
-    sub: 'Underentreprenør',
-    subcontractor: 'Underentreprenør',
-    company: 'Selskap',
-  }
 
   useEffect(() => {
     setName(localStorage.getItem('user_name') ?? '')
@@ -92,7 +85,7 @@ export default function AccountPage() {
           <div>
             <p className="text-xs text-[var(--color-text-muted)] mb-0.5">Rolle</p>
             <span className="inline-flex items-center px-2 py-0.5 rounded text-xs font-medium bg-blue-50 text-blue-700">
-              {ROLE_LABELS[role] ?? role}
+              {roleLabel(role)}
             </span>
           </div>
         </div>

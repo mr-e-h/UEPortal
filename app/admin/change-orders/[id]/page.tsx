@@ -4,17 +4,9 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import type { ChangeOrder, Project, Product, Subcontractor, ActivityEntry } from '@/types'
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
-}
-
-const ACTION_LABEL: Record<string, string> = {
-  approved: 'Godkjente',
-  rejected: 'Avslo',
-  reverted: 'Angret',
-  commented: 'Kommenterte',
-}
+import { fmtNOK as fmt } from '@/lib/format'
+import { changeOrderStatus } from '@/lib/statuses'
+import { activityActionLabel } from '@/lib/activity-actions'
 
 export default function ChangeOrderDetailPage() {
   const { id } = useParams<{ id: string }>()
@@ -86,12 +78,7 @@ export default function ChangeOrderDetailPage() {
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500">Laster...</div>
   if (!co) return <div className="min-h-screen flex items-center justify-center text-gray-500">Endringsmelding ikke funnet</div>
 
-  const STATUS_CLS: Record<string, string> = {
-    pending: 'bg-yellow-100 text-yellow-700',
-    approved: 'bg-green-100 text-green-700',
-    rejected: 'bg-red-100 text-red-700',
-  }
-  const STATUS_LABEL: Record<string, string> = { pending: 'Venter', approved: 'Godkjent', rejected: 'Avvist' }
+  const statusMeta = changeOrderStatus(co.status)
   const isReviewed = co.status !== 'pending'
 
   return (
@@ -104,8 +91,8 @@ export default function ChangeOrderDetailPage() {
             <p className="text-sm text-gray-500">{project?.name ?? '–'} · {sub?.company_name ?? '–'}</p>
           </div>
           <div className="ml-auto flex items-center gap-2">
-            <span className={`text-xs px-2 py-0.5 rounded ${STATUS_CLS[co.status] ?? 'bg-gray-100 text-gray-600'}`}>
-              {STATUS_LABEL[co.status] ?? co.status}
+            <span className={`text-xs px-2 py-0.5 rounded ${statusMeta.cls}`}>
+              {statusMeta.label}
             </span>
             {isReviewed && (
               <button
@@ -214,7 +201,7 @@ export default function ChangeOrderDetailPage() {
                   <span>
                     <span className="font-medium text-gray-800">{entry.actor}</span>
                     {' '}
-                    <span className="text-gray-600">{ACTION_LABEL[entry.action] ?? entry.action}</span>
+                    <span className="text-gray-600">{activityActionLabel(entry.action)}</span>
                     {entry.comment && (
                       <span className="text-gray-500"> — &quot;{entry.comment}&quot;</span>
                     )}

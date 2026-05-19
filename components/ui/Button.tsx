@@ -4,7 +4,7 @@ import Link from 'next/link'
 type Variant = 'primary' | 'secondary' | 'ghost'
 
 const cls: Record<Variant, string> = {
-  primary: 'bg-[#E30613] hover:bg-[#C20510] text-white',
+  primary: 'bg-primary hover:bg-primary-hover text-white',
   secondary: 'bg-muted hover:bg-gray-200 text-[var(--color-text-primary)]',
   ghost: 'hover:bg-muted text-[var(--color-text-secondary)]',
 }

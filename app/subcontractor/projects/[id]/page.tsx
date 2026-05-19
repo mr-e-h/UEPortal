@@ -1,9 +1,10 @@
-'use client'
+﻿'use client'
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter, useParams } from 'next/navigation'
-import { ChevronLeft, ChevronRight, Plus } from 'lucide-react'
-import type { WeeklyReport, WeeklyReportLine, ChangeOrder } from '@/types'
+import { ChevronLeft, ChevronRight, Plus, TrendingUp, CheckCircle, Clock, BarChart3, ChevronDown } from 'lucide-react'
+import BudgetLineChart from '@/components/BudgetLineChart'
+import type { WeeklyReport, WeeklyReportLine, ChangeOrder, GanttMilestone } from '@/types'
 import { getCurrentWeek, formatWeekLabel } from '@/lib/utils/weeks'
 import { calculateBudgetUsage, type LineWithReportStatus } from '@/lib/utils/budgetUsage'
 import NumberInput from '@/components/NumberInput'
@@ -12,6 +13,9 @@ import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import ChangeOrderModal from '@/components/subcontractor/ChangeOrderModal'
+import GanttView from '@/components/subcontractor/GanttView'
+import { fmtNOK as fmt } from '@/lib/format'
+import { weeklyReportStatus, weeklyReportLineStatus } from '@/lib/statuses'
 
 type BudgetLineWithProduct = {
   id: string
@@ -29,6 +33,9 @@ type ProjectWithLines = {
   project_number: string
   customer: string
   county: string
+  status: string
+  start_date: string
+  end_date: string | null
   budget_lines: BudgetLineWithProduct[]
 }
 
@@ -44,35 +51,7 @@ type EnrichedLine = WeeklyReportLine & {
 type EnrichedReport = WeeklyReport & { lines: EnrichedLine[] }
 
 type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'>
-type BudgetLineOption = Pick<BudgetLineWithProduct, 'product_id' | 'product_name' | 'unit'>
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
-}
-
-const STATUS_CLS: Record<string, string> = {
-  draft: 'bg-gray-100 text-gray-500',
-  submitted: 'bg-yellow-100 text-yellow-700',
-  approved: 'bg-green-100 text-green-700',
-  partially_approved: 'bg-blue-100 text-blue-700',
-  rejected: 'bg-red-100 text-red-700',
-}
-const STATUS_LABEL: Record<string, string> = {
-  draft: 'Kladd',
-  submitted: 'Sendt inn',
-  approved: 'Godkjent',
-  partially_approved: 'Delvis godkjent',
-  rejected: 'Avslått',
-}
-
-const LINE_STATUS_CLS: Record<string, string> = {
-  pending: 'bg-gray-100 text-gray-500',
-  approved: 'bg-green-100 text-green-700',
-  rejected: 'bg-red-100 text-red-700',
-}
-const LINE_STATUS_LABEL: Record<string, string> = {
-  pending: 'Venter', approved: 'Godkjent', rejected: 'Avslått',
-}
+type BudgetLineOption = Pick<BudgetLineWithProduct, 'product_id' | 'product_name' | 'unit'> & { cost_price?: number }
 
 export default function SubcontractorProjectPage() {
   const router = useRouter()
@@ -98,6 +77,9 @@ export default function SubcontractorProjectPage() {
   const [showEMModal, setShowEMModal] = useState(false)
   const [editingDraft, setEditingDraft] = useState<UEChangeOrder | null>(null)
   const [changeOrders, setChangeOrders] = useState<UEChangeOrder[]>([])
+  const [milestones, setMilestones] = useState<GanttMilestone[]>([])
+  const [budgetSearch, setBudgetSearch] = useState('')
+  const [expandedBudgetId, setExpandedBudgetId] = useState<string | null>(null)
 
   const loadProject = useCallback(async (subId: string) => {
     const projs = await fetch(`/api/subcontractor/projects?subcontractor_id=${subId}`).then((r) => r.json()) as ProjectWithLines[]
@@ -124,6 +106,11 @@ export default function SubcontractorProjectPage() {
     setChangeOrders(cos)
   }, [id])
 
+  const loadMilestones = useCallback(async () => {
+    const ms = await fetch(`/api/milestones?project_id=${id}`).then((r) => r.json()) as GanttMilestone[]
+    setMilestones(ms)
+  }, [id])
+
   async function loadDraftLines(draftId: string) {
     const detail = await fetch(`/api/weekly-reports/${draftId}`).then((r) => r.json()) as EnrichedReport
     const newInputs: Record<string, { quantity: string; comment: string }> = {}
@@ -137,7 +124,8 @@ export default function SubcontractorProjectPage() {
   }
 
   useEffect(() => {
-    if (localStorage.getItem('user_role') !== 'subcontractor') { router.replace('/login'); return }
+    const role = localStorage.getItem('user_role')
+    if (role !== 'subcontractor' && role !== 'sub') { router.replace('/login'); return }
     const subId = localStorage.getItem('subcontractor_id')
     if (!subId) { router.replace('/login'); return }
     setSubcontractorId(subId)
@@ -147,6 +135,7 @@ export default function SubcontractorProjectPage() {
         loadProject(subId),
         loadHistory(subId),
         loadChangeOrders(subId),
+        loadMilestones(),
       ])
       const weekReports = reports.filter((r) => r.year === initWeek.year && r.week_number === initWeek.week)
       const draft = weekReports.find((r) => r.status === 'draft') ?? null
@@ -249,12 +238,26 @@ export default function SubcontractorProjectPage() {
     r.lines.map((l) => ({ ...l, report_status: r.status }))
   )
 
+  // ─── Financial summary ───────────────────────────────────────────────────────
+  const totalBudgetValue = project.budget_lines.reduce(
+    (s, bl) => s + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0
+  )
   const totalApprovedValue = allLinesWithStatus
     .filter((l) => l.status === 'approved')
     .reduce((s, l) => {
       const bl = project.budget_lines.find((b) => b.id === l.project_budget_line_id)
       return s + l.reported_quantity * (bl?.subcontractor_cost_price_snapshot ?? 0)
     }, 0)
+  const totalPendingValue = allLinesWithStatus
+    .filter((l) => l.status === 'pending')
+    .reduce((s, l) => {
+      const bl = project.budget_lines.find((b) => b.id === l.project_budget_line_id)
+      return s + l.reported_quantity * (bl?.subcontractor_cost_price_snapshot ?? 0)
+    }, 0)
+  const approvedEMValue = changeOrders
+    .filter((co) => co.status === 'approved')
+    .reduce((s, co) => s + co.total_cost, 0)
+  const progressPct = totalBudgetValue > 0 ? Math.min(100, Math.round((totalApprovedValue / totalBudgetValue) * 100)) : 0
 
   const hasAnyInput = Object.values(inputs).some((v) => Number(v.quantity) > 0)
 
@@ -276,29 +279,27 @@ export default function SubcontractorProjectPage() {
   const productNameMap = new Map(project.budget_lines.map((bl) => [bl.product_id, bl.product_name]))
   const uniqueProductOptions: BudgetLineOption[] = Array.from(
     new Map(
-      project.budget_lines.map((bl) => [bl.product_id, { product_id: bl.product_id, product_name: bl.product_name, unit: bl.unit }])
+      project.budget_lines.map((bl) => [bl.product_id, {
+        product_id: bl.product_id,
+        product_name: bl.product_name,
+        unit: bl.unit,
+        cost_price: bl.subcontractor_cost_price_snapshot,
+      }])
     ).values()
   )
 
   return (
     <div className="p-6 space-y-6">
-      {/* Page header */}
-      <div className="flex items-start justify-between gap-4">
-        <div>
-          <div className="mb-2">
-            <Button variant="ghost" href="/subcontractor" className="px-0 text-sm">
-              ← Prosjekter
-            </Button>
-          </div>
-          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">{project.name}</h1>
-          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            {project.project_number} · {project.customer} · {project.county}
-          </p>
-        </div>
-        <div className="text-right flex-none">
-          <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Godkjent verdi</p>
-          <p className="text-xl font-bold text-success">{fmt(totalApprovedValue)}</p>
-        </div>
+
+      {/* ─── Page header ─────────────────────────────────────────────────────── */}
+      <div>
+        <Button variant="ghost" href="/subcontractor" className="px-0 text-sm mb-2">
+          ← Prosjekter
+        </Button>
+        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">{project.name}</h1>
+        <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
+          {project.project_number} · {project.customer} · {project.county}
+        </p>
       </div>
 
       {showEMModal && (
@@ -312,7 +313,217 @@ export default function SubcontractorProjectPage() {
         />
       )}
 
-      {/* Section 1 — Lever rapport */}
+      {/* ─── Financial KPI cards ──────────────────────────────────────────────── */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
+        {[
+          {
+            icon: BarChart3,
+            label: 'Ordreverdi',
+            value: fmt(totalBudgetValue),
+            sub: `${project.budget_lines.length} produktlinjer`,
+            color: 'text-indigo-600 bg-indigo-50',
+          },
+          {
+            icon: CheckCircle,
+            label: 'Godkjent arbeid',
+            value: fmt(totalApprovedValue),
+            sub: `${progressPct}% av ordreverdi`,
+            color: 'text-green-600 bg-green-50',
+          },
+          {
+            icon: Clock,
+            label: 'Til behandling',
+            value: fmt(totalPendingValue),
+            sub: 'Venter på godkjenning',
+            color: 'text-orange-600 bg-orange-50',
+          },
+          {
+            icon: TrendingUp,
+            label: 'Godkjente EM',
+            value: fmt(approvedEMValue),
+            sub: `${changeOrders.filter((co) => co.status === 'approved').length} endringsmeldinger`,
+            color: 'text-blue-600 bg-blue-50',
+          },
+        ].map(({ icon: Icon, label, value, sub, color }) => (
+          <div key={label} className="bg-white rounded-xl border border-border p-4 flex items-start gap-3">
+            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-none ${color}`}>
+              <Icon size={18} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-xl font-bold text-[var(--color-text-primary)] leading-none">{value}</p>
+              <p className="text-xs font-medium text-[var(--color-text-primary)] mt-1 leading-tight">{label}</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{sub}</p>
+            </div>
+          </div>
+        ))}
+      </div>
+
+      {/* Progress bar */}
+      {totalBudgetValue > 0 && (
+        <div className="bg-white rounded-xl border border-border p-4 space-y-2">
+          <div className="flex justify-between items-center text-xs text-[var(--color-text-muted)]">
+            <span className="font-medium text-[var(--color-text-primary)]">Fremdrift (godkjent arbeid)</span>
+            <span className="font-semibold text-[var(--color-text-primary)]">{progressPct}%</span>
+          </div>
+          <div className="h-2.5 w-full bg-gray-100 rounded-full overflow-hidden">
+            <div
+              className="h-full rounded-full transition-all"
+              style={{
+                width: `${progressPct}%`,
+                backgroundColor: progressPct >= 80 ? '#10B981' : progressPct >= 40 ? '#6366F1' : '#F59E0B',
+              }}
+            />
+          </div>
+          <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
+            <span>Godkjent: {fmt(totalApprovedValue)}</span>
+            <span>Budsjett: {fmt(totalBudgetValue)}</span>
+          </div>
+        </div>
+      )}
+
+      {/* ─── Gantt / Milepæler ───────────────────────────────────────────────── */}
+      {milestones.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="px-6 py-4 border-b border-border">
+            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Fremdriftsplan</h2>
+          </div>
+          <div className="p-4 overflow-x-auto">
+            <GanttView
+              milestones={milestones}
+              projectStart={project.start_date}
+              projectEnd={project.end_date}
+            />
+          </div>
+        </Card>
+      )}
+
+      {/* ─── Budsjett-oversikt ───────────────────────────────────────────────── */}
+      {project.budget_lines.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="px-6 py-3 border-b border-border flex items-center justify-between gap-4">
+            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Budsjett-oversikt</h2>
+            <input
+              type="search"
+              placeholder="Søk produkt eller kode…"
+              value={budgetSearch}
+              onChange={(e) => setBudgetSearch(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-border rounded-lg bg-white focus:outline-none focus:border-primary w-52 text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+            />
+          </div>
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border bg-muted">
+                  <th className="px-4 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-24">Kode</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Produkt</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-28">Godkjent / Total</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-40">Fremdrift</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-32">Verdi</th>
+                  <th className="w-8" />
+                </tr>
+              </thead>
+              <tbody>
+                {[...project.budget_lines]
+                  .sort((a, b) =>
+                    (a.product_description || a.product_name).localeCompare(b.product_description || b.product_name, 'nb')
+                  )
+                  .filter((bl) => {
+                    if (!budgetSearch) return true
+                    const q = budgetSearch.toLowerCase()
+                    return (
+                      bl.product_name.toLowerCase().includes(q) ||
+                      bl.product_description.toLowerCase().includes(q)
+                    )
+                  })
+                  .flatMap((bl) => {
+                  const usage = calculateBudgetUsage(bl.id, bl.budget_quantity, allLinesWithStatus)
+                  const usedPct = bl.budget_quantity > 0
+                    ? Math.min(100, Math.round((usage.approved / bl.budget_quantity) * 100))
+                    : 0
+                  const approvedValue = usage.approved * bl.subcontractor_cost_price_snapshot
+                  const budgetValue = bl.budget_quantity * bl.subcontractor_cost_price_snapshot
+                  const barColor = usedPct >= 100 ? '#EF4444' : usedPct >= 75 ? '#F59E0B' : '#10B981'
+                  const isExpanded = expandedBudgetId === bl.id
+
+                  const approvedCOs = changeOrders
+                    .filter((co) => co.product_id === bl.product_id && co.status === 'approved' && co.reviewed_at != null)
+                    .sort((a, b) => a.reviewed_at!.localeCompare(b.reviewed_at!))
+                  const coTotal = approvedCOs.reduce((s, co) => s + co.requested_quantity, 0)
+
+                  const rows = [
+                    <tr
+                      key={bl.id}
+                      onClick={() => setExpandedBudgetId(isExpanded ? null : bl.id)}
+                      className="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer"
+                    >
+                      <td className="px-4 py-2.5">
+                        {bl.product_description ? (
+                          <span className="text-xs font-mono font-medium bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{bl.product_description}</span>
+                        ) : (
+                          <span className="text-[var(--color-text-muted)]">–</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <span className="font-medium text-[var(--color-text-primary)]">{bl.product_name}</span>
+                      </td>
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap text-xs">
+                        <span className="font-semibold text-[var(--color-text-primary)]">{usage.approved}</span>
+                        <span className="text-[var(--color-text-muted)]"> / {bl.budget_quantity} {bl.unit}</span>
+                        {usage.pending > 0 && (
+                          <span className="ml-1 text-orange-500">+{usage.pending}</span>
+                        )}
+                      </td>
+                      <td className="px-3 py-2.5">
+                        <div className="flex items-center gap-1.5">
+                          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                            <div className="h-full rounded-full" style={{ width: `${usedPct}%`, backgroundColor: barColor }} />
+                          </div>
+                          <span className="text-[10px] text-[var(--color-text-muted)] w-7 text-right">{usedPct}%</span>
+                        </div>
+                      </td>
+                      <td className="px-3 py-2.5 text-right text-xs">
+                        {bl.subcontractor_cost_price_snapshot > 0 ? (
+                          <>
+                            <span className="font-medium text-green-600">{fmt(approvedValue)}</span>
+                            <span className="text-[var(--color-text-muted)]"> / {fmt(budgetValue)}</span>
+                          </>
+                        ) : '–'}
+                      </td>
+                      <td className="px-3 py-2.5 text-center">
+                        <ChevronDown
+                          size={14}
+                          className={`text-[var(--color-text-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}
+                        />
+                      </td>
+                    </tr>,
+                  ]
+
+                  if (isExpanded) {
+                    rows.push(
+                      <tr key={`${bl.id}-chart`} className="bg-muted/30">
+                        <td colSpan={6} className="px-0 py-0">
+                          <BudgetLineChart
+                            productName={bl.product_name}
+                            productCode={bl.product_description}
+                            unit={bl.unit}
+                            importQty={bl.budget_quantity - coTotal}
+                            projectStart={project.start_date}
+                            approvedCOs={approvedCOs}
+                          />
+                        </td>
+                      </tr>
+                    )
+                  }
+
+                  return rows
+                })}
+              </tbody>
+            </table>
+          </div>
+        </Card>
+      )}
+
+      {/* ─── Lever rapport ───────────────────────────────────────────────────── */}
       <Card className="overflow-hidden">
         <div className="px-6 py-4 border-b border-border">
           <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Lever rapport</h2>
@@ -337,9 +548,7 @@ export default function SubcontractorProjectPage() {
                   <span className="text-xs text-[var(--color-text-muted)]">
                     {s.submitted_at ? new Date(s.submitted_at).toLocaleDateString('nb-NO') : 'Kladd'}
                   </span>
-                  <span className={`text-xs px-2 py-0.5 rounded ${STATUS_CLS[s.status]}`}>
-                    {STATUS_LABEL[s.status]}
-                  </span>
+                  {(() => { const m = weeklyReportStatus(s.status); return <span className={`text-xs px-2 py-0.5 rounded ${m.cls}`}>{m.label}</span> })()}
                 </div>
               ))}
             </div>
@@ -348,7 +557,7 @@ export default function SubcontractorProjectPage() {
           <button
             onClick={createNewDraft}
             disabled={creatingDraft || hasActiveDraft}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[#E30613] border border-[#E30613]/30 rounded-lg hover:bg-[#E30613]/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
           >
             <Plus size={14} />
             {creatingDraft ? 'Oppretter...' : `Ny innsending uke ${week}`}
@@ -398,7 +607,7 @@ export default function SubcontractorProjectPage() {
                               value={qty}
                               onChange={(raw) => setInputs((prev) => ({ ...prev, [bl.id]: { ...prev[bl.id], quantity: raw, comment: prev[bl.id]?.comment ?? '' } }))}
                               onBlur={saveLines}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-right focus:outline-none focus:border-[#E30613]"
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-right focus:outline-none focus:border-primary"
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -408,7 +617,7 @@ export default function SubcontractorProjectPage() {
                               value={comment}
                               onChange={(e) => setInputs((prev) => ({ ...prev, [bl.id]: { quantity: prev[bl.id]?.quantity ?? '', comment: e.target.value } }))}
                               onBlur={saveLines}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-[#E30613]"
+                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-primary"
                             />
                           </td>
                         </tr>
@@ -474,7 +683,7 @@ export default function SubcontractorProjectPage() {
         </div>
       </Card>
 
-      {/* Section 2 — Historikk */}
+      {/* ─── Historikk ───────────────────────────────────────────────────────── */}
       <Card className="overflow-hidden">
         <div className="px-6 py-4 border-b border-border">
           <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Tidligere uker</h2>
@@ -504,9 +713,7 @@ export default function SubcontractorProjectPage() {
                             #{report.submission_number ?? 1}
                           </span>
                         </span>
-                        <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_CLS[report.status]}`}>
-                          {STATUS_LABEL[report.status]}
-                        </span>
+                        {(() => { const m = weeklyReportStatus(report.status); return <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${m.cls}`}>{m.label}</span> })()}
                       </div>
                       <div className="text-xs text-[var(--color-text-muted)]">
                         {formatWeekLabel(report.year, report.week_number)}
@@ -566,11 +773,10 @@ export default function SubcontractorProjectPage() {
                                 key: 'status',
                                 label: 'Status',
                                 sortable: true,
-                                render: (r: DetailRow) => (
-                                  <span className={`text-xs px-2 py-0.5 rounded ${LINE_STATUS_CLS[r.status] ?? 'bg-gray-100 text-gray-500'}`}>
-                                    {LINE_STATUS_LABEL[r.status] ?? r.status}
-                                  </span>
-                                ),
+                                render: (r: DetailRow) => {
+                                  const m = weeklyReportLineStatus(r.status)
+                                  return <span className={`text-xs px-2 py-0.5 rounded ${m.cls}`}>{m.label}</span>
+                                },
                               },
                             ]}
                             data={rows}
@@ -587,7 +793,7 @@ export default function SubcontractorProjectPage() {
         )}
       </Card>
 
-      {/* Section 3 — Endringsmeldinger */}
+      {/* ─── Endringsmeldinger ───────────────────────────────────────────────── */}
       <Card className="overflow-hidden">
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
           <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Endringsmeldinger</h2>
@@ -651,7 +857,7 @@ export default function SubcontractorProjectPage() {
                           href={co.attachment_url}
                           target="_blank"
                           rel="noreferrer"
-                          className="text-[#E30613] text-xs hover:underline"
+                          className="text-primary text-xs hover:underline"
                           onClick={(e) => e.stopPropagation()}
                         >
                           Se vedlegg
@@ -670,7 +876,7 @@ export default function SubcontractorProjectPage() {
                       {co.status === 'rejected' && co.admin_comment ? (
                         <span className="text-xs text-danger">{co.admin_comment}</span>
                       ) : co.status === 'draft' ? (
-                        <span className="text-xs text-[#E30613]">Klikk for å redigere</span>
+                        <span className="text-xs text-primary">Klikk for å redigere</span>
                       ) : (
                         <span className="text-[var(--color-text-muted)]">–</span>
                       )}

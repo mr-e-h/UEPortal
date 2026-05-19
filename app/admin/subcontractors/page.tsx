@@ -4,19 +4,12 @@ import { useEffect, useState, useCallback, Fragment } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react'
 import type { Subcontractor, Product, SubcontractorProductPrice, User } from '@/types'
+import { roleLabel } from '@/lib/roles'
 
 type SortKey = 'company_name' | 'contact_person' | 'county' | 'prices'
 type SortDir = 'asc' | 'desc'
 
 const empty = { company_name: '', contact_person: '', email: '', phone: '', organization_number: '', county: '', active: true }
-
-const ROLE_LABEL: Record<string, string> = {
-  project_manager: 'Prosjektleder',
-  subcontractor: 'UE-bruker',
-  company: 'Selskap',
-  main: 'Admin',
-  sub: 'Sub-bruker',
-}
 
 export default function SubcontractorsPage() {
   const [subcontractors, setSubcontractors] = useState<Subcontractor[]>([])
@@ -221,7 +214,7 @@ export default function SubcontractorsPage() {
                                   <span className="font-medium text-gray-900">{u.full_name}</span>
                                   <span className="text-gray-500">{u.email}</span>
                                   <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
-                                    {ROLE_LABEL[u.role] ?? u.role}
+                                    {roleLabel(u.role)}
                                   </span>
                                 </div>
                               ))}

@@ -6,18 +6,16 @@ import Link from 'next/link'
 import { Save, CalendarDays, Plus, Trash2 } from 'lucide-react'
 import type { Project, ProjectBudgetLine, WeeklyReport, WeeklyReportLine, ChangeOrder, HourEntry, ProjectMonthPlan, ProjectInvoice, TimeType } from '@/types'
 import NumberInput from '@/components/NumberInput'
-
-const MND = ['Jan', 'Feb', 'Mar', 'Apr', 'Mai', 'Jun', 'Jul', 'Aug', 'Sep', 'Okt', 'Nov', 'Des']
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
-}
-function fmtShort(n: number) {
-  if (n === 0) return '–'
-  if (Math.abs(n) >= 1_000_000) return `${(n / 1_000_000).toFixed(1).replace('.', ',')} M`
-  if (Math.abs(n) >= 1_000) return `${Math.round(n / 1_000)} k`
-  return String(Math.round(n))
-}
+import { MONTHS_SHORT as MND, fmtNOK as fmt, fmtShort } from '@/lib/format'
+import {
+  FORECAST_CATEGORIES,
+  FORECAST_PLAN_KEY as PLAN_KEY,
+  FORECAST_TIME_ROLES,
+  FORECAST_ROLE_LABEL as ROLE_LABELS,
+  getRoleCostPerHour,
+  type ForecastField as Field,
+  type ForecastRoleKey as Role,
+} from '@/lib/forecast-categories'
 function buildGrid(start: string, end: string) {
   const result: { year: number; month: number }[] = []
   let cur  = new Date(new Date(start).getFullYear(), new Date(start).getMonth(), 1)
@@ -29,32 +27,8 @@ function buildGrid(start: string, end: string) {
   return result
 }
 
-type Field = 'revenue' | 'ueCost' | 'ueHours' | 'internalCost' | 'internalHours' | 'otherCost' | 'risk'
-
-const ROWS: { key: Field; label: string; color: string; unit: 'kr' | 'timer' }[] = [
-  { key: 'revenue',       label: 'Inntekt',         color: 'text-green-700',  unit: 'kr'    },
-  { key: 'ueCost',        label: 'UE-kostnad',      color: 'text-orange-600', unit: 'kr'    },
-  { key: 'ueHours',       label: 'UE-timer',        color: 'text-orange-400', unit: 'timer' },
-  { key: 'internalCost',  label: 'Internkostnad',   color: 'text-purple-600', unit: 'kr'    },
-  { key: 'internalHours', label: 'Interne timer',   color: 'text-purple-400', unit: 'timer' },
-  { key: 'otherCost',     label: 'Annen kostnad',   color: 'text-gray-600',   unit: 'kr'    },
-  { key: 'risk',          label: 'Risiko',          color: 'text-amber-600',  unit: 'kr'    },
-]
-
-const PLAN_KEY: Record<Field, keyof ProjectMonthPlan> = {
-  revenue:       'expected_revenue',
-  ueCost:        'ue_cost',
-  ueHours:       'ue_hours',
-  internalCost:  'internal_cost',
-  internalHours: 'internal_hours',
-  otherCost:     'other_cost',
-  risk:          'risk',
-}
-
-type Role = 'pm' | 'bl' | 'dok'
-const ROLE_LABELS:     Record<Role, string> = { pm: 'Prosjektleder', bl: 'Byggeleder', dok: 'Dokumentasjon' }
-const ROLE_TYPE_NAME:  Record<Role, string> = { pm: 'Prosjektleder', bl: 'Byggeleder', dok: 'Dokumentasjon' }
-const ROLES: Role[] = ['pm', 'bl', 'dok']
+const ROWS = FORECAST_CATEGORIES
+const ROLES: Role[] = FORECAST_TIME_ROLES.map((r) => r.key)
 
 type ForecastExtra = {
   id: string
@@ -178,9 +152,10 @@ export default function ForecastPage() {
     })
 
   changeOrders
-    .filter((co) => co.status === 'approved' && co.submitted_at)
+    .filter((co) => co.status === 'approved' && (co.reviewed_at ?? co.submitted_at))
     .forEach((co) => {
-      const d = new Date(co.submitted_at!)
+      // Use reviewed_at (approval date) so revenue lands in the correct period
+      const d = new Date((co.reviewed_at ?? co.submitted_at)!)
       bump(d.getFullYear(), d.getMonth() + 1, 'ueCost',  co.total_cost)
       bump(d.getFullYear(), d.getMonth() + 1, 'revenue', co.total_customer_value)
     })
@@ -236,8 +211,7 @@ export default function ForecastPage() {
   }
 
   function roleCostPerHour(role: Role): number {
-    const name = ROLE_TYPE_NAME[role]
-    return timeTypes.find((t) => t.name === name && t.active)?.cost_per_hour ?? 0
+    return getRoleCostPerHour(role, timeTypes)
   }
 
   function roleInternalCost(role: Role, year: number, month: number): number {
@@ -399,7 +373,7 @@ export default function ForecastPage() {
               <th key={`${year}-${month}`}
                 className={`px-2 py-2 text-center text-xs font-medium uppercase ${isCur ? 'text-blue-600' : past ? 'text-gray-400' : 'text-gray-500'} ${month === 1 ? 'border-l border-gray-300' : ''}`}
                 style={{ minWidth: 72 }}>
-                {MND[month - 1]}
+                {MND[month]}
                 {isCur && <span className="block text-[9px] font-normal text-blue-400 normal-case">nå</span>}
               </th>
             )
