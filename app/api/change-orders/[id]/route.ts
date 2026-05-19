@@ -93,6 +93,10 @@ export async function PUT(
     }
 
     await writeJson('change_orders.json', orders)
+    if (isSub(session)) {
+      const { customer_price_snapshot: _cp, total_customer_value: _tcv, profit: _p, ...rest } = orders[idx]
+      return NextResponse.json(rest)
+    }
     return NextResponse.json(orders[idx])
   } catch (error) {
     console.error('change-orders PUT error:', error)

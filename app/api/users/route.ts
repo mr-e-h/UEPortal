@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
+import bcrypt from 'bcryptjs'
+import { randomUUID } from 'crypto'
 import { readJson, writeJson } from '@/lib/data'
 import type { User } from '@/types'
-import { getSession } from '@/lib/auth'
+import { getSession, clearAllSessionsForUser } from '@/lib/auth'
+
+const BCRYPT_COST = 12
 
 export async function GET() {
   const session = await getSession()
@@ -29,6 +33,9 @@ export async function POST(request: NextRequest) {
   if (!body.email || !body.password || !body.full_name || !body.role) {
     return NextResponse.json({ error: 'Mangler påkrevde felt' }, { status: 400 })
   }
+  if (body.password.length < 8) {
+    return NextResponse.json({ error: 'Passord må være minst 8 tegn' }, { status: 400 })
+  }
 
   const users = await readJson<User>('users.json')
   if (users.some((u) => u.email.toLowerCase() === body.email.toLowerCase())) {
@@ -36,9 +43,9 @@ export async function POST(request: NextRequest) {
   }
 
   const newUser: User = {
-    id: String(Date.now()),
+    id: randomUUID(),
     email: body.email.toLowerCase(),
-    password: body.password,
+    password: await bcrypt.hash(body.password, BCRYPT_COST),
     full_name: body.full_name,
     role: body.role,
     subcontractor_id: body.role === 'sub' ? (body.subcontractor_id ?? null) : null,
@@ -65,5 +72,7 @@ export async function DELETE(request: NextRequest) {
   if (filtered.length === users.length) return NextResponse.json({ error: 'Bruker ikke funnet' }, { status: 404 })
 
   await writeJson('users.json', filtered)
+  // Drop any active session for the deleted user.
+  await clearAllSessionsForUser(id)
   return NextResponse.json({ ok: true })
 }

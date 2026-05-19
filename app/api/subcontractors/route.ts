@@ -1,13 +1,20 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { readJson, writeJson } from '@/lib/data'
-import { requireAdmin, requireAuth } from '@/lib/api-guard'
+import { requireAdmin, requireAuth, isSub } from '@/lib/api-guard'
 import type { Subcontractor } from '@/types'
 
 export async function GET() {
   const auth = await requireAuth()
   if (!auth.ok) return auth.response
-  return NextResponse.json(readJson<Subcontractor>('subcontractors.json'))
+  let subs = await readJson<Subcontractor>('subcontractors.json')
+  // UE only sees their own subcontractor entry (used by /account etc).
+  if (isSub(auth.user) && auth.user.subcontractor_id) {
+    subs = subs.filter((s) => s.id === auth.user.subcontractor_id)
+  } else if (isSub(auth.user)) {
+    subs = []
+  }
+  return NextResponse.json(subs)
 }
 
 export async function POST(request: NextRequest) {

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
-import { requireAdmin } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
+import { requireAdmin } from '@/lib/api-guard'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import type { ActivityEntry } from '@/types'
 
 export async function GET(request: NextRequest) {
@@ -11,11 +11,14 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const entityId = searchParams.get('entity_id')
   const entityType = searchParams.get('entity_type')
-  let entries = await readJson<ActivityEntry>('activity_log.json')
-  if (entityId) entries = entries.filter((e) => e.entity_id === entityId)
-  if (entityType) entries = entries.filter((e) => e.entity_type === entityType)
-  entries.sort((a, b) => a.created_at.localeCompare(b.created_at))
-  return NextResponse.json(entries)
+
+  // Filter at the DB layer so we don't load the entire activity log.
+  let q = getSupabaseAdmin().from('activity_log').select('*').order('created_at', { ascending: true })
+  if (entityId) q = q.eq('entity_id', entityId)
+  if (entityType) q = q.eq('entity_type', entityType)
+  const { data, error } = await q
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
+  return NextResponse.json(data ?? [])
 }
 
 export async function POST(request: NextRequest) {
@@ -25,21 +28,21 @@ export async function POST(request: NextRequest) {
   const body = await request.json() as {
     entity_type: 'weekly_report' | 'change_order'
     entity_id: string
-    action: 'commented'
-    actor: string
     comment: string
   }
-  const entries = await readJson<ActivityEntry>('activity_log.json')
+
   const entry: ActivityEntry = {
     id: randomUUID(),
     entity_type: body.entity_type,
     entity_id: body.entity_id,
     action: 'commented',
-    actor: body.actor,
+    // Actor derived from session — clients can't spoof it.
+    actor: auth.user.full_name,
     comment: body.comment,
     created_at: new Date().toISOString(),
   }
-  entries.push(entry)
-  await writeJson('activity_log.json', entries)
+  // Per-row insert avoids the read-modify-write race in writeJson.
+  const { error } = await getSupabaseAdmin().from('activity_log').insert(entry)
+  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
   return NextResponse.json(entry)
 }

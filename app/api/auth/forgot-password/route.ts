@@ -4,6 +4,7 @@ import { readJson, writeJson } from '@/lib/data'
 import { generateToken, hashToken } from '@/lib/tokens'
 import { sendEmail, buildAppUrl } from '@/lib/email'
 import { passwordResetEmail } from '@/lib/email-templates'
+import { rateLimit, clientIp } from '@/lib/rate-limit'
 import type { User, PasswordReset } from '@/types'
 
 const RESET_TTL_MS = 60 * 60 * 1000 // 1 hour
@@ -17,6 +18,15 @@ export async function POST(request: NextRequest) {
   const response = NextResponse.json({ ok: true })
 
   if (!email) return response
+
+  // Rate-limit reset requests. Per-email bounds prevent inbox spam; per-IP
+  // bounds prevent reset-flooding the system. Silently drop on overflow —
+  // never tell the client whether they're being throttled or whether the
+  // email exists.
+  const ip = clientIp(request)
+  const byIp = await rateLimit({ key: `forgot:ip:${ip}`, limit: 10, windowMs: 60_000 })
+  const byEmail = await rateLimit({ key: `forgot:email:${email}`, limit: 3, windowMs: 15 * 60_000 })
+  if (!byIp.ok || !byEmail.ok) return response
 
   try {
     const users = await readJson<User>('users.json')

@@ -70,7 +70,14 @@ export async function GET(request: NextRequest) {
   let approvedCOs = changeOrders.filter((co) => co.status === 'approved')
   if (projectId) approvedCOs = approvedCOs.filter((co) => co.project_id === projectId)
   if (subcontractorId) approvedCOs = approvedCOs.filter((co) => co.subcontractor_id === subcontractorId)
-  if (excludeBilled) approvedCOs = approvedCOs.filter((co) => !co.reviewed_at) // use reviewed_at as proxy
+  // BUG was: filtered on !co.reviewed_at, but approved COs always have reviewed_at,
+  // so the export was empty. We track billed-ness via change_orders.* — for now
+  // there's no billed_at column on change_orders, so the only exclusion we can
+  // honor is "draft", which is already filtered out by status === 'approved'.
+  // When change_orders gets a billed_at field, switch to !co.billed_at.
+  if (excludeBilled) {
+    // no-op until change_orders has billed_at — see comment above.
+  }
   if (from || to) {
     approvedCOs = approvedCOs.filter((co) => {
       const d = (co.reviewed_at ?? co.submitted_at ?? '')?.split('T')[0]

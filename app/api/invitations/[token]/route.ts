@@ -1,9 +1,18 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson } from '@/lib/data'
 import { hashToken, safeCompareHash } from '@/lib/tokens'
+import { rateLimit, clientIp } from '@/lib/rate-limit'
 import type { Invitation } from '@/types'
 
-export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
+export async function GET(req: NextRequest, { params }: { params: { token: string } }) {
+  // Rate-limit token lookups so the 256-bit token space can't be brute-forced
+  // by hammering this public endpoint.
+  const ip = clientIp(req)
+  const byIp = await rateLimit({ key: `invite-lookup:ip:${ip}`, limit: 30, windowMs: 60_000 })
+  if (!byIp.ok) {
+    return NextResponse.json({ error: 'For mange forsøk' }, { status: 429 })
+  }
+
   const hashed = hashToken(params.token)
   const invitations = await readJson<Invitation>('invitations.json')
   const inv = invitations.find((i) => safeCompareHash(i.token_hash, hashed))

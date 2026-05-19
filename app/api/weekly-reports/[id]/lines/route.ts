@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readJson, writeJson } from '@/lib/data'
 import { getSession } from '@/lib/auth'
 import { isAdmin, isSub } from '@/lib/api-guard'
-import type { WeeklyReport, WeeklyReportLine } from '@/types'
+import { randomUUID } from 'crypto'
+import type { WeeklyReport, WeeklyReportLine, ProjectBudgetLine } from '@/types'
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   const session = await getSession()
@@ -24,11 +25,37 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     return NextResponse.json({ error: 'Kan kun redigere kladder' }, { status: 409 })
   }
 
-  const body = await request.json() as { lines: Array<{ project_budget_line_id: string; reported_quantity: number; comment: string }> }
+  const body = await request.json() as {
+    lines: Array<{ project_budget_line_id: string; reported_quantity: number; comment: string }>
+  }
+
+  // Validate every project_budget_line_id belongs to the same project as the
+  // weekly report AND is owned by the reporting UE AND is a subcontractor_work
+  // line. Without this check, UE could rapport mengde mot internkost/materiell
+  // eller mot andre UEers linjer.
+  if (isSub(session)) {
+    const ids = body.lines.map((l) => l.project_budget_line_id)
+    if (ids.length > 0) {
+      const allBudgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
+      const blMap = new Map(allBudgetLines.map((bl) => [bl.id, bl]))
+      for (const lineId of ids) {
+        const bl = blMap.get(lineId)
+        if (
+          !bl ||
+          bl.project_id !== report.project_id ||
+          bl.assigned_subcontractor_id !== session.subcontractor_id ||
+          (bl.line_type != null && bl.line_type !== 'subcontractor_work')
+        ) {
+          return NextResponse.json({ error: 'Ugyldig budsjettlinje' }, { status: 403 })
+        }
+      }
+    }
+  }
+
   const allLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
   const updated = [...allLines]
 
-  body.lines.forEach((input, i) => {
+  body.lines.forEach((input) => {
     const idx = updated.findIndex(
       (l) => l.weekly_report_id === params.id && l.project_budget_line_id === input.project_budget_line_id
     )
@@ -36,7 +63,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       updated[idx] = { ...updated[idx], reported_quantity: input.reported_quantity, comment: input.comment }
     } else {
       updated.push({
-        id: `${Date.now()}-${i}`,
+        id: randomUUID(),
         weekly_report_id: params.id,
         project_budget_line_id: input.project_budget_line_id,
         reported_quantity: input.reported_quantity,

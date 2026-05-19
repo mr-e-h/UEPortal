@@ -6,5 +6,5 @@ import type { WeeklyReportLine } from '@/types'
 export async function GET() {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
-  return NextResponse.json(readJson<WeeklyReportLine>('weekly_report_lines.json'))
+  return NextResponse.json(await readJson<WeeklyReportLine>('weekly_report_lines.json'))
 }

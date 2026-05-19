@@ -2,8 +2,11 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { readJson, writeJson } from '@/lib/data'
 import { hashToken, safeCompareHash } from '@/lib/tokens'
-import { clearSession } from '@/lib/auth'
+import { clearAllSessionsForUser } from '@/lib/auth'
+import { rateLimit, clientIp } from '@/lib/rate-limit'
 import type { User, PasswordReset } from '@/types'
+
+const BCRYPT_COST = 12
 
 async function findValidReset(rawToken: string): Promise<{ reset: PasswordReset; resets: PasswordReset[]; idx: number } | null> {
   const hashed = hashToken(rawToken)
@@ -40,6 +43,13 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Passord må være minst 8 tegn' }, { status: 400 })
   }
 
+  // Rate-limit by IP to slow brute-forcing the 256-bit token space.
+  const ip = clientIp(request)
+  const byIp = await rateLimit({ key: `reset:ip:${ip}`, limit: 30, windowMs: 60_000 })
+  if (!byIp.ok) {
+    return NextResponse.json({ error: 'For mange forsøk, prøv igjen senere' }, { status: 429 })
+  }
+
   const found = await findValidReset(token)
   if (!found) {
     return NextResponse.json({ error: 'Lenken er ugyldig eller utløpt' }, { status: 400 })
@@ -53,15 +63,16 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Lenken er ugyldig eller utløpt' }, { status: 400 })
   }
 
-  const hashedPassword = await bcrypt.hash(password, 10)
+  const hashedPassword = await bcrypt.hash(password, BCRYPT_COST)
   users[userIdx] = { ...users[userIdx], password: hashedPassword }
   await writeJson('users.json', users)
 
   resets[idx] = { ...reset, used_at: new Date().toISOString() }
   await writeJson('password_resets.json', resets)
 
-  // Invalidate any active session — user must log in again with the new password.
-  await clearSession()
+  // Invalidate every session for this user — reset-flow is often started
+  // exactly because the user suspects compromise.
+  await clearAllSessionsForUser(reset.user_id)
 
   return NextResponse.json({ ok: true })
 }

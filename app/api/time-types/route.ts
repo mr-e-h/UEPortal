@@ -7,7 +7,7 @@ import type { TimeType } from '@/types'
 export async function GET() {
   const auth = await requireAuth()
   if (!auth.ok) return auth.response
-  return NextResponse.json(readJson<TimeType>('time_types.json'))
+  return NextResponse.json(await readJson<TimeType>('time_types.json'))
 }
 
 export async function POST(request: NextRequest) {

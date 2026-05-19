@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { readJson, writeJson } from '@/lib/data'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, requireAuth, isSub } from '@/lib/api-guard'
 import type { Product } from '@/types'
 
 export async function GET(req: NextRequest) {
+  const auth = await requireAuth()
+  if (!auth.ok) return auth.response
+
   const { searchParams } = new URL(req.url)
   const county = searchParams.get('county')
   const includeInactive = searchParams.get('include_inactive') === 'true'
@@ -12,6 +15,11 @@ export async function GET(req: NextRequest) {
   let products = await readJson<Product>('products.json')
   if (!includeInactive) products = products.filter((p) => p.active !== false)
   if (county) products = products.filter((p) => p.county === county)
+
+  // UE should never see customer_price (Netels utsalgspris).
+  if (isSub(auth.user)) {
+    products = products.map((p) => ({ ...p, customer_price: 0 }))
+  }
 
   return NextResponse.json(products)
 }

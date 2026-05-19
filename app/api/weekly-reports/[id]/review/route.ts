@@ -30,7 +30,6 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const body = await request.json() as {
     action: 'approve_all' | 'reject_all' | 'revert'
     admin_comment?: string
-    reviewed_by?: string
   }
 
   const reports = await readJson<WeeklyReport>('weekly_reports.json')
@@ -38,7 +37,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const now = new Date().toISOString()
-  const actor = body.reviewed_by ?? 'Admin'
+  // Actor derived from session — clients can't spoof identity.
+  const actor = auth.user.full_name
   const allLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
 
   if (body.action === 'revert') {

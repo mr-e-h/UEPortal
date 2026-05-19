@@ -3,29 +3,35 @@ import { readJson, writeJson } from '@/lib/data'
 import { getSession } from '@/lib/auth'
 import { isAdmin, isSub } from '@/lib/api-guard'
 import { MAX_ATTACHMENT_BYTES, ALLOWED_ATTACHMENT_MIMES } from '@/lib/upload-config'
+import { uploadAttachment, createAttachmentSignedUrl } from '@/lib/storage'
 import type { ChangeOrder } from '@/types'
-import fs from 'fs'
-import path from 'path'
+
+async function loadOwnedOrder(id: string) {
+  const session = await getSession()
+  if (!session) return { error: NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 }) }
+
+  const orders = await readJson<ChangeOrder>('change_orders.json')
+  const idx = orders.findIndex((o) => o.id === id)
+  if (idx === -1) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) }
+
+  const order = orders[idx]
+  if (isSub(session)) {
+    if (order.subcontractor_id !== session.subcontractor_id) {
+      return { error: NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 }) }
+    }
+  } else if (!isAdmin(session)) {
+    return { error: NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 }) }
+  }
+  return { session, orders, idx, order }
+}
 
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
-
-  const orders = await readJson<ChangeOrder>('change_orders.json')
-  const idx = orders.findIndex((o) => o.id === params.id)
-  if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-  const order = orders[idx]
-  if (isSub(session)) {
-    if (order.subcontractor_id !== session.subcontractor_id) {
-      return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
-    }
-  } else if (!isAdmin(session)) {
-    return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
-  }
+  const owned = await loadOwnedOrder(params.id)
+  if (owned.error) return owned.error
+  const { orders, idx } = owned
 
   const { filename, data, mimeType } = await request.json() as {
     filename: string
@@ -43,16 +49,50 @@ export async function POST(
     return NextResponse.json({ error: 'Fil for stor (maks 10 MB)' }, { status: 413 })
   }
 
+  // Object key in Supabase Storage. Includes the EM id so we can authorize
+  // GET by looking up the EM and checking ownership.
   const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
-  const uploadFilename = `${params.id}-${sanitized}`
-  const uploadsDir = path.join(process.cwd(), 'public', 'uploads')
-  if (!fs.existsSync(uploadsDir)) fs.mkdirSync(uploadsDir, { recursive: true })
+  const objectPath = `${params.id}/${sanitized}`
 
-  fs.writeFileSync(path.join(uploadsDir, uploadFilename), buffer)
+  try {
+    await uploadAttachment({ path: objectPath, bytes: buffer, contentType: mimeType })
+  } catch (err) {
+    console.error('attachment upload:', err)
+    return NextResponse.json({ error: 'Kunne ikke lagre vedlegg' }, { status: 500 })
+  }
 
-  const attachmentUrl = `/uploads/${uploadFilename}`
-  orders[idx] = { ...orders[idx], attachment_url: attachmentUrl }
+  // Store the object path in the DB, NOT a signed URL — URLs expire and we
+  // need a stable reference. The GET endpoint below mints a fresh signed URL.
+  orders[idx] = { ...orders[idx], attachment_url: objectPath }
   await writeJson('change_orders.json', orders)
 
-  return NextResponse.json({ attachment_url: attachmentUrl })
+  return NextResponse.json({ attachment_url: objectPath })
+}
+
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: { id: string } }
+) {
+  const owned = await loadOwnedOrder(params.id)
+  if (owned.error) return owned.error
+  const { order } = owned
+
+  if (!order.attachment_url) {
+    return NextResponse.json({ error: 'Ingen vedlegg' }, { status: 404 })
+  }
+
+  // Legacy: existing rows have "/uploads/<id>-<filename>" public paths.
+  // New rows have "<id>/<filename>" Storage object paths. For the legacy
+  // case we'd need to migrate; respond with the literal path for now.
+  if (order.attachment_url.startsWith('/uploads/')) {
+    return NextResponse.json({ signed_url: order.attachment_url, legacy: true })
+  }
+
+  try {
+    const signed = await createAttachmentSignedUrl(order.attachment_url, 60)
+    return NextResponse.json({ signed_url: signed })
+  } catch (err) {
+    console.error('attachment signed url:', err)
+    return NextResponse.json({ error: 'Kunne ikke generere lenke' }, { status: 500 })
+  }
 }

@@ -49,7 +49,7 @@ Hvis du ikke forventet denne invitasjonen kan du ignorere e-posten.`
     <p style="font-size: 14px; line-height: 1.5;">Rolle: <strong>${escapeHtml(role)}</strong></p>
     <p style="font-size: 14px; line-height: 1.5;">Trykk på knappen under for å sette passord og opprette kontoen din. Lenken er gyldig i 7 dager.</p>
     <p style="margin: 24px 0;">
-      <a href="${acceptUrl}" style="display: inline-block; background: #E30613; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Aksepter invitasjon</a>
+      <a href="${escapeHtml(acceptUrl)}" style="display: inline-block; background: #E30613; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Aksepter invitasjon</a>
     </p>
     <p style="font-size: 12px; color: #64748B; word-break: break-all;">Eller kopier denne lenken: ${escapeHtml(acceptUrl)}</p>`
   )
@@ -72,7 +72,7 @@ Hvis du ikke ba om dette, kan du ignorere e-posten. Passordet ditt forblir uendr
     `<p style="font-size: 14px; line-height: 1.5;">Det er bedt om å tilbakestille passordet til kontoen din.</p>
     <p style="font-size: 14px; line-height: 1.5;">Trykk på knappen under for å velge nytt passord. Lenken er gyldig i <strong>1 time</strong>.</p>
     <p style="margin: 24px 0;">
-      <a href="${resetUrl}" style="display: inline-block; background: #E30613; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Velg nytt passord</a>
+      <a href="${escapeHtml(resetUrl)}" style="display: inline-block; background: #E30613; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Velg nytt passord</a>
     </p>
     <p style="font-size: 12px; color: #64748B; word-break: break-all;">Eller kopier denne lenken: ${escapeHtml(resetUrl)}</p>
     <p style="font-size: 13px; color: #64748B; margin-top: 24px;">Hvis du ikke ba om dette, kan du ignorere e-posten. Passordet ditt forblir uendret.</p>`

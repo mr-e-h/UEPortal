@@ -2,7 +2,9 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { readJson, writeJson } from '@/lib/data'
 import type { User } from '@/types'
-import { getSession } from '@/lib/auth'
+import { getSession, clearAllSessionsForUser } from '@/lib/auth'
+
+const BCRYPT_COST = 12
 
 export async function POST(request: NextRequest) {
   const session = await getSession()
@@ -18,15 +20,16 @@ export async function POST(request: NextRequest) {
   const user = users.find((u) => u.id === session.id)
   if (!user) return NextResponse.json({ error: 'Bruker ikke funnet' }, { status: 404 })
 
-  const oldValid = user.password.startsWith('$2')
-    ? await bcrypt.compare(old_password, user.password)
-    : user.password === old_password
-
+  // bcrypt only — plaintext fallback removed; legacy accounts must reset.
+  const oldValid = user.password.startsWith('$2') && await bcrypt.compare(old_password, user.password)
   if (!oldValid) {
     return NextResponse.json({ error: 'Feil nåværende passord' }, { status: 400 })
   }
 
-  const hashed = await bcrypt.hash(new_password, 10)
+  const hashed = await bcrypt.hash(new_password, BCRYPT_COST)
   await writeJson('users.json', users.map((u) => u.id === session.id ? { ...u, password: hashed } : u))
+
+  // Invalidate every session for this user so a stolen cookie elsewhere stops working.
+  await clearAllSessionsForUser(session.id)
   return NextResponse.json({ ok: true })
 }

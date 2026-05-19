@@ -15,6 +15,11 @@ export async function sendEmail(opts: { to: string; content: EmailContent }): Pr
   const from = process.env.EMAIL_FROM ?? 'Netel UE Portal <onboarding@resend.dev>'
 
   if (!apiKey) {
+    if (process.env.NODE_ENV === 'production') {
+      // Refuse to silently drop emails (and especially refuse to log reset
+      // tokens to Vercel runtime logs) once we're in prod.
+      throw new Error('RESEND_API_KEY missing in production')
+    }
     console.log('\n=== [email stub — RESEND_API_KEY not set] ===')
     console.log(`To:      ${to}`)
     console.log(`From:    ${from}`)
@@ -52,6 +57,12 @@ export async function sendEmail(opts: { to: string; content: EmailContent }): Pr
  * own origin in dev. Used to construct invitation/reset links in emails.
  */
 export function buildAppUrl(path: string, requestUrl?: string): string {
-  const base = process.env.APP_BASE_URL ?? (requestUrl ? new URL(requestUrl).origin : 'http://localhost:3010')
+  // In production refuse to fall back to request-origin: a spoofed Host header
+  // would otherwise let an attacker make reset/invitation links point at evil.com.
+  const fromEnv = process.env.APP_BASE_URL
+  if (process.env.NODE_ENV === 'production' && !fromEnv) {
+    throw new Error('APP_BASE_URL must be set in production')
+  }
+  const base = fromEnv ?? (requestUrl ? new URL(requestUrl).origin : 'http://localhost:3010')
   return `${base.replace(/\/$/, '')}${path.startsWith('/') ? path : `/${path}`}`
 }

@@ -19,7 +19,8 @@ export async function POST(
   const file = formData.get('file') as File | null
   if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })
 
-  const uploadedBy = (formData.get('uploaded_by') as string | null) ?? 'Ukjent'
+  // Actor derived from session — clients can't spoof the version log.
+  const uploadedBy = auth.user.full_name
 
   const projects = await readJson<Project>('projects.json')
   const projectIdx = projects.findIndex((p) => p.id === params.id)

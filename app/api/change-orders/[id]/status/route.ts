@@ -30,10 +30,9 @@ export async function POST(
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const { status, admin_comment, reviewed_by } = await request.json() as {
+  const { status, admin_comment } = await request.json() as {
     status: 'approved' | 'rejected' | 'pending'
     admin_comment?: string
-    reviewed_by?: string
   }
 
   const orders = await readJson<ChangeOrder>('change_orders.json')
@@ -41,7 +40,8 @@ export async function POST(
   if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const order = orders[idx]
-  const actor = reviewed_by ?? 'Admin'
+  // Actor derived from session — clients can't spoof identity in the audit log.
+  const actor = auth.user.full_name
   const now = new Date().toISOString()
 
   if (status === 'pending') {
