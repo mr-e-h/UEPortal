@@ -11,7 +11,7 @@ export async function GET(request: NextRequest) {
   const { searchParams } = new URL(request.url)
   const entityId = searchParams.get('entity_id')
   const entityType = searchParams.get('entity_type')
-  let entries = readJson<ActivityEntry>('activity_log.json')
+  let entries = await readJson<ActivityEntry>('activity_log.json')
   if (entityId) entries = entries.filter((e) => e.entity_id === entityId)
   if (entityType) entries = entries.filter((e) => e.entity_type === entityType)
   entries.sort((a, b) => a.created_at.localeCompare(b.created_at))
@@ -29,7 +29,7 @@ export async function POST(request: NextRequest) {
     actor: string
     comment: string
   }
-  const entries = readJson<ActivityEntry>('activity_log.json')
+  const entries = await readJson<ActivityEntry>('activity_log.json')
   const entry: ActivityEntry = {
     id: randomUUID(),
     entity_type: body.entity_type,
@@ -40,6 +40,6 @@ export async function POST(request: NextRequest) {
     created_at: new Date().toISOString(),
   }
   entries.push(entry)
-  writeJson('activity_log.json', entries)
+  await writeJson('activity_log.json', entries)
   return NextResponse.json(entry)
 }

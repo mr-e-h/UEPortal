@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('project_id')
-  const entries = readJson<HourEntry>('hour_entries.json')
+  const entries = await readJson<HourEntry>('hour_entries.json')
   return NextResponse.json(projectId ? entries.filter((e) => e.project_id === projectId) : entries)
 }
 
@@ -19,8 +19,8 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as { project_id: string; time_type_id: string; hours: number; date: string; comment?: string }
-  const entries = readJson<HourEntry>('hour_entries.json')
-  const types = readJson<TimeType>('time_types.json')
+  const entries = await readJson<HourEntry>('hour_entries.json')
+  const types = await readJson<TimeType>('time_types.json')
   const timeType = types.find((t) => t.id === body.time_type_id)
   const newEntry: HourEntry = {
     id: randomUUID(),
@@ -32,6 +32,6 @@ export async function POST(request: NextRequest) {
     cost_per_hour_snapshot: timeType?.cost_per_hour ?? 0,
     created_at: new Date().toISOString(),
   }
-  writeJson('hour_entries.json', [...entries, newEntry])
+  await writeJson('hour_entries.json', [...entries, newEntry])
   return NextResponse.json(newEntry, { status: 201 })
 }

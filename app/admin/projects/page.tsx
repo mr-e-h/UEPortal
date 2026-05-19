@@ -4,10 +4,10 @@ import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import ProjectsListTable from '@/components/admin/ProjectsListTable'
 
-export default function ProjectsPage() {
-  const projects = readJson<Project>('projects.json').filter((p) => !p.deleted)
-  const budgetLines = readJson<ProjectBudgetLine>('project_budget_lines.json')
-  const projectSubs = readJson<{ id: string; project_id: string; subcontractor_id: string }>('project_subcontractors.json')
+export default async function ProjectsPage() {
+  const projects = (await readJson<Project>('projects.json')).filter((p) => !p.deleted)
+  const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
+  const projectSubs = await readJson<{ id: string; project_id: string; subcontractor_id: string }>('project_subcontractors.json')
 
   const blCounts: Record<string, number> = {}
   for (const bl of budgetLines) {

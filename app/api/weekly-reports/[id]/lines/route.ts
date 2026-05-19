@@ -8,7 +8,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
 
-  const reports = readJson<WeeklyReport>('weekly_reports.json')
+  const reports = await readJson<WeeklyReport>('weekly_reports.json')
   const report = reports.find((r) => r.id === params.id)
   if (!report) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -25,7 +25,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
 
   const body = await request.json() as { lines: Array<{ project_budget_line_id: string; reported_quantity: number; comment: string }> }
-  const allLines = readJson<WeeklyReportLine>('weekly_report_lines.json')
+  const allLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
   const updated = [...allLines]
 
   body.lines.forEach((input, i) => {
@@ -49,6 +49,6 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
   })
 
-  writeJson('weekly_report_lines.json', updated)
+  await writeJson('weekly_report_lines.json', updated)
   return NextResponse.json({ ok: true })
 }

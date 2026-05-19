@@ -10,8 +10,8 @@ export async function GET(request: NextRequest) {
     const isSubRole = session.role === 'sub' || session.role === 'subcontractor'
 
     const params = new URL(request.url).searchParams
-    const deletedProjectIds = getDeletedProjectIds()
-    let orders = readJson<ChangeOrder>('change_orders.json')
+    const deletedProjectIds = await getDeletedProjectIds()
+    let orders = (await readJson<ChangeOrder>('change_orders.json'))
       .filter((o) => o.status !== 'draft' && !deletedProjectIds.has(o.project_id))
     const projectId = params.get('project_id')
     const subcontractorId = params.get('subcontractor_id')
@@ -60,8 +60,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
     }
 
-    const products = readJson<Product>('products.json')
-    const prices = readJson<SubcontractorProductPrice>('subcontractor_product_prices.json')
+    const products = await readJson<Product>('products.json')
+    const prices = await readJson<SubcontractorProductPrice>('subcontractor_product_prices.json')
 
     const product = products.find((p) => p.id === body.product_id)
     if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
@@ -73,7 +73,7 @@ export async function POST(request: NextRequest) {
 
     // Fall back to the snapshot price from the assigned budget line if no explicit price
     if (costPrice === 0) {
-      const budgetLines = readJson<ProjectBudgetLine>('project_budget_lines.json')
+      const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
       const bl = budgetLines.find(
         (bl) =>
           bl.project_id === body.project_id &&
@@ -89,7 +89,7 @@ export async function POST(request: NextRequest) {
     const totalCustomerValue = product.customer_price * body.requested_quantity
     const profit = totalCustomerValue - totalCost
 
-    const orders = readJson<ChangeOrder>('change_orders.json')
+    const orders = await readJson<ChangeOrder>('change_orders.json')
     const isDraft = body.status === 'draft'
     const now = new Date().toISOString()
     const newOrder: ChangeOrder = {
@@ -112,7 +112,7 @@ export async function POST(request: NextRequest) {
       reviewed_by: null,
       admin_comment: null,
     }
-    writeJson('change_orders.json', [...orders, newOrder])
+    await writeJson('change_orders.json', [...orders, newOrder])
     return NextResponse.json(newOrder, { status: 201 })
   } catch (error) {
     console.error('change-orders POST error:', error)

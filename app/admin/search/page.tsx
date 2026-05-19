@@ -5,7 +5,7 @@ import Link from 'next/link'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 
-export default function SearchPage({ searchParams }: { searchParams: { q?: string } }) {
+export default async function SearchPage({ searchParams }: { searchParams: { q?: string } }) {
   const q = (searchParams.q ?? '').toLowerCase().trim()
 
   if (!q) {
@@ -17,24 +17,24 @@ export default function SearchPage({ searchParams }: { searchParams: { q?: strin
     )
   }
 
-  const projects = readJson<Project>('projects.json')
+  const projects = (await readJson<Project>('projects.json'))
     .filter((p) => !p.deleted && (
       p.name.toLowerCase().includes(q) ||
       p.project_number?.toLowerCase().includes(q) ||
       p.customer?.toLowerCase().includes(q)
     ))
 
-  const subcontractors = readJson<Subcontractor>('subcontractors.json')
+  const subcontractors = (await readJson<Subcontractor>('subcontractors.json'))
     .filter((s) =>
       s.company_name.toLowerCase().includes(q) ||
       s.contact_person?.toLowerCase().includes(q) ||
       s.email?.toLowerCase().includes(q)
     )
 
-  const subMap = new Map(readJson<Subcontractor>('subcontractors.json').map((s) => [s.id, s]))
-  const projMap = new Map(readJson<Project>('projects.json').filter((p) => !p.deleted).map((p) => [p.id, p]))
+  const subMap = new Map((await readJson<Subcontractor>('subcontractors.json')).map((s) => [s.id, s]))
+  const projMap = new Map((await readJson<Project>('projects.json')).filter((p) => !p.deleted).map((p) => [p.id, p]))
 
-  const weeklyReports = readJson<WeeklyReport>('weekly_reports.json')
+  const weeklyReports = (await readJson<WeeklyReport>('weekly_reports.json'))
     .filter((r) => r.status !== 'draft' && (
       projMap.get(r.project_id)?.name.toLowerCase().includes(q) ||
       subMap.get(r.subcontractor_id)?.company_name.toLowerCase().includes(q) ||
@@ -42,7 +42,7 @@ export default function SearchPage({ searchParams }: { searchParams: { q?: strin
     ))
     .slice(0, 10)
 
-  const changeOrders = readJson<ChangeOrder>('change_orders.json')
+  const changeOrders = (await readJson<ChangeOrder>('change_orders.json'))
     .filter((o) => o.status !== 'draft' && (
       projMap.get(o.project_id)?.name.toLowerCase().includes(q) ||
       subMap.get(o.subcontractor_id)?.company_name.toLowerCase().includes(q)

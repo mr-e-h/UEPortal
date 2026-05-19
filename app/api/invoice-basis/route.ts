@@ -27,13 +27,13 @@ export async function GET(request: NextRequest) {
   const type = (searchParams.get('type') ?? 'ue') as 'ue' | 'customer'
   const excludeBilled = searchParams.get('exclude_billed') !== 'false'
 
-  const projects = readJson<Project>('projects.json')
-  const budgetLines = readJson<ProjectBudgetLine>('project_budget_lines.json')
-  const weeklyReports = readJson<WeeklyReport>('weekly_reports.json')
-  const weeklyReportLines = readJson<WeeklyReportLine>('weekly_report_lines.json')
-  const changeOrders = readJson<ChangeOrder>('change_orders.json')
-  const subcontractors = readJson<Subcontractor>('subcontractors.json')
-  const products = readJson<Product>('products.json')
+  const projects = await readJson<Project>('projects.json')
+  const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
+  const weeklyReports = await readJson<WeeklyReport>('weekly_reports.json')
+  const weeklyReportLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
+  const changeOrders = await readJson<ChangeOrder>('change_orders.json')
+  const subcontractors = await readJson<Subcontractor>('subcontractors.json')
+  const products = await readJson<Product>('products.json')
 
   const projectMap = new Map(projects.map((p) => [p.id, p]))
   const blMap = new Map(budgetLines.map((bl) => [bl.id, bl]))

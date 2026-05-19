@@ -8,11 +8,11 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   if (!auth.ok) return auth.response
 
   const body = await request.json() as Partial<TimeType>
-  const types = readJson<TimeType>('time_types.json')
+  const types = await readJson<TimeType>('time_types.json')
   const idx = types.findIndex((t) => t.id === params.id)
   if (idx === -1) return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })
   if (body.cost_per_hour !== undefined) body.cost_per_hour = Number(body.cost_per_hour)
   types[idx] = { ...types[idx], ...body, id: params.id }
-  writeJson('time_types.json', types)
+  await writeJson('time_types.json', types)
   return NextResponse.json(types[idx])
 }

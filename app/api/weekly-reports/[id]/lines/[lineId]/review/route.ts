@@ -9,13 +9,13 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
   const body = await request.json() as { status: 'approved' | 'rejected'; reviewed_by?: string }
 
-  const allLines = readJson<WeeklyReportLine>('weekly_report_lines.json')
+  const allLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
   const idx = allLines.findIndex((l) => l.id === params.lineId)
   if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const now = new Date().toISOString()
   allLines[idx] = { ...allLines[idx], status: body.status, reviewed_at: now, reviewed_by: body.reviewed_by ?? null }
-  writeJson('weekly_report_lines.json', allLines)
+  await writeJson('weekly_report_lines.json', allLines)
 
   const reportLines = allLines.filter((l) => l.weekly_report_id === params.id)
   const allApproved = reportLines.length > 0 && reportLines.every((l) => l.status === 'approved')
@@ -24,11 +24,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   if (allApproved) newStatus = 'approved'
   else if (allRejected) newStatus = 'rejected'
 
-  const reports = readJson<WeeklyReport>('weekly_reports.json')
+  const reports = await readJson<WeeklyReport>('weekly_reports.json')
   const rIdx = reports.findIndex((r) => r.id === params.id)
   if (rIdx !== -1) {
     reports[rIdx] = { ...reports[rIdx], status: newStatus, reviewed_at: now, reviewed_by: body.reviewed_by ?? null }
-    writeJson('weekly_reports.json', reports)
+    await writeJson('weekly_reports.json', reports)
   }
 
   return NextResponse.json(allLines[idx])

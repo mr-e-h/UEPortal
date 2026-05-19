@@ -5,7 +5,7 @@ import type { Invitation } from '@/types'
 
 export async function GET(_req: NextRequest, { params }: { params: { token: string } }) {
   const hashed = hashToken(params.token)
-  const invitations = readJson<Invitation>('invitations.json')
+  const invitations = await readJson<Invitation>('invitations.json')
   const inv = invitations.find((i) => safeCompareHash(i.token_hash, hashed))
 
   if (!inv) return NextResponse.json({ error: 'Invitasjon ikke funnet' }, { status: 404 })

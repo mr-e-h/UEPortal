@@ -23,14 +23,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Invitasjonstoken er påkrevd for registrering' }, { status: 400 })
   }
 
-  const users = readJson<User>('users.json')
+  const users = await readJson<User>('users.json')
 
   if (users.find((u) => u.email.toLowerCase() === email.toLowerCase())) {
     return NextResponse.json({ error: 'E-postadressen er allerede i bruk' }, { status: 409 })
   }
 
   const hashed = hashToken(token)
-  const invitations = readJson<Invitation>('invitations.json')
+  const invitations = await readJson<Invitation>('invitations.json')
   const idx = invitations.findIndex((i) => safeCompareHash(i.token_hash, hashed))
   if (idx === -1) return NextResponse.json({ error: 'Ugyldig invitasjonstoken' }, { status: 400 })
   const inv = invitations[idx]
@@ -41,7 +41,7 @@ export async function POST(request: NextRequest) {
   }
   const role = inv.role
   invitations[idx] = { ...inv, accepted_at: new Date().toISOString() }
-  writeJson('invitations.json', invitations)
+  await writeJson('invitations.json', invitations)
 
   const hashedPassword = await bcrypt.hash(password, 10)
 
@@ -54,7 +54,7 @@ export async function POST(request: NextRequest) {
     subcontractor_id: null,
   }
 
-  writeJson('users.json', [...users, newUser])
+  await writeJson('users.json', [...users, newUser])
 
   return NextResponse.json({ ok: true, role })
 }

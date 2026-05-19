@@ -10,13 +10,13 @@ export async function POST(
   if (!auth.ok) return auth.response
 
   const { status } = await request.json() as { status: string }
-  const reports = readJson<Record<string, unknown>>('reports.json')
+  const reports = await readJson<{ id: string; [k: string]: unknown }>('reports.json')
 
   const idx = reports.findIndex((r) => r.id === params.id)
   if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   reports[idx] = { ...reports[idx], status, updated_at: new Date().toISOString() }
-  writeJson('reports.json', reports)
+  await writeJson('reports.json', reports)
 
   return NextResponse.json(reports[idx])
 }

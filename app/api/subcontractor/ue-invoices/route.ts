@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   }
 
   const projectId = searchParams.get('project_id')
-  const invoices = readJson<UEInvoice>('ue_invoices.json')
+  const invoices = await readJson<UEInvoice>('ue_invoices.json')
 
   let result = invoices.filter((inv) => inv.subcontractor_id === requestedSubId)
   if (projectId && projectId !== 'all') {
@@ -59,7 +59,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Ugyldig beløp' }, { status: 400 })
   }
 
-  const invoices = readJson<UEInvoice>('ue_invoices.json')
+  const invoices = await readJson<UEInvoice>('ue_invoices.json')
   const newInvoice: UEInvoice = {
     id: randomUUID(),
     subcontractor_id: body.subcontractor_id,
@@ -70,7 +70,7 @@ export async function POST(request: NextRequest) {
     created_at: new Date().toISOString(),
   }
   invoices.push(newInvoice)
-  writeJson('ue_invoices.json', invoices)
+  await writeJson('ue_invoices.json', invoices)
 
   return NextResponse.json(newInvoice)
 }
@@ -88,12 +88,12 @@ export async function DELETE(request: NextRequest) {
     return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
   }
 
-  const invoices = readJson<UEInvoice>('ue_invoices.json')
+  const invoices = await readJson<UEInvoice>('ue_invoices.json')
   const idx = invoices.findIndex((inv) => inv.id === id && inv.subcontractor_id === requestedSubId)
   if (idx === -1) return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })
 
   invoices.splice(idx, 1)
-  writeJson('ue_invoices.json', invoices)
+  await writeJson('ue_invoices.json', invoices)
 
   return NextResponse.json({ ok: true })
 }

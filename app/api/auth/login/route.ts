@@ -11,7 +11,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'E-post og passord er påkrevd' }, { status: 400 })
   }
 
-  const users = readJson<User>('users.json')
+  const users = await readJson<User>('users.json')
   const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase())
 
   if (!user) {

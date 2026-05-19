@@ -6,9 +6,9 @@ function norm(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
-export function importExcelLines(projectId: string, county: string, rawLines: ParsedExcelLine[]) {
-  const products = readJson<Product>('products.json')
-  const budgetLines = readJson<ProjectBudgetLine>('project_budget_lines.json')
+export async function importExcelLines(projectId: string, county: string, rawLines: ParsedExcelLine[]) {
+  const products = await readJson<Product>('products.json')
+  const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
 
   // Phase 1: merge duplicate rows only when name AND price match exactly
   // Rows with same name but different prices are kept as separate line items
@@ -105,8 +105,8 @@ export function importExcelLines(projectId: string, county: string, rawLines: Pa
   // Remove entries marked null (consolidated duplicates)
   const cleaned = budgetLines.filter((bl) => bl !== null)
 
-  writeJson('products.json', products)
-  writeJson('project_budget_lines.json', cleaned)
+  await writeJson('products.json', products)
+  await writeJson('project_budget_lines.json', cleaned)
 
   return { imported: added + updated, added, updated, new_products }
 }

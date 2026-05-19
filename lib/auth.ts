@@ -9,7 +9,7 @@ export async function getSession(): Promise<User | null> {
   const userId = cookieStore.get(SESSION_COOKIE)?.value
   if (!userId) return null
 
-  const users = readJson<User>('users.json')
+  const users = await readJson<User>('users.json')
   return users.find((u) => u.id === userId) ?? null
 }
 

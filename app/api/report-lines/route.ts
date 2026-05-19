@@ -8,8 +8,8 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const params = new URL(request.url).searchParams
-  const deletedProjectIds = getDeletedProjectIds()
-  let lines = readJson<ReportLine>('report_lines.json').filter((l) => !deletedProjectIds.has(l.project_id))
+  const deletedProjectIds = await getDeletedProjectIds()
+  let lines = (await readJson<ReportLine>('report_lines.json')).filter((l) => !deletedProjectIds.has(l.project_id))
   const projectId = params.get('project_id')
   const subcontractorId = params.get('subcontractor_id')
   const budgetLineId = params.get('budget_line_id')
@@ -24,13 +24,13 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as Omit<ReportLine, 'id' | 'status'>
-  const lines = readJson<ReportLine>('report_lines.json')
+  const lines = await readJson<ReportLine>('report_lines.json')
   const newLine: ReportLine = {
     id: String(Date.now()),
     ...body,
     reported_quantity: Number(body.reported_quantity),
     status: 'submitted',
   }
-  writeJson('report_lines.json', [...lines, newLine])
+  await writeJson('report_lines.json', [...lines, newLine])
   return NextResponse.json(newLine, { status: 201 })
 }

@@ -13,13 +13,13 @@ export async function GET(request: NextRequest) {
   const projectId = searchParams.get('project_id')
   const withMonths = searchParams.get('with_months') === 'true'
 
-  const deletedProjectIds = getDeletedProjectIds()
-  let forecasts = readJson<ProjectForecast>('project_forecasts.json').filter((f) => !deletedProjectIds.has(f.project_id))
+  const deletedProjectIds = await getDeletedProjectIds()
+  let forecasts = (await readJson<ProjectForecast>('project_forecasts.json')).filter((f) => !deletedProjectIds.has(f.project_id))
   if (periodId) forecasts = forecasts.filter((f) => f.forecast_period_id === periodId)
   if (projectId) forecasts = forecasts.filter((f) => f.project_id === projectId)
 
   if (withMonths) {
-    const allMonths = readJson<ProjectForecastMonth>('project_forecast_months.json')
+    const allMonths = await readJson<ProjectForecastMonth>('project_forecast_months.json')
     return NextResponse.json(
       forecasts.map((f) => ({ ...f, months: allMonths.filter((m) => m.project_forecast_id === f.id) }))
     )
@@ -33,7 +33,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as Omit<ProjectForecast, 'id' | 'created_at' | 'updated_at'>
-  const forecasts = readJson<ProjectForecast>('project_forecasts.json')
+  const forecasts = await readJson<ProjectForecast>('project_forecasts.json')
   const now = new Date().toISOString()
   const newForecast: ProjectForecast = {
     id: randomUUID(),
@@ -58,6 +58,6 @@ export async function POST(request: NextRequest) {
     created_at: now,
     updated_at: now,
   }
-  writeJson('project_forecasts.json', [...forecasts, newForecast])
+  await writeJson('project_forecasts.json', [...forecasts, newForecast])
   return NextResponse.json(newForecast, { status: 201 })
 }

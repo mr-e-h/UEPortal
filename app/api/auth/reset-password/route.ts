@@ -5,9 +5,9 @@ import { hashToken, safeCompareHash } from '@/lib/tokens'
 import { clearSession } from '@/lib/auth'
 import type { User, PasswordReset } from '@/types'
 
-function findValidReset(rawToken: string): { reset: PasswordReset; resets: PasswordReset[]; idx: number } | null {
+async function findValidReset(rawToken: string): Promise<{ reset: PasswordReset; resets: PasswordReset[]; idx: number } | null> {
   const hashed = hashToken(rawToken)
-  const resets = readJson<PasswordReset>('password_resets.json')
+  const resets = await readJson<PasswordReset>('password_resets.json')
   const now = Date.now()
 
   for (let i = 0; i < resets.length; i++) {
@@ -24,7 +24,7 @@ export async function GET(request: NextRequest) {
   const token = new URL(request.url).searchParams.get('token') ?? ''
   if (!token) return NextResponse.json({ valid: false }, { status: 400 })
 
-  const found = findValidReset(token)
+  const found = await findValidReset(token)
   return NextResponse.json({ valid: !!found })
 }
 
@@ -40,14 +40,14 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Passord må være minst 8 tegn' }, { status: 400 })
   }
 
-  const found = findValidReset(token)
+  const found = await findValidReset(token)
   if (!found) {
     return NextResponse.json({ error: 'Lenken er ugyldig eller utløpt' }, { status: 400 })
   }
 
   const { reset, resets, idx } = found
 
-  const users = readJson<User>('users.json')
+  const users = await readJson<User>('users.json')
   const userIdx = users.findIndex((u) => u.id === reset.user_id)
   if (userIdx === -1) {
     return NextResponse.json({ error: 'Lenken er ugyldig eller utløpt' }, { status: 400 })
@@ -55,10 +55,10 @@ export async function POST(request: NextRequest) {
 
   const hashedPassword = await bcrypt.hash(password, 10)
   users[userIdx] = { ...users[userIdx], password: hashedPassword }
-  writeJson('users.json', users)
+  await writeJson('users.json', users)
 
   resets[idx] = { ...reset, used_at: new Date().toISOString() }
-  writeJson('password_resets.json', resets)
+  await writeJson('password_resets.json', resets)
 
   // Invalidate any active session — user must log in again with the new password.
   await clearSession()

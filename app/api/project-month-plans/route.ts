@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('project_id')
-  let plans = readJson<ProjectMonthPlan>('project_month_plans.json')
+  let plans = await readJson<ProjectMonthPlan>('project_month_plans.json')
   if (projectId) plans = plans.filter((p) => p.project_id === projectId)
   return NextResponse.json(plans)
 }
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as { project_id: string; rows: Omit<ProjectMonthPlan, 'id' | 'updated_at'>[] }
-  const all = readJson<ProjectMonthPlan>('project_month_plans.json')
+  const all = await readJson<ProjectMonthPlan>('project_month_plans.json')
   const kept = all.filter((p) => p.project_id !== body.project_id)
   const now = new Date().toISOString()
   const newRows: ProjectMonthPlan[] = body.rows.map((r) => ({
@@ -38,6 +38,6 @@ export async function POST(request: NextRequest) {
     comment: r.comment ?? '',
     updated_at: now,
   }))
-  writeJson('project_month_plans.json', [...kept, ...newRows])
+  await writeJson('project_month_plans.json', [...kept, ...newRows])
   return NextResponse.json(newRows, { status: 200 })
 }

@@ -14,7 +14,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Passord må være minst 8 tegn' }, { status: 400 })
   }
 
-  const users = readJson<User>('users.json')
+  const users = await readJson<User>('users.json')
   const user = users.find((u) => u.id === session.id)
   if (!user) return NextResponse.json({ error: 'Bruker ikke funnet' }, { status: 404 })
 
@@ -27,6 +27,6 @@ export async function POST(request: NextRequest) {
   }
 
   const hashed = await bcrypt.hash(new_password, 10)
-  writeJson('users.json', users.map((u) => u.id === session.id ? { ...u, password: hashed } : u))
+  await writeJson('users.json', users.map((u) => u.id === session.id ? { ...u, password: hashed } : u))
   return NextResponse.json({ ok: true })
 }

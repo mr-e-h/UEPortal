@@ -8,7 +8,7 @@ export async function GET() {
   if (!session || (session.role !== 'main' && session.role !== 'project_manager')) {
     return NextResponse.json({ error: 'Unauthorized' }, { status: 401 })
   }
-  const users = readJson<User>('users.json').map(({ password: _pw, ...u }) => u)
+  const users = (await readJson<User>('users.json')).map(({ password: _pw, ...u }) => u)
   return NextResponse.json(users)
 }
 
@@ -30,7 +30,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Mangler påkrevde felt' }, { status: 400 })
   }
 
-  const users = readJson<User>('users.json')
+  const users = await readJson<User>('users.json')
   if (users.some((u) => u.email.toLowerCase() === body.email.toLowerCase())) {
     return NextResponse.json({ error: 'E-post er allerede i bruk' }, { status: 409 })
   }
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
     subcontractor_id: body.role === 'sub' ? (body.subcontractor_id ?? null) : null,
   }
 
-  writeJson('users.json', [...users, newUser])
+  await writeJson('users.json', [...users, newUser])
   const { password: _pw, ...safe } = newUser
   return NextResponse.json(safe, { status: 201 })
 }
@@ -60,10 +60,10 @@ export async function DELETE(request: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Mangler id' }, { status: 400 })
   if (id === session.id) return NextResponse.json({ error: 'Kan ikke slette egen bruker' }, { status: 400 })
 
-  const users = readJson<User>('users.json')
+  const users = await readJson<User>('users.json')
   const filtered = users.filter((u) => u.id !== id)
   if (filtered.length === users.length) return NextResponse.json({ error: 'Bruker ikke funnet' }, { status: 404 })
 
-  writeJson('users.json', filtered)
+  await writeJson('users.json', filtered)
   return NextResponse.json({ ok: true })
 }

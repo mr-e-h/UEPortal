@@ -4,13 +4,13 @@ import { requireAdmin } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { WeeklyReport, WeeklyReportLine, ActivityEntry } from '@/types'
 
-function logActivity(
+async function logActivity(
   entityId: string,
   action: ActivityEntry['action'],
   actor: string,
   comment?: string
-) {
-  const entries = readJson<ActivityEntry>('activity_log.json')
+): Promise<void> {
+  const entries = await readJson<ActivityEntry>('activity_log.json')
   entries.push({
     id: randomUUID(),
     entity_type: 'weekly_report',
@@ -20,7 +20,7 @@ function logActivity(
     comment,
     created_at: new Date().toISOString(),
   })
-  writeJson('activity_log.json', entries)
+  await writeJson('activity_log.json', entries)
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
@@ -33,16 +33,16 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     reviewed_by?: string
   }
 
-  const reports = readJson<WeeklyReport>('weekly_reports.json')
+  const reports = await readJson<WeeklyReport>('weekly_reports.json')
   const idx = reports.findIndex((r) => r.id === params.id)
   if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   const now = new Date().toISOString()
   const actor = body.reviewed_by ?? 'Admin'
-  const allLines = readJson<WeeklyReportLine>('weekly_report_lines.json')
+  const allLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
 
   if (body.action === 'revert') {
-    writeJson(
+    await writeJson(
       'weekly_report_lines.json',
       allLines.map((l) =>
         l.weekly_report_id === params.id ? { ...l, status: 'pending', reviewed_at: null, reviewed_by: null } : l
@@ -55,15 +55,15 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       reviewed_by: null,
       admin_comment: null,
     }
-    writeJson('weekly_reports.json', reports)
-    logActivity(params.id, 'reverted', actor, body.admin_comment)
+    await writeJson('weekly_reports.json', reports)
+    await logActivity(params.id, 'reverted', actor, body.admin_comment)
     return NextResponse.json(reports[idx])
   }
 
   const lineStatus = body.action === 'approve_all' ? 'approved' as const : 'rejected' as const
   const reportStatus = body.action === 'approve_all' ? 'approved' as const : 'rejected' as const
 
-  writeJson(
+  await writeJson(
     'weekly_report_lines.json',
     allLines.map((l) =>
       l.weekly_report_id === params.id
@@ -79,8 +79,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     reviewed_by: actor,
     admin_comment: body.admin_comment ?? null,
   }
-  writeJson('weekly_reports.json', reports)
-  logActivity(
+  await writeJson('weekly_reports.json', reports)
+  await logActivity(
     params.id,
     body.action === 'approve_all' ? 'approved' : 'rejected',
     actor,

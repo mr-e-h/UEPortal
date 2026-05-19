@@ -24,18 +24,18 @@ export async function GET(request: NextRequest) {
     }
   }
 
-  const allReports = readJson<WeeklyReport>('weekly_reports.json')
+  const allReports = await readJson<WeeklyReport>('weekly_reports.json')
   const submissions = allReports.filter(
     (r) => r.project_id === projectId && r.subcontractor_id === subcontractorId &&
       r.year === Number(year) && r.week_number === Number(week)
   )
 
-  const allLines = readJson<WeeklyReportLine>('weekly_report_lines.json')
+  const allLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
   const submissionIds = new Set(submissions.map((r) => r.id))
   const weekLines = allLines.filter((l) => submissionIds.has(l.weekly_report_id))
 
-  const allBudgetLines = readJson<ProjectBudgetLine>('project_budget_lines.json')
-  const allProducts = readJson<Product>('products.json')
+  const allBudgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
+  const allProducts = await readJson<Product>('products.json')
 
   const byBudgetLine = new Map<string, {
     project_budget_line_id: string

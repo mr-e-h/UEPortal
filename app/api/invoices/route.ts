@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('project_id')
-  let invoices = readJson<ProjectInvoice>('project_invoices.json')
+  let invoices = await readJson<ProjectInvoice>('project_invoices.json')
   if (projectId) invoices = invoices.filter((i) => i.project_id === projectId)
   return NextResponse.json(invoices)
 }
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as Omit<ProjectInvoice, 'id' | 'created_at' | 'created_by'>
-  const invoices = readJson<ProjectInvoice>('project_invoices.json')
+  const invoices = await readJson<ProjectInvoice>('project_invoices.json')
   const newInvoice: ProjectInvoice = {
     id: randomUUID(),
     project_id: body.project_id,
@@ -30,6 +30,6 @@ export async function POST(request: NextRequest) {
     created_by: auth.user.full_name ?? 'Admin',
     created_at: new Date().toISOString(),
   }
-  writeJson('project_invoices.json', [...invoices, newInvoice])
+  await writeJson('project_invoices.json', [...invoices, newInvoice])
   return NextResponse.json(newInvoice, { status: 201 })
 }

@@ -19,14 +19,14 @@ export async function POST(request: NextRequest) {
   if (!email) return response
 
   try {
-    const users = readJson<User>('users.json')
+    const users = await readJson<User>('users.json')
     const user = users.find((u) => u.email.toLowerCase() === email)
     if (!user) return response
 
     const rawToken = generateToken()
     const now = new Date()
 
-    const resets = readJson<PasswordReset>('password_resets.json')
+    const resets = await readJson<PasswordReset>('password_resets.json')
 
     // Invalidate any earlier outstanding resets for this user — only the newest
     // link should work, so accidentally clicking an old link fails clearly.
@@ -44,7 +44,7 @@ export async function POST(request: NextRequest) {
       expires_at: new Date(now.getTime() + RESET_TTL_MS).toISOString(),
       used_at: null,
     })
-    writeJson('password_resets.json', cleaned)
+    await writeJson('password_resets.json', cleaned)
 
     const resetUrl = buildAppUrl(`/reset-password/${rawToken}`, request.url)
     await sendEmail({ to: user.email, content: passwordResetEmail({ resetUrl }) })

@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('project_id')
-  let rows = readJson<ForecastExtra>('project_forecast_extras.json')
+  let rows = await readJson<ForecastExtra>('project_forecast_extras.json')
   if (projectId) rows = rows.filter((r) => r.project_id === projectId)
   return NextResponse.json(rows)
 }
@@ -35,12 +35,12 @@ export async function POST(request: NextRequest) {
     rows: Omit<ForecastExtra, 'id'>[]
   }
 
-  const all = readJson<ForecastExtra>('project_forecast_extras.json')
+  const all = await readJson<ForecastExtra>('project_forecast_extras.json')
   const kept = all.filter((r) => r.project_id !== body.project_id)
   const newRows: ForecastExtra[] = body.rows.map((r) => ({
     ...r,
     id: randomUUID(),
   }))
-  writeJson('project_forecast_extras.json', [...kept, ...newRows])
+  await writeJson('project_forecast_extras.json', [...kept, ...newRows])
   return NextResponse.json(newRows, { status: 200 })
 }

@@ -9,8 +9,8 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const params = new URL(request.url).searchParams
-  const deletedProjectIds = getDeletedProjectIds()
-  let lines = readJson<ProjectBudgetLine>('project_budget_lines.json').filter((l) => !deletedProjectIds.has(l.project_id))
+  const deletedProjectIds = await getDeletedProjectIds()
+  let lines = (await readJson<ProjectBudgetLine>('project_budget_lines.json')).filter((l) => !deletedProjectIds.has(l.project_id))
   const projectId = params.get('project_id')
   const subcontractorId = params.get('subcontractor_id')
   if (projectId) lines = lines.filter((l) => l.project_id === projectId)
@@ -21,7 +21,7 @@ export async function GET(request: NextRequest) {
   if (isSub(auth.user)) {
     const subId = auth.user.subcontractor_id
     if (!subId) return NextResponse.json([])
-    const links = readJson<ProjectSubcontractor>('project_subcontractors.json')
+    const links = await readJson<ProjectSubcontractor>('project_subcontractors.json')
     const allowedProjectIds = new Set(
       links.filter((l) => l.subcontractor_id === subId).map((l) => l.project_id)
     )
@@ -43,11 +43,11 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as { project_id: string; product_id: string; budget_quantity: number; line_type?: string }
-  const products = readJson<Product>('products.json')
+  const products = await readJson<Product>('products.json')
   const product = products.find((p) => p.id === body.product_id)
   if (!product) return NextResponse.json({ error: 'Produkt ikke funnet' }, { status: 404 })
 
-  const lines = readJson<ProjectBudgetLine>('project_budget_lines.json')
+  const lines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
   const newLine: ProjectBudgetLine = {
     id: randomUUID(),
     project_id: body.project_id,
@@ -58,7 +58,7 @@ export async function POST(request: NextRequest) {
     subcontractor_cost_price_snapshot: 0,
     line_type: (body.line_type as ProjectBudgetLine['line_type']) ?? 'subcontractor_work',
   }
-  writeJson('project_budget_lines.json', [...lines, newLine])
+  await writeJson('project_budget_lines.json', [...lines, newLine])
   return NextResponse.json(newLine, { status: 201 })
 }
 
@@ -67,14 +67,14 @@ export async function PUT(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as { id: string; assigned_subcontractor_id?: string | null; line_type?: string }
-  const lines = readJson<ProjectBudgetLine>('project_budget_lines.json')
+  const lines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
   const idx = lines.findIndex((l) => l.id === body.id)
   if (idx === -1) return NextResponse.json({ error: 'Linje ikke funnet' }, { status: 404 })
 
   // Handle line_type-only update (no subcontractor change)
   if (body.line_type !== undefined && body.assigned_subcontractor_id === undefined) {
     lines[idx] = { ...lines[idx], line_type: body.line_type as ProjectBudgetLine['line_type'] }
-    writeJson('project_budget_lines.json', lines)
+    await writeJson('project_budget_lines.json', lines)
     return NextResponse.json(lines[idx])
   }
 
@@ -82,7 +82,7 @@ export async function PUT(request: NextRequest) {
   if (body.assigned_subcontractor_id !== undefined) {
     costSnapshot = 0
     if (body.assigned_subcontractor_id && body.assigned_subcontractor_id !== '__intern__') {
-      const prices = readJson<SubcontractorProductPrice>('subcontractor_product_prices.json')
+      const prices = await readJson<SubcontractorProductPrice>('subcontractor_product_prices.json')
       const price = prices.find(
         (p) => p.subcontractor_id === body.assigned_subcontractor_id && p.product_id === lines[idx].product_id
       )
@@ -101,6 +101,6 @@ export async function PUT(request: NextRequest) {
     ...(body.assigned_subcontractor_id !== undefined ? { assigned_subcontractor_id: body.assigned_subcontractor_id, subcontractor_cost_price_snapshot: costSnapshot } : {}),
     ...(body.line_type !== undefined ? { line_type: body.line_type as ProjectBudgetLine['line_type'] } : {}),
   }
-  writeJson('project_budget_lines.json', lines)
+  await writeJson('project_budget_lines.json', lines)
   return NextResponse.json(lines[idx])
 }

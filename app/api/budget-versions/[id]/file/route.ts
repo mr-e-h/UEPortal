@@ -12,7 +12,7 @@ export async function GET(
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const versions = readJson<BudgetVersion>('budget_versions.json')
+  const versions = await readJson<BudgetVersion>('budget_versions.json')
   const version = versions.find((v) => v.id === params.id)
 
   if (!version) return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })

@@ -9,7 +9,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const year = searchParams.get('year')
-  let periods = readJson<ForecastPeriod>('forecast_periods.json')
+  let periods = await readJson<ForecastPeriod>('forecast_periods.json')
 
   const targetYear = year ? Number(year) : new Date().getFullYear()
 
@@ -22,7 +22,7 @@ export async function GET(request: NextRequest) {
       { id: `fp-${targetYear}-p3`, name: 'P3', year: targetYear, start_month: 1, end_month: 12, status: 'open', locked: false, locked_at: null, locked_by: null },
       { id: `fp-${targetYear}-p4`, name: 'P4', year: targetYear, start_month: 1, end_month: 12, status: 'open', locked: false, locked_at: null, locked_by: null },
     ]
-    writeJson('forecast_periods.json', [...periods, ...newPeriods])
+    await writeJson('forecast_periods.json', [...periods, ...newPeriods])
     return NextResponse.json(newPeriods)
   }
 

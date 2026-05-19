@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
   const county = searchParams.get('county')
   const includeInactive = searchParams.get('include_inactive') === 'true'
 
-  let products = readJson<Product>('products.json')
+  let products = await readJson<Product>('products.json')
   if (!includeInactive) products = products.filter((p) => p.active !== false)
   if (county) products = products.filter((p) => p.county === county)
 
@@ -21,7 +21,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as Omit<Product, 'id' | 'created_at'>
-  const products = readJson<Product>('products.json')
+  const products = await readJson<Product>('products.json')
   const newProduct: Product = {
     ...body,
     id: randomUUID(),
@@ -29,6 +29,6 @@ export async function POST(request: NextRequest) {
     active: body.active !== false,
     created_at: new Date().toISOString(),
   }
-  writeJson('products.json', [...products, newProduct])
+  await writeJson('products.json', [...products, newProduct])
   return NextResponse.json(newProduct, { status: 201 })
 }

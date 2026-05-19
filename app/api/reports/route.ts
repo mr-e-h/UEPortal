@@ -18,7 +18,7 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const params = new URL(request.url).searchParams
-  let reports = readJson<LegacyReport>('reports.json')
+  let reports = await readJson<LegacyReport>('reports.json')
   const projectId = params.get('project_id')
   const subcontractorId = params.get('subcontractor_id')
   if (projectId) reports = reports.filter((r) => r.project_id === projectId)
@@ -31,9 +31,9 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as Omit<LegacyReport, 'id' | 'status' | 'created_at' | 'updated_at'>
-  const reports = readJson<LegacyReport>('reports.json')
+  const reports = await readJson<LegacyReport>('reports.json')
   const now = new Date().toISOString()
   const newReport: LegacyReport = { id: String(Date.now()), ...body, status: 'submitted', created_at: now, updated_at: now }
-  writeJson('reports.json', [...reports, newReport])
+  await writeJson('reports.json', [...reports, newReport])
   return NextResponse.json(newReport, { status: 201 })
 }

@@ -12,7 +12,7 @@ export async function GET() {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const invitations = readJson<Invitation>('invitations.json')
+  const invitations = await readJson<Invitation>('invitations.json')
   return NextResponse.json(invitations)
 }
 
@@ -28,7 +28,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Mangler e-post eller rolle' }, { status: 400 })
   }
 
-  const invitations = readJson<Invitation>('invitations.json')
+  const invitations = await readJson<Invitation>('invitations.json')
 
   const pending = invitations.find((i) => i.email === email && i.accepted_at === null)
   if (pending) {
@@ -51,7 +51,7 @@ export async function POST(request: NextRequest) {
     accepted_at: null,
   }
 
-  writeJson('invitations.json', [...invitations, invitation])
+  await writeJson('invitations.json', [...invitations, invitation])
 
   const acceptUrl = buildAppUrl(`/accept-invite/${rawToken}`, request.url)
   try {

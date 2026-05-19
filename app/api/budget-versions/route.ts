@@ -9,7 +9,7 @@ export async function GET(req: NextRequest) {
 
   const { searchParams } = new URL(req.url)
   const projectId = searchParams.get('project_id')
-  let versions = readJson<BudgetVersion>('budget_versions.json')
+  let versions = await readJson<BudgetVersion>('budget_versions.json')
   if (projectId) versions = versions.filter((v) => v.project_id === projectId)
   return NextResponse.json(versions.sort((a, b) => a.version - b.version))
 }

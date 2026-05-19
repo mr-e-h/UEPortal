@@ -8,7 +8,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
 
-  const reports = readJson<WeeklyReport>('weekly_reports.json')
+  const reports = await readJson<WeeklyReport>('weekly_reports.json')
   const report = reports.find((r) => r.id === params.id)
   if (!report) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -20,11 +20,11 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
   }
 
-  const allLines = readJson<WeeklyReportLine>('weekly_report_lines.json')
+  const allLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
   const reportLines = allLines.filter((l) => l.weekly_report_id === params.id)
 
-  const allBudgetLines = readJson<ProjectBudgetLine>('project_budget_lines.json')
-  const allProducts = readJson<Product>('products.json')
+  const allBudgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
+  const allProducts = await readJson<Product>('products.json')
 
   const enrichedLines = reportLines.map((line) => {
     const bl = allBudgetLines.find((b) => b.id === line.project_budget_line_id)

@@ -5,17 +5,17 @@ import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import { fmtNOK as fmt } from '@/lib/format'
 
-export default function ChangeOrdersPage() {
+export default async function ChangeOrdersPage() {
   const activeProjectIds = new Set(
-    readJson<Project>('projects.json').filter((p) => !p.deleted).map((p) => p.id)
+    (await readJson<Project>('projects.json')).filter((p) => !p.deleted).map((p) => p.id)
   )
-  const orders = readJson<ChangeOrder>('change_orders.json')
+  const orders = (await readJson<ChangeOrder>('change_orders.json'))
     .filter((o) => o.status !== 'draft' && activeProjectIds.has(o.project_id))
     .sort((a, b) => (b.submitted_at ?? '').localeCompare(a.submitted_at ?? ''))
 
-  const projects = readJson<Project>('projects.json')
-  const subcontractors = readJson<Subcontractor>('subcontractors.json')
-  const products = readJson<Product>('products.json')
+  const projects = await readJson<Project>('projects.json')
+  const subcontractors = await readJson<Subcontractor>('subcontractors.json')
+  const products = await readJson<Product>('products.json')
 
   const projMap = new Map(projects.map((p) => [p.id, p]))
   const subMap = new Map(subcontractors.map((s) => [s.id, s]))

@@ -6,5 +6,5 @@ import type { Project } from '@/types'
 export async function GET() {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
-  return NextResponse.json(readJson<Project>('projects.json').filter((p) => p.deleted))
+  return NextResponse.json((await readJson<Project>('projects.json')).filter((p) => p.deleted))
 }

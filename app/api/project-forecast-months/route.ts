@@ -10,7 +10,7 @@ export async function GET(request: NextRequest) {
 
   const { searchParams } = new URL(request.url)
   const forecastId = searchParams.get('forecast_id')
-  let months = readJson<ProjectForecastMonth>('project_forecast_months.json')
+  let months = await readJson<ProjectForecastMonth>('project_forecast_months.json')
   if (forecastId) months = months.filter((m) => m.project_forecast_id === forecastId)
   return NextResponse.json(months)
 }
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as { forecast_id: string; months: Omit<ProjectForecastMonth, 'id' | 'project_forecast_id'>[] }
-  const all = readJson<ProjectForecastMonth>('project_forecast_months.json')
+  const all = await readJson<ProjectForecastMonth>('project_forecast_months.json')
 
   // Replace all months for this forecast (upsert)
   const kept = all.filter((m) => m.project_forecast_id !== body.forecast_id)
@@ -37,6 +37,6 @@ export async function POST(request: NextRequest) {
     comment: m.comment ?? '',
   }))
 
-  writeJson('project_forecast_months.json', [...kept, ...newMonths])
+  await writeJson('project_forecast_months.json', [...kept, ...newMonths])
   return NextResponse.json(newMonths, { status: 201 })
 }

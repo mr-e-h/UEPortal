@@ -19,7 +19,7 @@ export async function PUT(
       status?: 'pending' | 'draft'
     }
 
-    const orders = readJson<ChangeOrder>('change_orders.json')
+    const orders = await readJson<ChangeOrder>('change_orders.json')
     const idx = orders.findIndex((o) => o.id === params.id)
     if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -47,8 +47,8 @@ export async function PUT(
     let unit = order.unit
 
     if (newProductId !== order.product_id || newQuantity !== order.requested_quantity) {
-      const products = readJson<Product>('products.json')
-      const prices = readJson<SubcontractorProductPrice>('subcontractor_product_prices.json')
+      const products = await readJson<Product>('products.json')
+      const prices = await readJson<SubcontractorProductPrice>('subcontractor_product_prices.json')
 
       const product = products.find((p) => p.id === newProductId)
       if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
@@ -60,7 +60,7 @@ export async function PUT(
 
       // Fall back to budget line snapshot if no explicit price
       if (costPriceSnapshot === 0) {
-        const budgetLines = readJson<ProjectBudgetLine>('project_budget_lines.json')
+        const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
         const bl = budgetLines.find(
           (bl) =>
             bl.project_id === order.project_id &&
@@ -92,7 +92,7 @@ export async function PUT(
       submitted_at: newStatus === 'pending' ? now : order.submitted_at,
     }
 
-    writeJson('change_orders.json', orders)
+    await writeJson('change_orders.json', orders)
     return NextResponse.json(orders[idx])
   } catch (error) {
     console.error('change-orders PUT error:', error)

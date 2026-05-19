@@ -21,7 +21,7 @@ export async function POST(
 
   const uploadedBy = (formData.get('uploaded_by') as string | null) ?? 'Ukjent'
 
-  const projects = readJson<Project>('projects.json')
+  const projects = await readJson<Project>('projects.json')
   const projectIdx = projects.findIndex((p) => p.id === params.id)
   if (projectIdx === -1) return NextResponse.json({ error: 'Project not found' }, { status: 404 })
   const project = projects[projectIdx]
@@ -48,19 +48,19 @@ export async function POST(
 
   if (Object.keys(updatedFields).length > 0) {
     projects[projectIdx] = { ...project, ...updatedFields }
-    writeJson('projects.json', projects)
+    await writeJson('projects.json', projects)
   }
 
-  const result = importExcelLines(project.id, project.county, parsed.lines)
+  const result = await importExcelLines(project.id, project.county, parsed.lines)
 
   // Snapshot budget totals after the import — mirrors project page: manual lines + approved change orders
-  const budgetLines = readJson<ProjectBudgetLine>('project_budget_lines.json').filter(
+  const budgetLines = (await readJson<ProjectBudgetLine>('project_budget_lines.json')).filter(
     (bl) => bl.project_id === params.id && (!bl.source || bl.source === 'manual')
   )
   const manualSales = budgetLines.reduce((s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot, 0)
   const manualCost = budgetLines.reduce((s, bl) => s + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0)
 
-  const approvedCOs = readJson<ChangeOrder>('change_orders.json').filter(
+  const approvedCOs = (await readJson<ChangeOrder>('change_orders.json')).filter(
     (co) => co.project_id === params.id && co.status === 'approved'
   )
   const coSales = approvedCOs.reduce((s, co) => s + co.total_customer_value, 0)
@@ -69,7 +69,7 @@ export async function POST(
   const totalSalesValue = manualSales + coSales
   const totalCostValue = manualCost + coCost
 
-  const versions = readJson<BudgetVersion>('budget_versions.json')
+  const versions = await readJson<BudgetVersion>('budget_versions.json')
   const projectVersions = versions.filter((v) => v.project_id === params.id)
   const nextVersion = projectVersions.length === 0 ? 0 : Math.max(...projectVersions.map((v) => v.version)) + 1
 
@@ -91,7 +91,7 @@ export async function POST(
     uploaded_at: new Date().toISOString(),
     file_name: storedFileName,
   })
-  writeJson('budget_versions.json', versions)
+  await writeJson('budget_versions.json', versions)
 
   return NextResponse.json({ ...result, ok: true, updated_fields: updatedFields })
 }

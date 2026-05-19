@@ -7,7 +7,7 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const entries = readJson<HourEntry>('hour_entries.json')
-  writeJson('hour_entries.json', entries.filter((e) => e.id !== params.id))
+  const entries = await readJson<HourEntry>('hour_entries.json')
+  await writeJson('hour_entries.json', entries.filter((e) => e.id !== params.id))
   return NextResponse.json({ ok: true })
 }

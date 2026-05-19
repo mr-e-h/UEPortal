@@ -15,13 +15,13 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as { name: string; cost_per_hour: number }
-  const types = readJson<TimeType>('time_types.json')
+  const types = await readJson<TimeType>('time_types.json')
   const newType: TimeType = {
     id: randomUUID(),
     name: body.name,
     cost_per_hour: Number(body.cost_per_hour),
     active: true,
   }
-  writeJson('time_types.json', [...types, newType])
+  await writeJson('time_types.json', [...types, newType])
   return NextResponse.json(newType, { status: 201 })
 }

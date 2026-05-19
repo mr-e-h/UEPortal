@@ -18,10 +18,10 @@ export async function GET(request: NextRequest) {
 
   const subcontractorId = requestedSubId
 
-  const links = readJson<ProjectSubcontractor>('project_subcontractors.json')
-  const projects = readJson<Project>('projects.json')
-  const allBudgetLines = readJson<ProjectBudgetLine>('project_budget_lines.json')
-  const allProducts = readJson<Product>('products.json')
+  const links = await readJson<ProjectSubcontractor>('project_subcontractors.json')
+  const projects = await readJson<Project>('projects.json')
+  const allBudgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
+  const allProducts = await readJson<Product>('products.json')
 
   const projectIds = links.filter((l) => l.subcontractor_id === subcontractorId).map((l) => l.project_id)
 

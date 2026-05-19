@@ -14,7 +14,7 @@ export async function POST(
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
 
-  const orders = readJson<ChangeOrder>('change_orders.json')
+  const orders = await readJson<ChangeOrder>('change_orders.json')
   const idx = orders.findIndex((o) => o.id === params.id)
   if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
@@ -52,7 +52,7 @@ export async function POST(
 
   const attachmentUrl = `/uploads/${uploadFilename}`
   orders[idx] = { ...orders[idx], attachment_url: attachmentUrl }
-  writeJson('change_orders.json', orders)
+  await writeJson('change_orders.json', orders)
 
   return NextResponse.json({ attachment_url: attachmentUrl })
 }

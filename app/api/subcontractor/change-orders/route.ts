@@ -25,8 +25,8 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
   }
 
-  const deletedProjectIds = getDeletedProjectIds()
-  const orders = readJson<ChangeOrder>('change_orders.json')
+  const deletedProjectIds = await getDeletedProjectIds()
+  const orders = await readJson<ChangeOrder>('change_orders.json')
 
   const safe: UEChangeOrder[] = orders
     .filter((o) => {

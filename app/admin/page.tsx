@@ -27,22 +27,22 @@ function weekList(count: number, currentWeek: number, thisYear: number): { week:
 }
 
 export default async function AdminDashboard() {
-  const projects = readJson<Project>('projects.json').filter((p) => !p.deleted)
+  const projects = (await readJson<Project>('projects.json')).filter((p) => !p.deleted)
   const activeProjectIds = new Set(projects.map((p) => p.id))
-  const budgetLines = readJson<ProjectBudgetLine>('project_budget_lines.json').filter(
+  const budgetLines = (await readJson<ProjectBudgetLine>('project_budget_lines.json')).filter(
     (bl) => activeProjectIds.has(bl.project_id)
   )
-  const weeklyReports = readJson<WeeklyReport>('weekly_reports.json').filter(
+  const weeklyReports = (await readJson<WeeklyReport>('weekly_reports.json')).filter(
     (r) => activeProjectIds.has(r.project_id)
   )
-  const weeklyReportLines = readJson<WeeklyReportLine>('weekly_report_lines.json')
-  const changeOrders = readJson<ChangeOrder>('change_orders.json').filter(
+  const weeklyReportLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
+  const changeOrders = (await readJson<ChangeOrder>('change_orders.json')).filter(
     (co) => activeProjectIds.has(co.project_id)
   )
-  const hourEntries = readJson<HourEntry>('hour_entries.json').filter(
+  const hourEntries = (await readJson<HourEntry>('hour_entries.json')).filter(
     (he) => activeProjectIds.has(he.project_id)
   )
-  const subcontractors = readJson<Subcontractor>('subcontractors.json')
+  const subcontractors = await readJson<Subcontractor>('subcontractors.json')
 
   const now = new Date()
   const thisYear = now.getFullYear()

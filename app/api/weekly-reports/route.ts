@@ -16,8 +16,8 @@ export async function GET(request: NextRequest) {
 
   const isSubRole = session.role === 'sub' || session.role === 'subcontractor'
 
-  const deletedProjectIds = getDeletedProjectIds()
-  let reports = readJson<WeeklyReport>('weekly_reports.json').filter((r) => !deletedProjectIds.has(r.project_id))
+  const deletedProjectIds = await getDeletedProjectIds()
+  let reports = (await readJson<WeeklyReport>('weekly_reports.json')).filter((r) => !deletedProjectIds.has(r.project_id))
 
   if (isSubRole) {
     if (!session.subcontractor_id) return NextResponse.json([])
@@ -29,7 +29,7 @@ export async function GET(request: NextRequest) {
   if (weekNumber) reports = reports.filter((r) => r.week_number === Number(weekNumber))
 
   if (withLines) {
-    const allLines = readJson<WeeklyReportLine>('weekly_report_lines.json')
+    const allLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
     return NextResponse.json(reports.map((r) => ({ ...r, lines: allLines.filter((l) => l.weekly_report_id === r.id) })))
   }
 
@@ -50,7 +50,7 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
   }
 
-  const reports = readJson<WeeklyReport>('weekly_reports.json')
+  const reports = await readJson<WeeklyReport>('weekly_reports.json')
 
   const sameWeekCount = reports.filter(
     (r) => r.project_id === body.project_id && r.subcontractor_id === body.subcontractor_id &&
@@ -71,6 +71,6 @@ export async function POST(request: NextRequest) {
     admin_comment: null,
     created_at: new Date().toISOString(),
   }
-  writeJson('weekly_reports.json', [...reports, newReport])
+  await writeJson('weekly_reports.json', [...reports, newReport])
   return NextResponse.json(newReport, { status: 201 })
 }
