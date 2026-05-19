@@ -49,6 +49,7 @@ export async function POST(request: NextRequest) {
     full_name: body.full_name,
     role: body.role,
     subcontractor_id: body.role === 'sub' ? (body.subcontractor_id ?? null) : null,
+    active: true,
   }
 
   await writeJson('users.json', [...users, newUser])

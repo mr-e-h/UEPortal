@@ -24,6 +24,23 @@ export interface PasswordReset {
   /** Set when the token has been consumed; single-use only */
   used_at: string | null
 }
+
+export type AccessRequestStatus = 'pending' | 'approved' | 'rejected'
+
+export interface AccessRequest {
+  id: string
+  full_name: string
+  email: string
+  company: string | null
+  phone: string | null
+  message: string | null
+  desired_role: 'project_manager' | 'subcontractor' | null
+  status: AccessRequestStatus
+  created_at: string
+  decided_at: string | null
+  decided_by: string | null
+  decision_note: string | null
+}
 export type ProjectStatus = 'active' | 'completed' | 'archived'
 export type ReportStatus = 'draft' | 'submitted' | 'approved' | 'rejected'
 
@@ -34,6 +51,7 @@ export interface User {
   role: UserRole
   full_name: string
   subcontractor_id: string | null
+  active: boolean
 }
 
 export interface Product {

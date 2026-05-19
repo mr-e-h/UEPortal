@@ -15,6 +15,8 @@ export default function LoginPage() {
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(false)
 
+  const [showRequest, setShowRequest] = useState(false)
+
   async function handleLogin(e: React.FormEvent) {
     e.preventDefault()
     setLoading(true)
@@ -99,12 +101,167 @@ export default function LoginPage() {
             {loading ? 'Logger inn...' : 'Logg inn'}
           </button>
 
-          <div className="text-center">
-            <Link href="/forgot-password" className="text-sm text-gray-600 hover:text-blue-600 hover:underline">
+          <div className="flex items-center justify-between text-sm">
+            <Link href="/forgot-password" className="text-gray-600 hover:text-blue-600 hover:underline">
               Glemt passord?
             </Link>
+            <button
+              type="button"
+              onClick={() => setShowRequest(true)}
+              className="text-gray-600 hover:text-blue-600 hover:underline"
+            >
+              Be om tilgang
+            </button>
           </div>
         </form>
+      </div>
+
+      {showRequest && <RequestAccessModal onClose={() => setShowRequest(false)} />}
+    </div>
+  )
+}
+
+function RequestAccessModal({ onClose }: { onClose: () => void }) {
+  const [form, setForm] = useState({
+    full_name: '',
+    email: '',
+    company: '',
+    phone: '',
+    desired_role: 'subcontractor' as 'project_manager' | 'subcontractor',
+    message: '',
+  })
+  const [submitting, setSubmitting] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [done, setDone] = useState(false)
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault()
+    setError(null)
+    setSubmitting(true)
+    const res = await fetch('/api/access-requests', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(form),
+    })
+    setSubmitting(false)
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setError(data.error ?? 'Kunne ikke sende forespørselen, prøv igjen senere')
+      return
+    }
+    setDone(true)
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black/40 flex items-center justify-center p-4 z-50" onClick={onClose}>
+      <div
+        className="bg-white rounded-lg shadow-lg max-w-md w-full p-6 space-y-4"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start justify-between">
+          <div>
+            <h2 className="text-lg font-semibold text-gray-900">Be om tilgang</h2>
+            <p className="text-sm text-gray-600 mt-0.5">
+              Fyll ut skjemaet, så vil en administrator vurdere forespørselen.
+            </p>
+          </div>
+          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none" aria-label="Lukk">×</button>
+        </div>
+
+        {done ? (
+          <div className="space-y-4">
+            <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
+              Takk! Forespørselen er sendt. Du får e-post når en administrator har behandlet den.
+            </div>
+            <button
+              type="button"
+              onClick={onClose}
+              className="w-full py-2 px-4 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
+            >
+              Lukk
+            </button>
+          </div>
+        ) : (
+          <form onSubmit={handleSubmit} className="space-y-3">
+            {error && (
+              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</div>
+            )}
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Fullt navn *</label>
+              <input
+                required
+                value={form.full_name}
+                onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
+              />
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">E-post *</label>
+              <input
+                required
+                type="email"
+                value={form.email}
+                onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Selskap</label>
+                <input
+                  value={form.company}
+                  onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
+                />
+              </div>
+              <div>
+                <label className="block text-xs font-medium text-gray-700 mb-1">Telefon</label>
+                <input
+                  value={form.phone}
+                  onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
+                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
+                />
+              </div>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Ønsket rolle</label>
+              <select
+                value={form.desired_role}
+                onChange={(e) => setForm((f) => ({ ...f, desired_role: e.target.value as 'project_manager' | 'subcontractor' }))}
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
+              >
+                <option value="subcontractor">Underentreprenør</option>
+                <option value="project_manager">Prosjektleder</option>
+              </select>
+            </div>
+            <div>
+              <label className="block text-xs font-medium text-gray-700 mb-1">Melding</label>
+              <textarea
+                rows={3}
+                value={form.message}
+                onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
+                placeholder="Hvilke prosjekter, kontaktperson hos Netel, eller annen relevant info"
+                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900 resize-none"
+              />
+            </div>
+            <div className="flex gap-2 pt-1">
+              <button
+                type="button"
+                onClick={onClose}
+                className="flex-1 py-2 px-4 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
+              >
+                Avbryt
+              </button>
+              <button
+                type="submit"
+                disabled={submitting}
+                className="flex-1 py-2 px-4 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50"
+              >
+                {submitting ? 'Sender...' : 'Send forespørsel'}
+              </button>
+            </div>
+          </form>
+        )}
       </div>
     </div>
   )

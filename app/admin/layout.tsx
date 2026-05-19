@@ -16,6 +16,7 @@ import {
   TrendingUp,
   BarChart2,
   Receipt,
+  UserPlus,
 } from 'lucide-react'
 
 const sections = [
@@ -62,6 +63,7 @@ const sections = [
     label: 'INNSTILLINGER',
     links: [
       { href: '/admin/users', label: 'Brukere', icon: Users },
+      { href: '/admin/access-requests', label: 'Tilgangsforespørsler', icon: UserPlus, badgeKey: 'access-requests' as const },
       { href: '/admin/account', label: 'Min konto', icon: Settings },
     ],
   },
@@ -73,6 +75,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [ready, setReady] = useState(false)
   const [userName, setUserName] = useState('')
   const [search, setSearch] = useState('')
+  const [pendingAccessRequests, setPendingAccessRequests] = useState(0)
 
   useEffect(() => {
     const role = localStorage.getItem('user_role')
@@ -83,6 +86,29 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
       setReady(true)
     }
   }, [router])
+
+  // Poll the pending-request count so the sidebar badge stays roughly fresh.
+  // 30s is frequent enough to feel live but cheap on the DB.
+  useEffect(() => {
+    if (!ready) return
+    let cancelled = false
+    async function refresh() {
+      try {
+        const res = await fetch('/api/access-requests?status=pending')
+        if (!res.ok) return
+        const list = await res.json() as unknown[]
+        if (!cancelled) setPendingAccessRequests(Array.isArray(list) ? list.length : 0)
+      } catch { /* ignore */ }
+    }
+    refresh()
+    const id = setInterval(refresh, 30_000)
+    return () => { cancelled = true; clearInterval(id) }
+  }, [ready, pathname])
+
+  const badgeFor = (key?: string): number => {
+    if (key === 'access-requests') return pendingAccessRequests
+    return 0
+  }
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
@@ -110,8 +136,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               <p className="px-5 mb-1 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest">
                 {section.label}
               </p>
-              {section.links.map(({ href, label, icon: Icon, exact }) => {
+              {section.links.map((link) => {
+                const { href, label, icon: Icon } = link
+                const exact = 'exact' in link ? link.exact : false
+                const badgeKey = 'badgeKey' in link ? link.badgeKey : undefined
                 const active = exact ? pathname === href : pathname.startsWith(href)
+                const count = badgeFor(badgeKey)
                 return (
                   <Link
                     key={href}
@@ -123,7 +153,12 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                     }`}
                   >
                     <Icon size={16} strokeWidth={1.75} />
-                    {label}
+                    <span className="flex-1">{label}</span>
+                    {count > 0 && (
+                      <span className="bg-primary text-white text-[10px] font-semibold px-1.5 py-0.5 rounded-full min-w-[18px] text-center">
+                        {count}
+                      </span>
+                    )}
                   </Link>
                 )
               })}

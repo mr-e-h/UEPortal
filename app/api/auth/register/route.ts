@@ -65,6 +65,7 @@ export async function POST(request: NextRequest) {
     role,
     full_name,
     subcontractor_id: null,
+    active: true,
   }
 
   await writeJson('users.json', [...users, newUser])
