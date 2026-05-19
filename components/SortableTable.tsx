@@ -1,11 +1,11 @@
 'use client'
-import { useState } from 'react'
+import React, { useState } from 'react'
 
 type SortDirection = 'asc' | 'desc' | null
 
 export interface Column<T> {
   key: string
-  label: string
+  label: React.ReactNode
   sortable?: boolean
   render?: (row: T) => React.ReactNode
   getValue?: (row: T) => string | number | Date
@@ -20,9 +20,12 @@ interface Props<T extends { id: string }> {
   colWidths?: (string | undefined)[]
   rowClassName?: (row: T) => string
   onRowClick?: (row: T) => void
+  expandedRowId?: string | null
+  onRowExpand?: (id: string | null) => void
+  expandedRowRender?: (row: T) => React.ReactNode
 }
 
-export default function SortableTable<T extends { id: string }>({ columns, data, emptyText, tableClassName, colWidths, rowClassName, onRowClick }: Props<T>) {
+export default function SortableTable<T extends { id: string }>({ columns, data, emptyText, tableClassName, colWidths, rowClassName, onRowClick, expandedRowId, onRowExpand, expandedRowRender }: Props<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDirection>(null)
 
@@ -79,17 +82,39 @@ export default function SortableTable<T extends { id: string }>({ columns, data,
               </td>
             </tr>
           )}
-          {sorted.map((row) => (
-            <tr key={row.id} onClick={() => onRowClick?.(row)} className={rowClassName ? rowClassName(row) : 'border-b border-gray-100 hover:bg-gray-50'}>
-              {columns.map((col) => (
-                <td key={col.key} className={`px-3 py-2 text-sm text-gray-700${col.tdClassName ? ` ${col.tdClassName}` : ''}`}>
-                  {col.render
-                    ? col.render(row)
-                    : String((row as Record<string, unknown>)[col.key] ?? '')}
-                </td>
-              ))}
-            </tr>
-          ))}
+          {sorted.map((row) => {
+            const isExpanded = expandedRowId === row.id
+            const handleClick = () => {
+              if (expandedRowRender && onRowExpand) {
+                onRowExpand(isExpanded ? null : row.id)
+              } else {
+                onRowClick?.(row)
+              }
+            }
+            return (
+              <React.Fragment key={row.id}>
+                <tr
+                  onClick={handleClick}
+                  className={`${rowClassName ? rowClassName(row) : 'border-b border-gray-100 hover:bg-gray-50'}${(expandedRowRender || onRowClick) ? ' cursor-pointer' : ''}`}
+                >
+                  {columns.map((col) => (
+                    <td key={col.key} className={`px-3 py-2 text-sm text-gray-700${col.tdClassName ? ` ${col.tdClassName}` : ''}`}>
+                      {col.render
+                        ? col.render(row)
+                        : String((row as Record<string, unknown>)[col.key] ?? '')}
+                    </td>
+                  ))}
+                </tr>
+                {isExpanded && expandedRowRender && (
+                  <tr className="bg-gray-50">
+                    <td colSpan={columns.length} className="px-0 py-0">
+                      {expandedRowRender(row)}
+                    </td>
+                  </tr>
+                )}
+              </React.Fragment>
+            )
+          })}
         </tbody>
       </table>
     </div>

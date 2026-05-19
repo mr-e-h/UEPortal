@@ -62,7 +62,8 @@ export default async function AdminDashboard() {
     (l) => approvedReportIds.has(l.weekly_report_id) && l.status === 'approved'
   )
   const approvedCOs = changeOrders.filter(
-    (co) => co.status === 'approved' && co.submitted_at?.startsWith(String(thisYear))
+    // Use reviewed_at (approval date) for correct year attribution; fall back to submitted_at
+    (co) => co.status === 'approved' && (co.reviewed_at ?? co.submitted_at)?.startsWith(String(thisYear))
   )
   const pendingCOs = changeOrders.filter((co) => co.status === 'pending')
 
@@ -114,7 +115,7 @@ export default async function AdminDashboard() {
       (co) =>
         co.project_id === proj.id &&
         co.status === 'approved' &&
-        co.submitted_at?.startsWith(String(thisYear))
+        (co.reviewed_at ?? co.submitted_at)?.startsWith(String(thisYear))
     )
     const revenue =
       projApprovedLines.reduce(

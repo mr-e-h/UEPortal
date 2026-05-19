@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readJson, writeJson } from '@/lib/data'
 import { requireAdmin } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
-import type { ChangeOrder, ProjectBudgetLine, ActivityEntry } from '@/types'
+import type { ChangeOrder, ProjectBudgetLine, ActivityEntry, ProjectSubcontractor } from '@/types'
 
 function logActivity(
   entityId: string,
@@ -120,6 +120,16 @@ export async function POST(
       budgetLines.push(newLine)
     }
     writeJson('project_budget_lines.json', budgetLines)
+
+    // Ensure UE has access to the project (defensive link creation)
+    const links = readJson<ProjectSubcontractor>('project_subcontractors.json')
+    const hasLink = links.some(
+      (l) => l.project_id === order.project_id && l.subcontractor_id === order.subcontractor_id
+    )
+    if (!hasLink) {
+      links.push({ id: randomUUID(), project_id: order.project_id, subcontractor_id: order.subcontractor_id })
+      writeJson('project_subcontractors.json', links)
+    }
   }
 
   logActivity(params.id, status === 'approved' ? 'approved' : 'rejected', actor, admin_comment)

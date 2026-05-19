@@ -42,6 +42,7 @@ export default function LoginPage() {
 
     const dest = data.role === 'company' ? '/company'
       : (data.role === 'project_manager' || data.role === 'main') ? '/admin'
+      : (data.role === 'subcontractor' || data.role === 'sub') ? '/subcontractor'
       : '/subcontractor'
     router.push(dest)
   }
