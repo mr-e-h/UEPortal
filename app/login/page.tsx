@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
+import Link from 'next/link'
 
 type LoginResponse =
   | { id: string; role: 'company' | 'project_manager' | 'subcontractor' | 'main' | 'sub'; full_name: string; subcontractor_id: string | null }
@@ -97,6 +98,12 @@ export default function LoginPage() {
           >
             {loading ? 'Logger inn...' : 'Logg inn'}
           </button>
+
+          <div className="text-center">
+            <Link href="/forgot-password" className="text-sm text-gray-600 hover:text-blue-600 hover:underline">
+              Glemt passord?
+            </Link>
+          </div>
         </form>
       </div>
     </div>

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { randomUUID } from 'crypto'
 import { readJson, writeJson } from '@/lib/data'
+import { hashToken, safeCompareHash } from '@/lib/tokens'
 import type { User, Invitation } from '@/types'
 
 export async function POST(request: NextRequest) {
@@ -28,8 +29,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'E-postadressen er allerede i bruk' }, { status: 409 })
   }
 
+  const hashed = hashToken(token)
   const invitations = readJson<Invitation>('invitations.json')
-  const idx = invitations.findIndex((i) => i.token === token)
+  const idx = invitations.findIndex((i) => safeCompareHash(i.token_hash, hashed))
   if (idx === -1) return NextResponse.json({ error: 'Ugyldig invitasjonstoken' }, { status: 400 })
   const inv = invitations[idx]
   if (inv.accepted_at) return NextResponse.json({ error: 'Invitasjonen er allerede brukt' }, { status: 410 })

@@ -4,10 +4,25 @@ export interface Invitation {
   id: string
   email: string
   role: 'project_manager' | 'subcontractor'
-  token: string
+  /**
+   * SHA-256 hash of the invitation token. Raw tokens are only ever shown in
+   * the acceptance URL — they are never stored.
+   */
+  token_hash: string
   created_at: string
   expires_at: string
   accepted_at: string | null
+}
+
+export interface PasswordReset {
+  id: string
+  user_id: string
+  /** SHA-256 hash of the reset token (raw token only exists in the email link) */
+  token_hash: string
+  created_at: string
+  expires_at: string
+  /** Set when the token has been consumed; single-use only */
+  used_at: string | null
 }
 export type ProjectStatus = 'active' | 'completed' | 'archived'
 export type ReportStatus = 'draft' | 'submitted' | 'approved' | 'rejected'

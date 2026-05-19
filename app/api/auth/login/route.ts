@@ -18,9 +18,11 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Feil e-post eller passord' }, { status: 401 })
   }
 
+  // bcrypt only — plaintext fallback removed; any account with a non-bcrypt
+  // hash must reset its password via the forgot-password flow.
   const passwordValid = user.password.startsWith('$2')
     ? await bcrypt.compare(password, user.password)
-    : user.password === password // fallback for unhashed (dev migration)
+    : false
 
   if (!passwordValid) {
     return NextResponse.json({ error: 'Feil e-post eller passord' }, { status: 401 })
