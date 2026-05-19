@@ -34,3 +34,19 @@ yarn-error.log*
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# local dev tooling
+.claude/
+
+# user uploads
+/data/uploads/
+/public/uploads/
+
+# runtime JSON state (the JSON-as-database files mutate during dev-server use).
+# Config tables that should stay tracked are whitelisted below.
+/data/*.json
+!/data/lump_sum_codes.json
+!/data/time_types.json
+!/data/products.json
+!/data/subcontractors.json
+!/data/forecast_periods.json
