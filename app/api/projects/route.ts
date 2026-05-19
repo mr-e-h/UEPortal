@@ -4,14 +4,17 @@ import type { Project, ProjectBudgetLine, BudgetVersion } from '@/types'
 import { importExcelLines } from '@/lib/excel-import'
 import type { ParsedExcelLine } from '@/lib/excel'
 import { getSession } from '@/lib/auth'
+import { requireAdmin } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 
 export async function GET() {
   const session = await getSession()
-  const isSubRole = session?.role === 'sub' || session?.role === 'subcontractor'
+  if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+  const isSubRole = session.role === 'sub' || session.role === 'subcontractor'
   let projects = readJson<Project>('projects.json').filter((p) => !p.deleted)
 
-  if (isSubRole && session?.subcontractor_id) {
+  if (isSubRole) {
+    if (!session.subcontractor_id) return NextResponse.json([])
     const projectSubs = readJson<{ id: string; project_id: string; subcontractor_id: string }>('project_subcontractors.json')
     const allowedIds = new Set(
       projectSubs.filter((ps) => ps.subcontractor_id === session.subcontractor_id).map((ps) => ps.project_id)
@@ -23,6 +26,9 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
   const body = await request.json() as Omit<Project, 'id'> & {
     import_excel?: boolean
     excel_data?: ParsedExcelLine[]

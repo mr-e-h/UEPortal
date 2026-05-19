@@ -1,9 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson, writeJson } from '@/lib/data'
+import { requireAdmin } from '@/lib/api-guard'
+
 export async function POST(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
   const { status } = await request.json() as { status: string }
   const reports = readJson<Record<string, unknown>>('reports.json')
 

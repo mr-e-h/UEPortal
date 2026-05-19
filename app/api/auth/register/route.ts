@@ -18,6 +18,9 @@ export async function POST(request: NextRequest) {
   if (password.length < 8) {
     return NextResponse.json({ error: 'Passord må være minst 8 tegn' }, { status: 400 })
   }
+  if (!token) {
+    return NextResponse.json({ error: 'Invitasjonstoken er påkrevd for registrering' }, { status: 400 })
+  }
 
   const users = readJson<User>('users.json')
 
@@ -25,19 +28,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'E-postadressen er allerede i bruk' }, { status: 409 })
   }
 
-  let role: User['role'] = 'subcontractor'
-
-  if (token) {
-    const invitations = readJson<Invitation>('invitations.json')
-    const idx = invitations.findIndex((i) => i.token === token)
-    if (idx === -1) return NextResponse.json({ error: 'Ugyldig invitasjonstoken' }, { status: 400 })
-    const inv = invitations[idx]
-    if (inv.accepted_at) return NextResponse.json({ error: 'Invitasjonen er allerede brukt' }, { status: 410 })
-    if (new Date(inv.expires_at) < new Date()) return NextResponse.json({ error: 'Invitasjonen har utløpt' }, { status: 410 })
-    role = inv.role
-    invitations[idx] = { ...inv, accepted_at: new Date().toISOString() }
-    writeJson('invitations.json', invitations)
+  const invitations = readJson<Invitation>('invitations.json')
+  const idx = invitations.findIndex((i) => i.token === token)
+  if (idx === -1) return NextResponse.json({ error: 'Ugyldig invitasjonstoken' }, { status: 400 })
+  const inv = invitations[idx]
+  if (inv.accepted_at) return NextResponse.json({ error: 'Invitasjonen er allerede brukt' }, { status: 410 })
+  if (new Date(inv.expires_at) < new Date()) return NextResponse.json({ error: 'Invitasjonen har utløpt' }, { status: 410 })
+  if (inv.email.toLowerCase() !== email.toLowerCase()) {
+    return NextResponse.json({ error: 'E-postadressen samsvarer ikke med invitasjonen' }, { status: 400 })
   }
+  const role = inv.role
+  invitations[idx] = { ...inv, accepted_at: new Date().toISOString() }
+  writeJson('invitations.json', invitations)
 
   const hashedPassword = await bcrypt.hash(password, 10)
 

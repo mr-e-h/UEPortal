@@ -1,12 +1,17 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson, writeJson } from '@/lib/data'
-import type { ChangeOrder, Product, SubcontractorProductPrice } from '@/types'
+import { getSession } from '@/lib/auth'
+import { isAdmin, isSub } from '@/lib/api-guard'
+import type { ChangeOrder, Product, SubcontractorProductPrice, ProjectBudgetLine } from '@/types'
 
 export async function PUT(
   request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+
     const body = await request.json() as {
       product_id?: string
       requested_quantity?: number
@@ -19,6 +24,15 @@ export async function PUT(
     if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     const order = orders[idx]
+
+    if (isSub(session)) {
+      if (order.subcontractor_id !== session.subcontractor_id) {
+        return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+      }
+    } else if (!isAdmin(session)) {
+      return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+    }
+
     if (order.status !== 'draft') {
       return NextResponse.json({ error: 'Kan kun redigere kladder' }, { status: 409 })
     }
@@ -43,6 +57,21 @@ export async function PUT(
         (p) => p.subcontractor_id === order.subcontractor_id && p.product_id === newProductId
       )
       costPriceSnapshot = priceEntry?.cost_price ?? 0
+
+      // Fall back to budget line snapshot if no explicit price
+      if (costPriceSnapshot === 0) {
+        const budgetLines = readJson<ProjectBudgetLine>('project_budget_lines.json')
+        const bl = budgetLines.find(
+          (bl) =>
+            bl.project_id === order.project_id &&
+            bl.product_id === newProductId &&
+            bl.assigned_subcontractor_id === order.subcontractor_id
+        )
+        if (bl && bl.subcontractor_cost_price_snapshot > 0) {
+          costPriceSnapshot = bl.subcontractor_cost_price_snapshot
+        }
+      }
+
       customerPriceSnapshot = product.customer_price
       unit = product.unit
     }

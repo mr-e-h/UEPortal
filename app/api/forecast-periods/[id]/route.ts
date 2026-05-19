@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson, writeJson } from '@/lib/data'
+import { requireAdmin } from '@/lib/api-guard'
 import type { ForecastPeriod } from '@/types'
 
 export async function PATCH(request: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
   const body = await request.json() as Partial<ForecastPeriod>
   const periods = readJson<ForecastPeriod>('forecast_periods.json')
   const idx = periods.findIndex((p) => p.id === params.id)

@@ -1,8 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { readJson, writeJson } from '@/lib/data'
-import { requireAuth } from '@/lib/api-guard'
-import type { GanttMilestone } from '@/types'
+import { requireAuth, requireAdmin, isSub } from '@/lib/api-guard'
+import { DEFAULT_MILESTONE_COLOR } from '@/lib/milestone-colors'
+import type { GanttMilestone, ProjectSubcontractor } from '@/types'
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth()
@@ -16,11 +17,25 @@ export async function GET(req: NextRequest) {
   if (projectId) milestones = milestones.filter((m) => m.project_id === projectId)
   if (subcontractorId) milestones = milestones.filter((m) => m.subcontractor_id === subcontractorId)
 
+  if (isSub(auth.user)) {
+    const subId = auth.user.subcontractor_id
+    if (!subId) return NextResponse.json([])
+    const links = readJson<ProjectSubcontractor>('project_subcontractors.json')
+    const allowedProjectIds = new Set(
+      links.filter((l) => l.subcontractor_id === subId).map((l) => l.project_id)
+    )
+    milestones = milestones.filter(
+      (m) =>
+        allowedProjectIds.has(m.project_id) &&
+        (m.subcontractor_id == null || m.subcontractor_id === subId)
+    )
+  }
+
   return NextResponse.json(milestones)
 }
 
 export async function POST(req: NextRequest) {
-  const auth = await requireAuth()
+  const auth = await requireAdmin()
   if (!auth.ok) return auth.response
   const body = await req.json()
   const milestones = readJson<GanttMilestone>('milestones.json')
@@ -31,7 +46,7 @@ export async function POST(req: NextRequest) {
     title: body.title,
     start_date: body.start_date,
     end_date: body.end_date,
-    color: body.color ?? '#3B82F6',
+    color: body.color ?? DEFAULT_MILESTONE_COLOR,
     created_at: new Date().toISOString(),
   }
   milestones.push(newItem)
@@ -40,7 +55,7 @@ export async function POST(req: NextRequest) {
 }
 
 export async function PUT(req: NextRequest) {
-  const auth = await requireAuth()
+  const auth = await requireAdmin()
   if (!auth.ok) return auth.response
   const body = await req.json()
   const milestones = readJson<GanttMilestone>('milestones.json')
@@ -52,7 +67,7 @@ export async function PUT(req: NextRequest) {
 }
 
 export async function PATCH(req: NextRequest) {
-  const auth = await requireAuth()
+  const auth = await requireAdmin()
   if (!auth.ok) return auth.response
   const updates = await req.json() as { id: string; sort_order: number }[]
   const milestones = readJson<GanttMilestone>('milestones.json')
@@ -65,7 +80,7 @@ export async function PATCH(req: NextRequest) {
 }
 
 export async function DELETE(req: NextRequest) {
-  const auth = await requireAuth()
+  const auth = await requireAdmin()
   if (!auth.ok) return auth.response
   const { searchParams } = new URL(req.url)
   const id = searchParams.get('id')

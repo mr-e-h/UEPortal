@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson, writeJson } from '@/lib/data'
+import { requireAdmin } from '@/lib/api-guard'
 
 type LegacyReport = {
   id: string
@@ -13,6 +14,9 @@ type LegacyReport = {
 }
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
   const params = new URL(request.url).searchParams
   let reports = readJson<LegacyReport>('reports.json')
   const projectId = params.get('project_id')
@@ -23,6 +27,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
   const body = await request.json() as Omit<LegacyReport, 'id' | 'status' | 'created_at' | 'updated_at'>
   const reports = readJson<LegacyReport>('reports.json')
   const now = new Date().toISOString()

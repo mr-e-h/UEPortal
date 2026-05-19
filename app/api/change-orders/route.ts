@@ -1,12 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson, writeJson, getDeletedProjectIds } from '@/lib/data'
-import type { ChangeOrder, Product, SubcontractorProductPrice } from '@/types'
+import type { ChangeOrder, Product, SubcontractorProductPrice, ProjectBudgetLine } from '@/types'
 import { getSession } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
   try {
     const session = await getSession()
-    const isSubRole = session?.role === 'sub' || session?.role === 'subcontractor'
+    if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+    const isSubRole = session.role === 'sub' || session.role === 'subcontractor'
 
     const params = new URL(request.url).searchParams
     const deletedProjectIds = getDeletedProjectIds()
@@ -16,21 +17,32 @@ export async function GET(request: NextRequest) {
     const subcontractorId = params.get('subcontractor_id')
     const id = params.get('id')
 
-    if (isSubRole && session?.subcontractor_id) {
+    if (isSubRole) {
+      if (!session.subcontractor_id) return NextResponse.json([])
       orders = orders.filter((o) => o.subcontractor_id === session.subcontractor_id)
     }
     if (id) orders = orders.filter((o) => o.id === id)
     if (projectId) orders = orders.filter((o) => o.project_id === projectId)
     if (subcontractorId) orders = orders.filter((o) => o.subcontractor_id === subcontractorId)
+
+    if (isSubRole) {
+      const safe = orders.map(
+        ({ customer_price_snapshot: _cp, total_customer_value: _tcv, profit: _p, ...rest }) => rest
+      )
+      return NextResponse.json(safe)
+    }
     return NextResponse.json(orders)
   } catch (error) {
     console.error('change-orders GET error:', error)
-    return NextResponse.json([], { status: 200 })
+    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
   }
 }
 
 export async function POST(request: NextRequest) {
   try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+
     const body = await request.json() as {
       project_id: string
       product_id: string
@@ -38,6 +50,14 @@ export async function POST(request: NextRequest) {
       requested_quantity: number
       reason: string
       status?: 'pending' | 'draft'
+    }
+
+    const isSubRole = session.role === 'sub' || session.role === 'subcontractor'
+    if (isSubRole && session.subcontractor_id !== body.subcontractor_id) {
+      return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+    }
+    if (!isSubRole && !['main', 'project_manager', 'company'].includes(session.role)) {
+      return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
     }
 
     const products = readJson<Product>('products.json')
@@ -49,7 +69,21 @@ export async function POST(request: NextRequest) {
     const priceEntry = prices.find(
       (p) => p.subcontractor_id === body.subcontractor_id && p.product_id === body.product_id
     )
-    const costPrice = priceEntry?.cost_price ?? 0
+    let costPrice = priceEntry?.cost_price ?? 0
+
+    // Fall back to the snapshot price from the assigned budget line if no explicit price
+    if (costPrice === 0) {
+      const budgetLines = readJson<ProjectBudgetLine>('project_budget_lines.json')
+      const bl = budgetLines.find(
+        (bl) =>
+          bl.project_id === body.project_id &&
+          bl.product_id === body.product_id &&
+          bl.assigned_subcontractor_id === body.subcontractor_id
+      )
+      if (bl && bl.subcontractor_cost_price_snapshot > 0) {
+        costPrice = bl.subcontractor_cost_price_snapshot
+      }
+    }
 
     const totalCost = costPrice * body.requested_quantity
     const totalCustomerValue = product.customer_price * body.requested_quantity

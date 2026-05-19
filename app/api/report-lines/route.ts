@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson, writeJson, getDeletedProjectIds } from '@/lib/data'
+import { requireAdmin } from '@/lib/api-guard'
 import type { ReportLine } from '@/types'
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
   const params = new URL(request.url).searchParams
   const deletedProjectIds = getDeletedProjectIds()
   let lines = readJson<ReportLine>('report_lines.json').filter((l) => !deletedProjectIds.has(l.project_id))
@@ -16,6 +20,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
   const body = await request.json() as Omit<ReportLine, 'id' | 'status'>
   const lines = readJson<ReportLine>('report_lines.json')
   const newLine: ReportLine = {

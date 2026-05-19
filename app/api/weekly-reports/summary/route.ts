@@ -1,8 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson } from '@/lib/data'
+import { getSession } from '@/lib/auth'
+import { isAdmin, isSub } from '@/lib/api-guard'
 import type { WeeklyReport, WeeklyReportLine, ProjectBudgetLine, Product } from '@/types'
 
 export async function GET(request: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('project_id')
   const subcontractorId = searchParams.get('subcontractor_id')
@@ -11,6 +16,12 @@ export async function GET(request: NextRequest) {
 
   if (!projectId || !subcontractorId || !year || !week) {
     return NextResponse.json({ error: 'project_id, subcontractor_id, year, and week are required' }, { status: 400 })
+  }
+
+  if (!isAdmin(session)) {
+    if (!isSub(session) || session.subcontractor_id !== subcontractorId) {
+      return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+    }
   }
 
   const allReports = readJson<WeeklyReport>('weekly_reports.json')

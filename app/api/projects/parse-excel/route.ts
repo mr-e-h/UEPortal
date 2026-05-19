@@ -1,7 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { parseExcelBuffer } from '@/lib/excel'
+import { requireAdmin } from '@/lib/api-guard'
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
   const formData = await request.formData()
   const file = formData.get('file') as File | null
   if (!file) return NextResponse.json({ error: 'No file' }, { status: 400 })

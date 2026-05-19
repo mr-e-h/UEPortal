@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson, writeJson } from '@/lib/data'
+import { requireAdmin } from '@/lib/api-guard'
 import type { ProjectHourBudget } from '@/types'
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('project_id')
   const budgets = readJson<ProjectHourBudget>('project_hour_budgets.json')
@@ -10,6 +14,9 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
   const body = await request.json() as { project_id: string; time_type_id: string; estimated_hours: number }
   const budgets = readJson<ProjectHourBudget>('project_hour_budgets.json')
   const newBudget: ProjectHourBudget = {

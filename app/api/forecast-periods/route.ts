@@ -1,8 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson, writeJson } from '@/lib/data'
+import { requireAdmin } from '@/lib/api-guard'
 import type { ForecastPeriod } from '@/types'
 
 export async function GET(request: NextRequest) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
   const { searchParams } = new URL(request.url)
   const year = searchParams.get('year')
   let periods = readJson<ForecastPeriod>('forecast_periods.json')

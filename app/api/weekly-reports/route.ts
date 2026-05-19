@@ -4,6 +4,9 @@ import type { WeeklyReport, WeeklyReportLine } from '@/types'
 import { getSession } from '@/lib/auth'
 
 export async function GET(request: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+
   const { searchParams } = new URL(request.url)
   const projectId = searchParams.get('project_id')
   const subcontractorId = searchParams.get('subcontractor_id')
@@ -11,13 +14,13 @@ export async function GET(request: NextRequest) {
   const weekNumber = searchParams.get('week_number')
   const withLines = searchParams.get('with_lines') === 'true'
 
-  const session = await getSession()
-  const isSubRole = session?.role === 'sub' || session?.role === 'subcontractor'
+  const isSubRole = session.role === 'sub' || session.role === 'subcontractor'
 
   const deletedProjectIds = getDeletedProjectIds()
   let reports = readJson<WeeklyReport>('weekly_reports.json').filter((r) => !deletedProjectIds.has(r.project_id))
 
-  if (isSubRole && session?.subcontractor_id) {
+  if (isSubRole) {
+    if (!session.subcontractor_id) return NextResponse.json([])
     reports = reports.filter((r) => r.subcontractor_id === session.subcontractor_id)
   }
   if (projectId) reports = reports.filter((r) => r.project_id === projectId)
@@ -34,7 +37,19 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
+  const session = await getSession()
+  if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+
   const body = await request.json() as { project_id: string; subcontractor_id: string; year: number; week_number: number }
+
+  const isSubRole = session.role === 'sub' || session.role === 'subcontractor'
+  if (isSubRole && session.subcontractor_id !== body.subcontractor_id) {
+    return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+  }
+  if (!isSubRole && !['main', 'project_manager', 'company'].includes(session.role)) {
+    return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+  }
+
   const reports = readJson<WeeklyReport>('weekly_reports.json')
 
   const sameWeekCount = reports.filter(
