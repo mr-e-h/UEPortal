@@ -29,7 +29,10 @@ export async function GET(request: NextRequest) {
     .filter((p) => projectIds.includes(p.id) && !p.deleted)
     .map((project) => {
       const assignedLines = allBudgetLines.filter(
-        (bl) => bl.project_id === project.id && bl.assigned_subcontractor_id === subcontractorId
+        (bl) =>
+          bl.project_id === project.id &&
+          bl.assigned_subcontractor_id === subcontractorId &&
+          (bl.line_type === 'subcontractor_work' || bl.line_type == null)
       )
       const linesWithProduct = assignedLines.map((bl) => {
         const product = allProducts.find((p) => p.id === bl.product_id)

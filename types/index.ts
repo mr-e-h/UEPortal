@@ -79,6 +79,7 @@ export interface ProjectBudgetLine {
   assigned_subcontractor_id: string | null
   subcontractor_cost_price_snapshot: number
   source?: 'manual' | 'change_order'
+  line_type?: 'subcontractor_work' | 'internal_cost' | 'material'
 }
 
 export type ChangeOrderStatus = 'draft' | 'pending' | 'approved' | 'rejected'
