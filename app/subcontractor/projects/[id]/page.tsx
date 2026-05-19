@@ -1,9 +1,9 @@
 ﻿'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import dynamic from 'next/dynamic'
 import { useRouter, useParams } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Plus, TrendingUp, CheckCircle, Clock, BarChart3, ChevronDown } from 'lucide-react'
-import BudgetLineChart from '@/components/BudgetLineChart'
 import type { WeeklyReport, WeeklyReportLine, ChangeOrder, GanttMilestone } from '@/types'
 import { getCurrentWeek, formatWeekLabel } from '@/lib/utils/weeks'
 import { calculateBudgetUsage, type LineWithReportStatus } from '@/lib/utils/budgetUsage'
@@ -12,8 +12,13 @@ import SortableTable from '@/components/SortableTable'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
-import ChangeOrderModal from '@/components/subcontractor/ChangeOrderModal'
-import GanttView from '@/components/subcontractor/GanttView'
+
+// Lazy-load heavy interactive components — they're only shown after a click
+// (modal opens, budget line expands, Gantt tab activated). Keeps the initial
+// JS bundle for this page small.
+const ChangeOrderModal = dynamic(() => import('@/components/subcontractor/ChangeOrderModal'), { ssr: false })
+const BudgetLineChart = dynamic(() => import('@/components/BudgetLineChart'), { ssr: false })
+const GanttView = dynamic(() => import('@/components/subcontractor/GanttView'), { ssr: false })
 import { fmtNOK as fmt } from '@/lib/format'
 import { weeklyReportStatus, weeklyReportLineStatus } from '@/lib/statuses'
 

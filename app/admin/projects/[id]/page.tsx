@@ -1,17 +1,21 @@
 'use client'
 
 import { useEffect, useState, useCallback, useRef } from 'react'
+import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { Download } from 'lucide-react'
-import BudgetLineChart from '@/components/BudgetLineChart'
 import type { Project, Product, ProjectBudgetLine, ReportLine, ProjectSubcontractor, Subcontractor, ChangeOrder, WeeklyReport, WeeklyReportLine, ProjectInternalCostEntry, SubcontractorProductPrice, GanttMilestone, BudgetVersion, ProjectMonthPlan } from '@/types'
 import SortableTable from '@/components/SortableTable'
 import NumberInput from '@/components/NumberInput'
 import ConfirmDialog from '@/components/ConfirmDialog'
-import InvoicesSection from './InvoicesSection'
-import ChangeOrdersSection from './ChangeOrdersSection'
-import GanttSection from './GanttSection'
+
+// Tab content lazy-loaded — most users land on the default tab and don't
+// touch Gantt/Invoices/Change orders right away. Defers ~30-60 KB of JS.
+const InvoicesSection = dynamic(() => import('./InvoicesSection'), { ssr: false })
+const ChangeOrdersSection = dynamic(() => import('./ChangeOrdersSection'), { ssr: false })
+const GanttSection = dynamic(() => import('./GanttSection'), { ssr: false })
+const BudgetLineChart = dynamic(() => import('@/components/BudgetLineChart'), { ssr: false })
 import { fmtNOK as fmt } from '@/lib/format'
 import { reportLineStatus } from '@/lib/statuses'
 import { lineTypeLabel } from '@/lib/line-types'

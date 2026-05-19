@@ -5,9 +5,12 @@ import Button from '@/components/ui/Button'
 import ProjectsListTable from '@/components/admin/ProjectsListTable'
 
 export default async function ProjectsPage() {
-  const projects = (await readJson<Project>('projects.json')).filter((p) => !p.deleted)
-  const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
-  const projectSubs = await readJson<{ id: string; project_id: string; subcontractor_id: string }>('project_subcontractors.json')
+  const [allProjects, budgetLines, projectSubs] = await Promise.all([
+    readJson<Project>('projects.json'),
+    readJson<ProjectBudgetLine>('project_budget_lines.json'),
+    readJson<{ id: string; project_id: string; subcontractor_id: string }>('project_subcontractors.json'),
+  ])
+  const projects = allProjects.filter((p) => !p.deleted)
 
   const blCounts: Record<string, number> = {}
   for (const bl of budgetLines) {

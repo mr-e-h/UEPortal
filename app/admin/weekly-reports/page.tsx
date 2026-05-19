@@ -6,15 +6,16 @@ import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 
 export default async function WeeklyReportsPage() {
-  const activeProjectIds = new Set(
-    (await readJson<Project>('projects.json')).filter((p) => !p.deleted).map((p) => p.id)
-  )
-  const reports = (await readJson<WeeklyReport>('weekly_reports.json'))
+  const [projects, allReports, subcontractors] = await Promise.all([
+    readJson<Project>('projects.json'),
+    readJson<WeeklyReport>('weekly_reports.json'),
+    readJson<Subcontractor>('subcontractors.json'),
+  ])
+
+  const activeProjectIds = new Set(projects.filter((p) => !p.deleted).map((p) => p.id))
+  const reports = allReports
     .filter((r) => r.status !== 'draft' && activeProjectIds.has(r.project_id))
     .sort((a, b) => (b.submitted_at ?? '').localeCompare(a.submitted_at ?? ''))
-
-  const projects = await readJson<Project>('projects.json')
-  const subcontractors = await readJson<Subcontractor>('subcontractors.json')
 
   const projMap = new Map(projects.map((p) => [p.id, p]))
   const subMap = new Map(subcontractors.map((s) => [s.id, s]))

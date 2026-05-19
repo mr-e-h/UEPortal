@@ -27,22 +27,32 @@ function weekList(count: number, currentWeek: number, thisYear: number): { week:
 }
 
 export default async function AdminDashboard() {
-  const projects = (await readJson<Project>('projects.json')).filter((p) => !p.deleted)
+  // Fire all reads in parallel. Sequential awaits added ~800ms (7×~110ms RTT
+  // to Supabase EU); Promise.all collapses that to one roundtrip's worth.
+  const [
+    allProjects,
+    allBudgetLines,
+    allWeeklyReports,
+    weeklyReportLines,
+    allChangeOrders,
+    allHourEntries,
+    subcontractors,
+  ] = await Promise.all([
+    readJson<Project>('projects.json'),
+    readJson<ProjectBudgetLine>('project_budget_lines.json'),
+    readJson<WeeklyReport>('weekly_reports.json'),
+    readJson<WeeklyReportLine>('weekly_report_lines.json'),
+    readJson<ChangeOrder>('change_orders.json'),
+    readJson<HourEntry>('hour_entries.json'),
+    readJson<Subcontractor>('subcontractors.json'),
+  ])
+
+  const projects = allProjects.filter((p) => !p.deleted)
   const activeProjectIds = new Set(projects.map((p) => p.id))
-  const budgetLines = (await readJson<ProjectBudgetLine>('project_budget_lines.json')).filter(
-    (bl) => activeProjectIds.has(bl.project_id)
-  )
-  const weeklyReports = (await readJson<WeeklyReport>('weekly_reports.json')).filter(
-    (r) => activeProjectIds.has(r.project_id)
-  )
-  const weeklyReportLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
-  const changeOrders = (await readJson<ChangeOrder>('change_orders.json')).filter(
-    (co) => activeProjectIds.has(co.project_id)
-  )
-  const hourEntries = (await readJson<HourEntry>('hour_entries.json')).filter(
-    (he) => activeProjectIds.has(he.project_id)
-  )
-  const subcontractors = await readJson<Subcontractor>('subcontractors.json')
+  const budgetLines = allBudgetLines.filter((bl) => activeProjectIds.has(bl.project_id))
+  const weeklyReports = allWeeklyReports.filter((r) => activeProjectIds.has(r.project_id))
+  const changeOrders = allChangeOrders.filter((co) => activeProjectIds.has(co.project_id))
+  const hourEntries = allHourEntries.filter((he) => activeProjectIds.has(he.project_id))
 
   const now = new Date()
   const thisYear = now.getFullYear()

@@ -6,16 +6,17 @@ import Badge from '@/components/ui/Badge'
 import { fmtNOK as fmt } from '@/lib/format'
 
 export default async function ChangeOrdersPage() {
-  const activeProjectIds = new Set(
-    (await readJson<Project>('projects.json')).filter((p) => !p.deleted).map((p) => p.id)
-  )
-  const orders = (await readJson<ChangeOrder>('change_orders.json'))
+  const [projects, allOrders, subcontractors, products] = await Promise.all([
+    readJson<Project>('projects.json'),
+    readJson<ChangeOrder>('change_orders.json'),
+    readJson<Subcontractor>('subcontractors.json'),
+    readJson<Product>('products.json'),
+  ])
+
+  const activeProjectIds = new Set(projects.filter((p) => !p.deleted).map((p) => p.id))
+  const orders = allOrders
     .filter((o) => o.status !== 'draft' && activeProjectIds.has(o.project_id))
     .sort((a, b) => (b.submitted_at ?? '').localeCompare(a.submitted_at ?? ''))
-
-  const projects = await readJson<Project>('projects.json')
-  const subcontractors = await readJson<Subcontractor>('subcontractors.json')
-  const products = await readJson<Product>('products.json')
 
   const projMap = new Map(projects.map((p) => [p.id, p]))
   const subMap = new Map(subcontractors.map((s) => [s.id, s]))

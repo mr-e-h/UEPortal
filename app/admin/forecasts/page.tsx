@@ -8,12 +8,21 @@ import { forecastPeriodStatus } from '@/lib/statuses'
 
 export default async function ForecastsOverviewPage() {
   const year = new Date().getFullYear()
-  const periods = (await readJson<ForecastPeriod>('forecast_periods.json')).filter((p) => p.year === year)
-  const projects = (await readJson<Project>('projects.json')).filter((p) => !p.deleted && p.status === 'active')
+
+  const [allPeriods, allProjects, rawForecasts, rawInvoices, rawBudgetLines] = await Promise.all([
+    readJson<ForecastPeriod>('forecast_periods.json'),
+    readJson<Project>('projects.json'),
+    readJson<ProjectForecast>('project_forecasts.json'),
+    readJson<ProjectInvoice>('project_invoices.json'),
+    readJson<ProjectBudgetLine>('project_budget_lines.json'),
+  ])
+
+  const periods = allPeriods.filter((p) => p.year === year)
+  const projects = allProjects.filter((p) => !p.deleted && p.status === 'active')
   const activeProjectIds = new Set(projects.map((p) => p.id))
-  const allForecasts = (await readJson<ProjectForecast>('project_forecasts.json')).filter((f) => activeProjectIds.has(f.project_id))
-  const invoices = (await readJson<ProjectInvoice>('project_invoices.json')).filter((i) => activeProjectIds.has(i.project_id))
-  const budgetLines = (await readJson<ProjectBudgetLine>('project_budget_lines.json')).filter((bl) => activeProjectIds.has(bl.project_id))
+  const allForecasts = rawForecasts.filter((f) => activeProjectIds.has(f.project_id))
+  const invoices = rawInvoices.filter((i) => activeProjectIds.has(i.project_id))
+  const budgetLines = rawBudgetLines.filter((bl) => activeProjectIds.has(bl.project_id))
 
   const totalInvoiced = invoices.reduce((s, i) => s + i.amount, 0)
   const totalBudget = budgetLines.reduce((s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot, 0)
