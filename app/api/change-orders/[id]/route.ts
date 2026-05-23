@@ -1,12 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { isAdmin, isSub } from '@/lib/api-guard'
 import type { ChangeOrder, Product, SubcontractorProductPrice, ProjectBudgetLine } from '@/types'
 
 export async function PUT(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   try {
     const session = await getSession()
@@ -19,11 +19,14 @@ export async function PUT(
       status?: 'pending' | 'draft'
     }
 
-    const orders = await readJson<ChangeOrder>('change_orders.json')
-    const idx = orders.findIndex((o) => o.id === params.id)
-    if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-    const order = orders[idx]
+    const sb = getSupabaseAdmin()
+    const { data: order, error: readErr } = await sb
+      .from('change_orders')
+      .select('*')
+      .eq('id', params.id)
+      .maybeSingle<ChangeOrder>()
+    if (readErr) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+    if (!order) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
     if (isSub(session)) {
       if (order.subcontractor_id !== session.subcontractor_id) {
@@ -38,7 +41,12 @@ export async function PUT(
     }
 
     const newProductId = body.product_id ?? order.product_id
-    const newQuantity = body.requested_quantity ?? order.requested_quantity
+    const newQuantity = body.requested_quantity !== undefined
+      ? Number(body.requested_quantity)
+      : order.requested_quantity
+    if (!Number.isFinite(newQuantity) || newQuantity <= 0) {
+      return NextResponse.json({ error: 'Mengde må være et positivt tall' }, { status: 400 })
+    }
     const newReason = body.reason ?? order.reason
     const newStatus = body.status ?? order.status
 
@@ -46,39 +54,34 @@ export async function PUT(
     let customerPriceSnapshot = order.customer_price_snapshot
     let unit = order.unit
 
-    if (newProductId !== order.product_id || newQuantity !== order.requested_quantity) {
-      const products = await readJson<Product>('products.json')
-      const prices = await readJson<SubcontractorProductPrice>('subcontractor_product_prices.json')
+    // Re-price only when product changed (or quantity changed and we need to
+    // confirm price still exists). Three targeted lookups parallel.
+    if (newProductId !== order.product_id) {
+      const [productRes, priceRes, blRes] = await Promise.all([
+        sb.from('products').select('customer_price, unit').eq('id', newProductId).maybeSingle<Pick<Product, 'customer_price' | 'unit'>>(),
+        sb.from('subcontractor_product_prices').select('cost_price')
+          .eq('subcontractor_id', order.subcontractor_id)
+          .eq('product_id', newProductId)
+          .maybeSingle<Pick<SubcontractorProductPrice, 'cost_price'>>(),
+        sb.from('project_budget_lines').select('subcontractor_cost_price_snapshot')
+          .eq('project_id', order.project_id)
+          .eq('product_id', newProductId)
+          .eq('assigned_subcontractor_id', order.subcontractor_id)
+          .maybeSingle<Pick<ProjectBudgetLine, 'subcontractor_cost_price_snapshot'>>(),
+      ])
 
-      const product = products.find((p) => p.id === newProductId)
-      if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
+      if (!productRes.data) return NextResponse.json({ error: 'Produkt ikke funnet' }, { status: 404 })
 
-      const priceEntry = prices.find(
-        (p) => p.subcontractor_id === order.subcontractor_id && p.product_id === newProductId
-      )
-      costPriceSnapshot = priceEntry?.cost_price ?? 0
-
-      // Fall back to budget line snapshot if no explicit price
-      if (costPriceSnapshot === 0) {
-        const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
-        const bl = budgetLines.find(
-          (bl) =>
-            bl.project_id === order.project_id &&
-            bl.product_id === newProductId &&
-            bl.assigned_subcontractor_id === order.subcontractor_id
-        )
-        if (bl && bl.subcontractor_cost_price_snapshot > 0) {
-          costPriceSnapshot = bl.subcontractor_cost_price_snapshot
-        }
+      costPriceSnapshot = priceRes.data?.cost_price ?? 0
+      if (costPriceSnapshot === 0 && blRes.data && blRes.data.subcontractor_cost_price_snapshot > 0) {
+        costPriceSnapshot = blRes.data.subcontractor_cost_price_snapshot
       }
-
-      customerPriceSnapshot = product.customer_price
-      unit = product.unit
+      customerPriceSnapshot = productRes.data.customer_price
+      unit = productRes.data.unit
     }
 
     const now = new Date().toISOString()
-    orders[idx] = {
-      ...order,
+    const updates: Partial<ChangeOrder> = {
       product_id: newProductId,
       requested_quantity: newQuantity,
       unit,
@@ -92,14 +95,22 @@ export async function PUT(
       submitted_at: newStatus === 'pending' ? now : order.submitted_at,
     }
 
-    await writeJson('change_orders.json', orders)
+    const { data, error } = await sb
+      .from('change_orders')
+      .update(updates)
+      .eq('id', params.id)
+      .select()
+      .maybeSingle<ChangeOrder>()
+    if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+    if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
     if (isSub(session)) {
-      const { customer_price_snapshot: _cp, total_customer_value: _tcv, profit: _p, ...rest } = orders[idx]
+      const { customer_price_snapshot: _cp, total_customer_value: _tcv, profit: _p, ...rest } = data
       return NextResponse.json(rest)
     }
-    return NextResponse.json(orders[idx])
+    return NextResponse.json(data)
   } catch (error) {
     console.error('change-orders PUT error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Intern feil' }, { status: 500 })
   }
 }
