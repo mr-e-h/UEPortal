@@ -1,27 +1,37 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin, requireAuth } from '@/lib/api-guard'
 import type { TimeType } from '@/types'
 
 export async function GET() {
   const auth = await requireAuth()
   if (!auth.ok) return auth.response
-  return NextResponse.json(await readJson<TimeType>('time_types.json'))
+  const { data, error } = await getSupabaseAdmin().from('time_types').select('*')
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  return NextResponse.json((data ?? []) as TimeType[])
 }
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const body = await request.json() as { name: string; cost_per_hour: number }
-  const types = await readJson<TimeType>('time_types.json')
+  const body = await request.json() as { name?: string; cost_per_hour?: number }
+  if (!body.name?.trim()) {
+    return NextResponse.json({ error: 'Navn er påkrevd' }, { status: 400 })
+  }
+  const cost = Number(body.cost_per_hour)
+  if (!Number.isFinite(cost) || cost < 0) {
+    return NextResponse.json({ error: 'Kostnad må være et ikke-negativt tall' }, { status: 400 })
+  }
+
   const newType: TimeType = {
     id: randomUUID(),
-    name: body.name,
-    cost_per_hour: Number(body.cost_per_hour),
+    name: body.name.trim(),
+    cost_per_hour: cost,
     active: true,
   }
-  await writeJson('time_types.json', [...types, newType])
+  const { error } = await getSupabaseAdmin().from('time_types').insert(newType)
+  if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
   return NextResponse.json(newType, { status: 201 })
 }

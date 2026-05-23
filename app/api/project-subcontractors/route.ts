@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { ProjectSubcontractor } from '@/types'
@@ -9,24 +9,43 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const params = new URL(request.url).searchParams
-  let links = await readJson<ProjectSubcontractor>('project_subcontractors.json')
   const projectId = params.get('project_id')
   const subcontractorId = params.get('subcontractor_id')
-  if (projectId) links = links.filter((l) => l.project_id === projectId)
-  if (subcontractorId) links = links.filter((l) => l.subcontractor_id === subcontractorId)
-  return NextResponse.json(links)
+  const sb = getSupabaseAdmin()
+  const query = sb.from('project_subcontractors').select('*')
+  if (projectId) query.eq('project_id', projectId)
+  if (subcontractorId) query.eq('subcontractor_id', subcontractorId)
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  return NextResponse.json((data ?? []) as ProjectSubcontractor[])
 }
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const body = await request.json() as Omit<ProjectSubcontractor, 'id'>
-  const links = await readJson<ProjectSubcontractor>('project_subcontractors.json')
-  const exists = links.find((l) => l.project_id === body.project_id && l.subcontractor_id === body.subcontractor_id)
-  if (exists) return NextResponse.json(exists)
-  const newLink: ProjectSubcontractor = { ...body, id: randomUUID() }
-  await writeJson('project_subcontractors.json', [...links, newLink])
+  const body = await request.json() as Partial<Omit<ProjectSubcontractor, 'id'>>
+  if (!body.project_id || !body.subcontractor_id) {
+    return NextResponse.json({ error: 'project_id og subcontractor_id er påkrevd' }, { status: 400 })
+  }
+
+  const sb = getSupabaseAdmin()
+  // Idempotent: return the existing link if already present.
+  const { data: existing } = await sb
+    .from('project_subcontractors')
+    .select('*')
+    .eq('project_id', body.project_id)
+    .eq('subcontractor_id', body.subcontractor_id)
+    .maybeSingle<ProjectSubcontractor>()
+  if (existing) return NextResponse.json(existing)
+
+  const newLink: ProjectSubcontractor = {
+    id: randomUUID(),
+    project_id: body.project_id,
+    subcontractor_id: body.subcontractor_id,
+  }
+  const { error } = await sb.from('project_subcontractors').insert(newLink)
+  if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
   return NextResponse.json(newLink, { status: 201 })
 }
 
@@ -35,7 +54,8 @@ export async function DELETE(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const id = new URL(request.url).searchParams.get('id')
-  const links = await readJson<ProjectSubcontractor>('project_subcontractors.json')
-  await writeJson('project_subcontractors.json', links.filter((l) => l.id !== id))
+  if (!id) return NextResponse.json({ error: 'id mangler' }, { status: 400 })
+  const { error } = await getSupabaseAdmin().from('project_subcontractors').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: 'Sletting feilet' }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
