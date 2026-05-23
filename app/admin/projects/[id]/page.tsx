@@ -21,6 +21,7 @@ import ReportingsSection from './ReportingsSection'
 import InternalCostsSection from './InternalCostsSection'
 import MaterialSection from './MaterialSection'
 import ForecastSection from './ForecastSection'
+import OverviewSection from './OverviewSection'
 import { fmtNOK as fmt } from '@/lib/format'
 import { reportLineStatus } from '@/lib/statuses'
 import { lineTypeLabel } from '@/lib/line-types'
@@ -216,86 +217,24 @@ export default function ProjectDetailPage() {
   const totalSales = originalBudgetSales + coAddedSales
   const totalCost = originalBudgetCost + coAddedCost
 
+  // OverviewSection owns the heavy derived computations now (subFlowData,
+  // internLines, totalUEBudgetCost, etc). Parent only keeps what the
+  // remaining inline tabs (budsjettlinjer + prognose-card) still consume.
   const assignedSubIds = new Set(projectSubs.map((ps) => ps.subcontractor_id))
   const projectSubDetails = allSubs.filter((s) => assignedSubIds.has(s.id))
-  const availableSubs = allSubs.filter((s) => s.active && !assignedSubIds.has(s.id))
 
   const totalInternalCost = internalCosts.reduce((s, c) => s + c.amount, 0)
 
   const allChecked = selected.length === budgetLines.length && budgetLines.length > 0
   const toggleAll = () => setSelected(allChecked ? [] : budgetLines.map((l) => l.id))
 
-  // UE economic flow data
-  const approvedWRLines = weeklyReportsWL
-    .filter((wr) => wr.status === 'approved' || wr.status === 'partially_approved')
-    .flatMap((wr) => wr.lines.filter((l) => l.status === 'approved'))
-
-  type SubFlowProduct = {
-    id: string; name: string; unit: string
-    budgetQty: number; reportedQty: number
-    budgetCost: number; reportedCost: number; pct: number
-  }
-  type SubFlow = {
-    id: string; name: string
-    budgetCost: number; budgetSales: number
-    reportedCost: number; remaining: number; pct: number
-    products: SubFlowProduct[]
-  }
-
-  const subFlowData: SubFlow[] = projectSubDetails.map((sub) => {
-    const subBudgetLines = budgetLines.filter((bl) => bl.assigned_subcontractor_id === sub.id)
-    const budgetCost = subBudgetLines.reduce((s, bl) => s + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0)
-    const budgetSales = subBudgetLines.reduce((s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot, 0)
-    const subApprovedLines = approvedWRLines.filter((l) => {
-      const bl = budgetLines.find((b) => b.id === l.project_budget_line_id)
-      return bl?.assigned_subcontractor_id === sub.id
-    })
-    const ueReportedCost = subApprovedLines.reduce((s, l) => {
-      const bl = budgetLines.find((b) => b.id === l.project_budget_line_id)
-      return s + l.reported_quantity * (bl?.subcontractor_cost_price_snapshot ?? 0)
-    }, 0)
-    const products: SubFlowProduct[] = subBudgetLines.map((bl) => {
-      const product = allProducts.find((p) => p.id === bl.product_id)
-      const reportedForLine = subApprovedLines
-        .filter((l) => l.project_budget_line_id === bl.id)
-        .reduce((s, l) => s + l.reported_quantity, 0)
-      return {
-        id: bl.id,
-        name: product?.name ?? '–',
-        unit: product?.unit ?? '–',
-        budgetQty: bl.budget_quantity,
-        reportedQty: reportedForLine,
-        budgetCost: bl.budget_quantity * bl.subcontractor_cost_price_snapshot,
-        reportedCost: reportedForLine * bl.subcontractor_cost_price_snapshot,
-        pct: bl.budget_quantity > 0 ? Math.round((reportedForLine / bl.budget_quantity) * 100) : 0,
-      }
-    })
-    return {
-      id: sub.id,
-      name: sub.company_name,
-      budgetCost,
-      budgetSales,
-      reportedCost: ueReportedCost,
-      remaining: Math.max(0, budgetCost - ueReportedCost),
-      pct: budgetCost > 0 ? Math.round((ueReportedCost / budgetCost) * 100) : 0,
-      products,
-    }
-  })
-
-  // Prognose totals from monthly plan entries
+  // Prognose totals from monthly plan entries (passed to ForecastSection).
   const forecastRevenue = monthPlans.reduce((s, m) => s + (m.expected_revenue ?? 0), 0)
   const forecastUECost = monthPlans.reduce((s, m) => s + (m.ue_cost ?? 0), 0)
   const forecastInternalCost = monthPlans.reduce((s, m) => s + (m.internal_cost ?? 0), 0)
   const forecastOtherCost = monthPlans.reduce((s, m) => s + (m.other_cost ?? 0), 0)
   const forecastProfit = forecastRevenue - forecastUECost - forecastInternalCost - forecastOtherCost
   const hasForecast = forecastRevenue > 0 || forecastUECost > 0 || forecastInternalCost > 0
-
-  const totalUEBudgetCost = subFlowData.reduce((s, sf) => s + sf.budgetCost, 0)
-  const totalUEReportedCost = subFlowData.reduce((s, sf) => s + sf.reportedCost, 0)
-
-  const internLines = budgetLines.filter((bl) => bl.assigned_subcontractor_id === '__intern__')
-  const internBudgetSales = internLines.reduce((s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot, 0)
-  const internPct = internBudgetSales > 0 ? Math.round((totalInternalCost / internBudgetSales) * 100) : 0
 
   const toggleRow = (rowId: string) => setSelected((prev) => prev.includes(rowId) ? prev.filter((x) => x !== rowId) : [...prev, rowId])
 
@@ -482,282 +421,31 @@ export default function ProjectDetailPage() {
 
       {/* ── OVERSIKT ─────────────────────────────────────────────────── */}
       {activeTab === 'oversikt' && (
-        <div className="space-y-8">
-          {/* Top KPIs */}
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Prosjektstatistikk</h2>
-            <div className="grid grid-cols-2 md:grid-cols-4 gap-4 mb-4">
-              <div className="bg-blue-600 rounded-xl shadow p-4 text-white">
-                <p className="text-xs font-semibold uppercase tracking-wide opacity-80">Salgsverdi</p>
-                <p className="text-2xl font-bold mt-1">{fmt(totalSales)}</p>
-                <p className="text-xs opacity-70 mt-0.5">inkl. godkjente EM</p>
-              </div>
-              <div className="bg-white rounded-xl shadow p-4 border border-gray-100">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">UE-kostnad</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalCost)}</p>
-                <p className="text-xs text-gray-400 mt-0.5">tildelte budsjettlinjer</p>
-              </div>
-              <div className="bg-white rounded-xl shadow p-4 border border-gray-100">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Internkostnad</p>
-                <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalInternalCost)}</p>
-                <p className="text-xs text-gray-400 mt-0.5">egne timer</p>
-              </div>
-              <div className={`rounded-xl shadow p-4 border ${(totalSales - totalCost - totalInternalCost) >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Reell fortjeneste</p>
-                <p className={`text-2xl font-bold mt-1 ${(totalSales - totalCost - totalInternalCost) >= 0 ? 'text-green-700' : 'text-red-700'}`}>
-                  {fmt(totalSales - totalCost - totalInternalCost)}
-                </p>
-                <p className="text-xs text-gray-400 mt-0.5">salg − UE − intern</p>
-              </div>
-            </div>
-
-            {/* Budsjettversjoner + Import */}
-            <div className="grid grid-cols-3 gap-4">
-              <div className="col-span-2 bg-white rounded-xl shadow border border-gray-100 overflow-hidden">
-                <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
-                  <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Budsjettversjonhistorikk</h3>
-                </div>
-                {budgetVersions.length === 0 ? (
-                  <div className="px-5 py-6 text-sm text-gray-400 text-center">Ingen budsjettfiler lastet opp ennå.</div>
-                ) : (
-                  <div className="overflow-x-auto">
-                    <table className="w-full text-sm">
-                      <thead>
-                        <tr className="border-b border-gray-100">
-                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-left">Versjon</th>
-                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Salgsverdi</th>
-                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Kostnad</th>
-                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Fortjeneste</th>
-                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Endring</th>
-                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-left">Lastet opp</th>
-                          <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-center">Fil</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {budgetVersions.map((bver, idx) => {
-                          const prev = idx > 0 ? budgetVersions[idx - 1] : null
-                          const delta = prev != null ? bver.total_sales_value - prev.total_sales_value : null
-                          const profit = bver.total_sales_value - bver.total_cost_value
-                          const isLatest = idx === budgetVersions.length - 1
-                          const label = bver.version === 0 ? 'Originalbudsjett' : `V${bver.version}`
-                          const dateStr = new Date(bver.uploaded_at).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
-                          const timeStr = new Date(bver.uploaded_at).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
-                          return (
-                            <tr key={bver.id} className={`border-b border-gray-100 ${isLatest ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
-                              <td className="px-5 py-3">
-                                <span className={`font-medium ${isLatest ? 'text-blue-700' : 'text-gray-900'}`}>{label}</span>
-                                {isLatest && <span className="ml-2 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-medium">Gjeldende</span>}
-                              </td>
-                              <td className="px-5 py-3 text-right text-gray-700">{fmt(bver.total_sales_value)}</td>
-                              <td className="px-5 py-3 text-right text-gray-700">{fmt(bver.total_cost_value)}</td>
-                              <td className={`px-5 py-3 text-right font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(profit)}</td>
-                              <td className="px-5 py-3 text-right">
-                                {delta == null ? (
-                                  <span className="text-gray-300">—</span>
-                                ) : (
-                                  <span className={`font-medium text-xs ${delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-gray-400'}`}>
-                                    {delta > 0 ? '+' : ''}{fmt(delta)}
-                                  </span>
-                                )}
-                              </td>
-                              <td className="px-5 py-3">
-                                <div className="text-gray-700">{bver.uploaded_by}</div>
-                                <div className="text-xs text-gray-400">{dateStr} {timeStr}</div>
-                              </td>
-                              <td className="px-5 py-3 text-center">
-                                {bver.file_name ? (
-                                  <a href={`/api/budget-versions/${bver.id}/file`} download title="Last ned Excel-fil" className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-green-100 text-green-600 hover:text-green-700 transition-colors">
-                                    <Download size={14} />
-                                  </a>
-                                ) : (
-                                  <span className="text-gray-300 text-xs">–</span>
-                                )}
-                              </td>
-                            </tr>
-                          )
-                        })}
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-
-              {/* Import card */}
-              <div
-                onClick={() => !importing && importFileRef.current?.click()}
-                onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
-                onDragEnter={(e) => { e.preventDefault(); setDragOver(true) }}
-                onDragLeave={() => setDragOver(false)}
-                onDrop={(e) => { e.preventDefault(); setDragOver(false); const file = e.dataTransfer.files?.[0]; if (file) handlePostImport(file) }}
-                className={`rounded-xl p-6 flex flex-col items-center justify-center text-center gap-4 cursor-pointer transition-colors border-2 border-dashed select-none ${dragOver ? 'bg-blue-100 border-blue-500' : importing ? 'bg-blue-50 border-blue-200 cursor-default' : 'bg-blue-50 border-blue-300 hover:bg-blue-100 hover:border-blue-400'}`}
-              >
-                <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${dragOver ? 'bg-blue-200' : 'bg-blue-100'}`}>
-                  <svg xmlns="http://www.w3.org/2000/svg" className={`w-7 h-7 transition-colors ${dragOver ? 'text-blue-700' : 'text-blue-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                    <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4m0 0L8 8m4-4l4 4" />
-                  </svg>
-                </div>
-                <div>
-                  <p className="font-semibold text-blue-900 text-base">{importing ? 'Importerer...' : dragOver ? 'Slipp filen her' : 'Last inn oppdatert budsjettfil'}</p>
-                  <p className="text-sm text-blue-700 mt-1 max-w-xs">{importing ? 'Behandler Excel-filen…' : 'Dra og slipp en .xlsx-fil hit, eller klikk for å velge'}</p>
-                </div>
-                {!importing && <span className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg shadow-sm pointer-events-none">Velg fil</span>}
-                {importMsg && <p className={`text-xs font-medium ${importMsg.toLowerCase().includes('feil') ? 'text-red-600' : 'text-green-600'}`}>{importMsg}</p>}
-              </div>
-            </div>
-          </section>
-
-          {/* Gantt */}
-          {project.start_date && project.end_date && (
-            <GanttSection
-              projectId={id}
-              projectStart={project.start_date}
-              projectEnd={project.end_date}
-              milestones={milestones}
-              allSubs={allSubs}
-              projectSubs={projectSubs.map((ps) => ps.subcontractor_id)}
-              onRefresh={fetchAll}
-            />
-          )}
-
-          {/* Kostnadsflyt */}
-          {(subFlowData.length > 0 || internLines.length > 0) && (
-            <section>
-              <h2 className="text-lg font-semibold text-gray-900 mb-4">Kostnadsflyt</h2>
-              <div className="grid grid-cols-3 gap-4 mb-6">
-                <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-                  <p className="text-xs text-blue-700 font-semibold uppercase tracking-wide mb-1">Salgsverdi</p>
-                  <p className="text-xl font-bold text-blue-900">{fmt(totalSales)}</p>
-                  <p className="text-xs text-blue-500 mt-0.5">inkl. godkjente EM</p>
-                </div>
-                <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-                  <p className="text-xs text-gray-600 font-semibold uppercase tracking-wide mb-1">UE-kostnad</p>
-                  <p className="text-xl font-bold text-gray-900">{fmt(totalUEBudgetCost)}</p>
-                  <p className="text-xs text-gray-500 mt-0.5">Rapportert: {fmt(totalUEReportedCost)}</p>
-                </div>
-                <div className={`border rounded-xl p-4 ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                  <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'text-green-700' : 'text-red-700'}`}>Forventet fortjeneste</p>
-                  <p className={`text-xl font-bold ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'text-green-900' : 'text-red-900'}`}>{fmt(totalSales - totalUEBudgetCost - totalInternalCost)}</p>
-                  <p className={`text-xs mt-0.5 ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'text-green-500' : 'text-red-500'}`}>salg − UE − intern</p>
-                </div>
-              </div>
-
-              <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-                {internLines.length > 0 && (
-                  <div className="bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
-                    <div className="p-4">
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="font-semibold text-gray-900 text-sm">Intern / Netel</span>
-                        <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-medium">Intern</span>
-                      </div>
-                      <div className="mb-2">
-                        <div className="flex justify-between text-xs text-gray-500 mb-1">
-                          <span>Internkost brukt {internPct}%</span>
-                          <span>{fmt(totalInternalCost)} / {fmt(internBudgetSales)}</span>
-                        </div>
-                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full transition-all ${internPct > 100 ? 'bg-red-500' : internPct > 80 ? 'bg-orange-400' : 'bg-indigo-500'}`} style={{ width: `${Math.min(internPct, 100)}%` }} />
-                        </div>
-                      </div>
-                      <div className="flex flex-col gap-0.5 text-xs mt-2">
-                        <span className="text-gray-500">Salgsverdi intern: <span className="font-medium text-gray-900">{fmt(internBudgetSales)}</span></span>
-                        <span className="text-gray-500">Registrert internkost: <span className="font-medium text-gray-900">{fmt(totalInternalCost)}</span></span>
-                        <span className={`font-medium ${internBudgetSales - totalInternalCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>Fortjeneste: {fmt(internBudgetSales - totalInternalCost)}</span>
-                      </div>
-                    </div>
-                  </div>
-                )}
-                {subFlowData.map((sf) => (
-                  <div key={sf.id} className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-                    <button onClick={() => setExpandedSub(expandedSub === sf.id ? null : sf.id)} className="w-full text-left p-4 hover:bg-gray-50 transition-colors">
-                      <div className="flex items-center justify-between mb-3">
-                        <span className="font-semibold text-gray-900 text-sm">{sf.name}</span>
-                        <span className="text-xs text-gray-400">{expandedSub === sf.id ? '▲' : '▼'}</span>
-                      </div>
-                      <div className="mb-2">
-                        <div className="flex justify-between text-xs text-gray-500 mb-1">
-                          <span>Rapportert {sf.pct}%</span>
-                          <span>{fmt(sf.reportedCost)} / {fmt(sf.budgetCost)}</span>
-                        </div>
-                        <div className="h-2 bg-gray-100 rounded-full overflow-hidden">
-                          <div className={`h-full rounded-full transition-all ${sf.pct > 90 ? 'bg-red-500' : sf.pct > 70 ? 'bg-orange-400' : 'bg-green-500'}`} style={{ width: `${Math.min(sf.pct, 100)}%` }} />
-                        </div>
-                      </div>
-                      <div className="flex gap-3 text-xs">
-                        <span className="text-gray-500">Gjenstår: <span className="font-medium text-gray-900">{fmt(sf.remaining)}</span></span>
-                        <span className="text-gray-400">|</span>
-                        <span className="text-gray-500">Budsjett: <span className="font-medium text-gray-900">{fmt(sf.budgetCost)}</span></span>
-                      </div>
-                    </button>
-                    {expandedSub === sf.id && (
-                      <div className="border-t border-gray-100 overflow-x-auto">
-                        <table className="w-full text-xs">
-                          <thead>
-                            <tr className="bg-gray-50 border-b border-gray-100">
-                              <th className="px-3 py-2 text-left font-medium text-gray-500">Produkt</th>
-                              <th className="px-3 py-2 text-right font-medium text-gray-500">Budsjett</th>
-                              <th className="px-3 py-2 text-right font-medium text-gray-500">Rapportert</th>
-                              <th className="px-3 py-2 text-right font-medium text-gray-500">%</th>
-                            </tr>
-                          </thead>
-                          <tbody>
-                            {sf.products.map((prod) => (
-                              <tr key={prod.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                                <td className="px-3 py-2 text-gray-900 max-w-[140px] truncate" title={prod.name}>{prod.name}<span className="text-gray-400 ml-1">({prod.unit})</span></td>
-                                <td className="px-3 py-2 text-right text-gray-700">{prod.budgetQty}</td>
-                                <td className="px-3 py-2 text-right text-gray-700">{prod.reportedQty}</td>
-                                <td className={`px-3 py-2 text-right font-semibold ${prod.pct > 90 ? 'text-red-600' : prod.pct > 70 ? 'text-orange-500' : 'text-green-600'}`}>{prod.pct}%</td>
-                              </tr>
-                            ))}
-                            <tr className="bg-gray-50 border-t border-gray-200">
-                              <td className="px-3 py-2 text-xs font-semibold text-gray-600 uppercase">Totalt kostnad</td>
-                              <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmt(sf.budgetCost)}</td>
-                              <td className="px-3 py-2 text-right font-semibold text-gray-900">{fmt(sf.reportedCost)}</td>
-                              <td className={`px-3 py-2 text-right font-bold ${sf.pct > 90 ? 'text-red-600' : sf.pct > 70 ? 'text-orange-500' : 'text-green-600'}`}>{sf.pct}%</td>
-                            </tr>
-                          </tbody>
-                        </table>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </section>
-          )}
-
-          {/* Underentreprenører */}
-          <section>
-            <h2 className="text-lg font-semibold text-gray-900 mb-3">Underentreprenører på prosjektet</h2>
-            <div className="bg-white rounded-lg shadow p-5 space-y-4">
-              <div className="flex gap-2 items-center">
-                <select value={addSubId} onChange={(e) => setAddSubId(e.target.value)} className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500">
-                  <option value="">Velg underentreprenør</option>
-                  {availableSubs.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
-                </select>
-                <button onClick={addSubToProject} disabled={!addSubId} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-40">Legg til</button>
-              </div>
-              {projectSubDetails.length > 0 ? (
-                <ul className="space-y-2">
-                  {projectSubDetails.map((s) => {
-                    const link = projectSubs.find((ps) => ps.subcontractor_id === s.id)!
-                    return (
-                      <li key={s.id} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
-                        <div>
-                          <span className="text-sm font-medium text-gray-900">{s.company_name}</span>
-                          <span className="text-xs text-gray-500 ml-2">{s.contact_person} · {s.county}</span>
-                        </div>
-                        <button onClick={() => setConfirmRemoveSubId(link.id)} className="text-xs text-red-500 hover:text-red-700">Fjern</button>
-                      </li>
-                    )
-                  })}
-                </ul>
-              ) : (
-                <p className="text-sm text-gray-400">Ingen UE-er tildelt ennå</p>
-              )}
-            </div>
-          </section>
-        </div>
+        <OverviewSection
+          projectId={id}
+          project={project}
+          budgetLines={budgetLines}
+          changeOrders={changeOrders}
+          internalCosts={internalCosts}
+          budgetVersions={budgetVersions}
+          milestones={milestones}
+          allProducts={allProducts}
+          allSubs={allSubs}
+          projectSubs={projectSubs}
+          weeklyReportsWL={weeklyReportsWL}
+          fetchAll={fetchAll}
+          addSubId={addSubId}
+          setAddSubId={setAddSubId}
+          onAddSub={addSubToProject}
+          onRequestRemoveSub={setConfirmRemoveSubId}
+          importFileRef={importFileRef}
+          importing={importing}
+          importMsg={importMsg}
+          dragOver={dragOver}
+          setDragOver={setDragOver}
+          onImport={handlePostImport}
+        />
       )}
-
       {/* ── BUDSJETTLINJER ───────────────────────────────────────────── */}
       {activeTab === 'budsjettlinjer' && (
         <section className="space-y-4">

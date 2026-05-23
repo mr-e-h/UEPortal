@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/api-guard'
 import type { ProjectMonthPlan } from '@/types'
 
@@ -7,21 +7,33 @@ export async function GET(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const { searchParams } = new URL(request.url)
-  const projectId = searchParams.get('project_id')
-  let plans = await readJson<ProjectMonthPlan>('project_month_plans.json')
-  if (projectId) plans = plans.filter((p) => p.project_id === projectId)
-  return NextResponse.json(plans)
+  const projectId = new URL(request.url).searchParams.get('project_id')
+  const sb = getSupabaseAdmin()
+  const query = sb.from('project_month_plans').select('*')
+  if (projectId) query.eq('project_id', projectId)
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  return NextResponse.json((data ?? []) as ProjectMonthPlan[])
 }
 
-// Batch upsert: receives all rows for a project, replaces existing
+/**
+ * Replace-all-for-project upsert. Scoped delete + insert means two admins
+ * editing different projects never collide. Same project + concurrent saves
+ * still last-write-wins (acceptable for this UI — the editor has a single
+ * draft + save button).
+ */
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const body = await request.json() as { project_id: string; rows: Omit<ProjectMonthPlan, 'id' | 'updated_at'>[] }
-  const all = await readJson<ProjectMonthPlan>('project_month_plans.json')
-  const kept = all.filter((p) => p.project_id !== body.project_id)
+  const body = await request.json() as {
+    project_id: string
+    rows: Omit<ProjectMonthPlan, 'id' | 'updated_at'>[]
+  }
+  if (!body.project_id) {
+    return NextResponse.json({ error: 'project_id mangler' }, { status: 400 })
+  }
+
   const now = new Date().toISOString()
   const newRows: ProjectMonthPlan[] = body.rows.map((r) => ({
     id: `${body.project_id}-${r.year}-${r.month}`,
@@ -38,6 +50,21 @@ export async function POST(request: NextRequest) {
     comment: r.comment ?? '',
     updated_at: now,
   }))
-  await writeJson('project_month_plans.json', [...kept, ...newRows])
+
+  const sb = getSupabaseAdmin()
+  // Drop the project's previous rows, then insert the new set. Two requests
+  // serialize on the same project_id in practice — the editor doesn't run
+  // these in parallel.
+  const { error: delErr } = await sb
+    .from('project_month_plans')
+    .delete()
+    .eq('project_id', body.project_id)
+  if (delErr) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+
+  if (newRows.length > 0) {
+    const { error: insErr } = await sb.from('project_month_plans').insert(newRows)
+    if (insErr) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+  }
+
   return NextResponse.json(newRows, { status: 200 })
 }

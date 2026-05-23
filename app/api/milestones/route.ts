@@ -1,9 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, requireAdmin, isSub } from '@/lib/api-guard'
 import { DEFAULT_MILESTONE_COLOR } from '@/lib/milestone-colors'
 import type { GanttMilestone, ProjectSubcontractor } from '@/types'
+
+const EDITABLE_FIELDS: (keyof GanttMilestone)[] = [
+  'project_id', 'subcontractor_id', 'title', 'start_date', 'end_date', 'color', 'sort_order',
+]
 
 export async function GET(req: NextRequest) {
   const auth = await requireAuth()
@@ -13,21 +17,27 @@ export async function GET(req: NextRequest) {
   const projectId = searchParams.get('project_id')
   const subcontractorId = searchParams.get('subcontractor_id')
 
-  let milestones = await readJson<GanttMilestone>('milestones.json')
-  if (projectId) milestones = milestones.filter((m) => m.project_id === projectId)
-  if (subcontractorId) milestones = milestones.filter((m) => m.subcontractor_id === subcontractorId)
+  const sb = getSupabaseAdmin()
+  const query = sb.from('milestones').select('*')
+  if (projectId) query.eq('project_id', projectId)
+  if (subcontractorId) query.eq('subcontractor_id', subcontractorId)
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  let milestones = (data ?? []) as GanttMilestone[]
 
   if (isSub(auth.user)) {
     const subId = auth.user.subcontractor_id
     if (!subId) return NextResponse.json([])
-    const links = await readJson<ProjectSubcontractor>('project_subcontractors.json')
+    const { data: links } = await sb
+      .from('project_subcontractors')
+      .select('project_id')
+      .eq('subcontractor_id', subId)
     const allowedProjectIds = new Set(
-      links.filter((l) => l.subcontractor_id === subId).map((l) => l.project_id)
+      (links ?? []).map((l: Pick<ProjectSubcontractor, 'project_id'>) => l.project_id),
     )
     milestones = milestones.filter(
-      (m) =>
-        allowedProjectIds.has(m.project_id) &&
-        (m.subcontractor_id == null || m.subcontractor_id === subId)
+      (m) => allowedProjectIds.has(m.project_id)
+        && (m.subcontractor_id == null || m.subcontractor_id === subId),
     )
   }
 
@@ -38,7 +48,9 @@ export async function POST(req: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
   const body = await req.json()
-  const milestones = await readJson<GanttMilestone>('milestones.json')
+  if (!body?.project_id || !body?.title || !body?.start_date || !body?.end_date) {
+    return NextResponse.json({ error: 'Mangler påkrevde felter' }, { status: 400 })
+  }
   const newItem: GanttMilestone = {
     id: randomUUID(),
     project_id: body.project_id,
@@ -49,43 +61,53 @@ export async function POST(req: NextRequest) {
     color: body.color ?? DEFAULT_MILESTONE_COLOR,
     created_at: new Date().toISOString(),
   }
-  milestones.push(newItem)
-  await writeJson('milestones.json', milestones)
+  const { error } = await getSupabaseAdmin().from('milestones').insert(newItem)
+  if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
   return NextResponse.json(newItem, { status: 201 })
 }
 
 export async function PUT(req: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
-  const body = await req.json()
-  const milestones = await readJson<GanttMilestone>('milestones.json')
-  const idx = milestones.findIndex((m) => m.id === body.id)
-  if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  milestones[idx] = { ...milestones[idx], ...body }
-  await writeJson('milestones.json', milestones)
-  return NextResponse.json(milestones[idx])
+  const body = await req.json() as Partial<GanttMilestone> & { id: string }
+  if (!body.id) return NextResponse.json({ error: 'id mangler' }, { status: 400 })
+
+  const updates: Partial<GanttMilestone> = {}
+  for (const field of EDITABLE_FIELDS) {
+    if (field in body) (updates as Record<string, unknown>)[field] = body[field]
+  }
+
+  const { data, error } = await getSupabaseAdmin()
+    .from('milestones')
+    .update(updates)
+    .eq('id', body.id)
+    .select()
+    .maybeSingle<GanttMilestone>()
+  if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })
+  return NextResponse.json(data)
 }
 
+// Bulk sort-order update. Could be a single SQL statement, but Supabase JS
+// doesn't expose a clean WHEN/CASE upsert; we do per-row updates in parallel.
+// Each update is targeted so no whole-table rewrite happens.
 export async function PATCH(req: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
   const updates = await req.json() as { id: string; sort_order: number }[]
-  const milestones = await readJson<GanttMilestone>('milestones.json')
-  for (const { id, sort_order } of updates) {
-    const idx = milestones.findIndex((m) => m.id === id)
-    if (idx !== -1) milestones[idx] = { ...milestones[idx], sort_order }
-  }
-  await writeJson('milestones.json', milestones)
+  const sb = getSupabaseAdmin()
+  await Promise.all(updates.map(({ id, sort_order }) =>
+    sb.from('milestones').update({ sort_order }).eq('id', id),
+  ))
   return NextResponse.json({ ok: true })
 }
 
 export async function DELETE(req: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
-  const { searchParams } = new URL(req.url)
-  const id = searchParams.get('id')
-  const milestones = await readJson<GanttMilestone>('milestones.json')
-  const filtered = milestones.filter((m) => m.id !== id)
-  await writeJson('milestones.json', filtered)
+  const id = new URL(req.url).searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id mangler' }, { status: 400 })
+  const { error } = await getSupabaseAdmin().from('milestones').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: 'Sletting feilet' }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

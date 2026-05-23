@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { ProjectInternalCostEntry } from '@/types'
@@ -8,29 +8,50 @@ export async function GET(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const { searchParams } = new URL(request.url)
-  const projectId = searchParams.get('project_id')
-  let entries = await readJson<ProjectInternalCostEntry>('project_internal_costs.json')
-  if (projectId) entries = entries.filter((e) => e.project_id === projectId)
-  return NextResponse.json(entries)
+  const projectId = new URL(request.url).searchParams.get('project_id')
+  const sb = getSupabaseAdmin()
+  const query = sb.from('project_internal_costs').select('*')
+  if (projectId) query.eq('project_id', projectId)
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  return NextResponse.json((data ?? []) as ProjectInternalCostEntry[])
 }
 
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const body = await request.json() as { project_id: string; year: number; month: number; amount: number; comment: string }
-  const all = await readJson<ProjectInternalCostEntry>('project_internal_costs.json')
+  const body = await request.json() as {
+    project_id: string
+    year: number
+    month: number
+    amount: number
+    comment: string
+  }
+  if (!body.project_id) {
+    return NextResponse.json({ error: 'project_id mangler' }, { status: 400 })
+  }
+  const amount = Number(body.amount)
+  if (!Number.isFinite(amount) || amount < 0) {
+    return NextResponse.json({ error: 'Beløp må være et ikke-negativt tall' }, { status: 400 })
+  }
+  const year = Number(body.year), month = Number(body.month)
+  if (!Number.isInteger(year) || year < 2020 || year > 2040) {
+    return NextResponse.json({ error: 'Ugyldig år' }, { status: 400 })
+  }
+  if (!Number.isInteger(month) || month < 1 || month > 12) {
+    return NextResponse.json({ error: 'Ugyldig måned' }, { status: 400 })
+  }
+
   const entry: ProjectInternalCostEntry = {
     id: randomUUID(),
     project_id: body.project_id,
-    year: body.year,
-    month: body.month,
-    amount: body.amount,
+    year, month, amount,
     comment: body.comment ?? '',
     created_at: new Date().toISOString(),
   }
-  await writeJson('project_internal_costs.json', [...all, entry])
+  const { error } = await getSupabaseAdmin().from('project_internal_costs').insert(entry)
+  if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
   return NextResponse.json(entry, { status: 201 })
 }
 
@@ -38,9 +59,9 @@ export async function DELETE(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const { searchParams } = new URL(request.url)
-  const id = searchParams.get('id')
-  const all = await readJson<ProjectInternalCostEntry>('project_internal_costs.json')
-  await writeJson('project_internal_costs.json', all.filter((e) => e.id !== id))
+  const id = new URL(request.url).searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id mangler' }, { status: 400 })
+  const { error } = await getSupabaseAdmin().from('project_internal_costs').delete().eq('id', id)
+  if (error) return NextResponse.json({ error: 'Sletting feilet' }, { status: 500 })
   return NextResponse.json({ ok: true })
 }
