@@ -130,11 +130,24 @@ export default function ChangeOrderDetailPage() {
           </div>
         </div>
 
-        {/* Attachment */}
+        {/* Attachment — uses the stable proxy endpoint that 302's to a fresh
+            signed Storage URL. Don't render attachment_url directly: it's a
+            private Storage object path, not a usable URL. */}
         {co.attachment_url && (
           <div className="bg-white rounded-lg shadow p-6">
             <p className="text-sm font-medium text-gray-700 mb-3">Vedlegg</p>
-            <img src={co.attachment_url} alt="Vedlegg" className="max-w-full rounded border border-gray-200" />
+            <a
+              href={`/api/change-orders/${co.id}/attachment?redirect=1`}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="inline-block"
+            >
+              <img
+                src={`/api/change-orders/${co.id}/attachment?redirect=1`}
+                alt="Vedlegg"
+                className="max-w-full rounded border border-gray-200"
+              />
+            </a>
           </div>
         )}
 

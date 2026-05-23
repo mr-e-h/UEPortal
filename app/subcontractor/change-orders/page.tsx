@@ -127,7 +127,7 @@ export default function SubcontractorChangeOrdersPage() {
       render: (row) =>
         row.attachment_url ? (
           <a
-            href={row.attachment_url}
+            href={`/api/change-orders/${row.id}/attachment?redirect=1`}
             target="_blank"
             rel="noreferrer"
             className="text-primary text-xs hover:underline"

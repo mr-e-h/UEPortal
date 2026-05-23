@@ -70,7 +70,7 @@ export async function POST(
 }
 
 export async function GET(
-  _request: NextRequest,
+  request: NextRequest,
   { params }: { params: { id: string } }
 ) {
   const owned = await loadOwnedOrder(params.id)
@@ -81,15 +81,25 @@ export async function GET(
     return NextResponse.json({ error: 'Ingen vedlegg' }, { status: 404 })
   }
 
-  // Legacy: existing rows have "/uploads/<id>-<filename>" public paths.
-  // New rows have "<id>/<filename>" Storage object paths. For the legacy
-  // case we'd need to migrate; respond with the literal path for now.
+  // Two response modes:
+  //   default      → returns JSON { signed_url } (callers can fetch then use)
+  //   ?redirect=1  → 302 to the signed URL (use as <img src> / <a href>)
+  // The redirect form lets consumers treat this endpoint as a stable URL —
+  // we mint a fresh short-lived signed URL per request, ownership re-checked.
+  const wantRedirect = new URL(request.url).searchParams.get('redirect') === '1'
+
+  // Legacy: existing rows have "/uploads/<id>-<filename>" public paths from
+  // the pre-Storage era. These no longer exist on Vercel.
   if (order.attachment_url.startsWith('/uploads/')) {
+    if (wantRedirect) {
+      return NextResponse.json({ error: 'Vedlegget finnes ikke lenger' }, { status: 410 })
+    }
     return NextResponse.json({ signed_url: order.attachment_url, legacy: true })
   }
 
   try {
     const signed = await createAttachmentSignedUrl(order.attachment_url, 60)
+    if (wantRedirect) return NextResponse.redirect(signed, 302)
     return NextResponse.json({ signed_url: signed })
   } catch (err) {
     console.error('attachment signed url:', err)

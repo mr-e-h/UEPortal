@@ -60,6 +60,14 @@ export default function ChangeOrderModal({
       setError('Kun bilder og PDF-filer er støttet.')
       return
     }
+    // Match server limit (lib/upload-config.MAX_ATTACHMENT_BYTES = 10 MB).
+    // Without this guard the user can drop a 50 MB file, wait through a
+    // 60 MB JSON upload, and get a generic 413 with no preview.
+    const MAX_BYTES = 10 * 1024 * 1024
+    if (f.size > MAX_BYTES) {
+      setError(`Filen er for stor (${(f.size / 1024 / 1024).toFixed(1)} MB). Maks 10 MB.`)
+      return
+    }
     if (previewUrlRef.current) URL.revokeObjectURL(previewUrlRef.current)
     const url = f.type.startsWith('image/') ? URL.createObjectURL(f) : null
     previewUrlRef.current = url
@@ -193,11 +201,14 @@ export default function ChangeOrderModal({
       }
 
       if (file) {
+        // Two-stage: read the file as base64, then POST. Either stage can fail;
+        // surface real errors so the user can retry instead of seeing a silent
+        // success (EM was created but attachment never uploaded).
         await new Promise<void>((resolve, reject) => {
           const reader = new FileReader()
           reader.onload = async () => {
             try {
-              await fetch(`/api/change-orders/${orderId}/attachment`, {
+              const res = await fetch(`/api/change-orders/${orderId}/attachment`, {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
@@ -206,19 +217,24 @@ export default function ChangeOrderModal({
                   mimeType: file.type,
                 }),
               })
+              if (!res.ok) {
+                const data = await res.json().catch(() => ({} as { error?: string }))
+                reject(new Error(data.error ?? `Vedlegg-opplasting feilet (${res.status})`))
+                return
+              }
               resolve()
             } catch (err) {
               reject(err)
             }
           }
-          reader.onerror = () => reject(reader.error)
+          reader.onerror = () => reject(reader.error ?? new Error('Klarte ikke lese filen'))
           reader.readAsDataURL(file)
         })
       }
 
       onSuccess()
-    } catch {
-      setError('Noe gikk galt. Prøv igjen.')
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Noe gikk galt. Prøv igjen.')
       setSubmitting(false)
     }
   }
@@ -362,7 +378,7 @@ export default function ChangeOrderModal({
                         />
                       </svg>
                       <a
-                        href={existingAttachmentUrl}
+                        href={initialDraft ? `/api/change-orders/${initialDraft.id}/attachment?redirect=1` : '#'}
                         target="_blank"
                         rel="noreferrer"
                         className="text-sm text-blue-600 hover:underline truncate max-w-[220px]"

@@ -859,7 +859,7 @@ export default function SubcontractorProjectPage() {
                     <td className="px-3 py-2">
                       {co.attachment_url ? (
                         <a
-                          href={co.attachment_url}
+                          href={`/api/change-orders/${co.id}/attachment?redirect=1`}
                           target="_blank"
                           rel="noreferrer"
                           className="text-primary text-xs hover:underline"
