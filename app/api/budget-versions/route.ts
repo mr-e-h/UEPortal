@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAuth, isSub } from '@/lib/api-guard'
 import type { BudgetVersion, ProjectSubcontractor } from '@/types'
 
@@ -7,23 +7,30 @@ export async function GET(req: NextRequest) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.response
 
-  const { searchParams } = new URL(req.url)
-  const projectId = searchParams.get('project_id')
-  let versions = await readJson<BudgetVersion>('budget_versions.json')
-  if (projectId) versions = versions.filter((v) => v.project_id === projectId)
+  const projectId = new URL(req.url).searchParams.get('project_id')
+  const sb = getSupabaseAdmin()
+  const query = sb.from('budget_versions').select('*').order('version', { ascending: true })
+  if (projectId) query.eq('project_id', projectId)
 
-  // UE: limit to projects they are linked to, AND strip customer-side totals.
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  let versions = (data ?? []) as BudgetVersion[]
+
+  // UE: limit to linked projects AND strip Netel's customer-side totals.
   if (isSub(auth.user)) {
     const subId = auth.user.subcontractor_id
     if (!subId) return NextResponse.json([])
-    const links = await readJson<ProjectSubcontractor>('project_subcontractors.json')
+    const { data: links } = await sb
+      .from('project_subcontractors')
+      .select('project_id')
+      .eq('subcontractor_id', subId)
     const allowedProjectIds = new Set(
-      links.filter((l) => l.subcontractor_id === subId).map((l) => l.project_id)
+      ((links ?? []) as Pick<ProjectSubcontractor, 'project_id'>[]).map((l) => l.project_id),
     )
     versions = versions
       .filter((v) => allowedProjectIds.has(v.project_id))
       .map((v) => ({ ...v, total_sales_value: 0 }))
   }
 
-  return NextResponse.json(versions.sort((a, b) => a.version - b.version))
+  return NextResponse.json(versions)
 }
