@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { Briefcase, FileText, Receipt, User } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useMe } from '@/lib/useMe'
 
 type NavLink = { href: string; label: string; icon: LucideIcon; exact?: boolean }
 type NavSection = { label: string; links: NavLink[] }
@@ -34,28 +35,31 @@ const sections: NavSection[] = [
 export default function SubcontractorLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [ready, setReady] = useState(false)
-  const [userName, setUserName] = useState('')
+  const { me, loading, clear } = useMe()
 
+  // Server-side middleware already gates /subcontractor on cookie presence.
+  // This is the role-level check: if the logged-in user isn't a UE, kick
+  // them back to /login (their dashboard isn't here).
   useEffect(() => {
-    const role = localStorage.getItem('user_role')
-    if (role !== 'subcontractor' && role !== 'sub') {
+    if (loading) return
+    if (!me || (me.role !== 'subcontractor' && me.role !== 'sub')) {
       router.replace('/login')
-    } else {
-      setUserName(localStorage.getItem('user_name') ?? '')
-      setReady(true)
     }
-  }, [router])
+  }, [loading, me, router])
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
+    clear()
+    // Keep localStorage.clear() during transition — older pages still read
+    // from it. Remove once all reads are off localStorage.
     localStorage.clear()
     router.push('/login')
   }
 
-  if (!ready) {
+  if (loading || !me) {
     return <div className="min-h-screen flex items-center justify-center text-[var(--color-text-muted)]">Laster...</div>
   }
+  const userName = me.full_name
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-page)] flex justify-center">

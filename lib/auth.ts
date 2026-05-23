@@ -3,6 +3,7 @@ import { cache } from 'react'
 import { randomUUID } from 'crypto'
 import { generateToken, hashToken, safeCompareHash } from './tokens'
 import { getSupabaseAdmin } from './supabase'
+import { isProd } from './env'
 import type { User } from '@/types'
 
 const SESSION_COOKIE = 'session'
@@ -73,7 +74,7 @@ export async function setSession(userId: string): Promise<void> {
     httpOnly: true,
     path: '/',
     sameSite: 'strict',
-    secure: process.env.NODE_ENV === 'production',
+    secure: isProd,
     maxAge: Math.floor(SESSION_TTL_MS / 1000),
   })
 }

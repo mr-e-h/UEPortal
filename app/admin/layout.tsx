@@ -3,6 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
+import { useMe } from '@/lib/useMe'
 import {
   LayoutDashboard,
   FolderKanban,
@@ -72,20 +73,21 @@ const sections = [
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [ready, setReady] = useState(false)
-  const [userName, setUserName] = useState('')
+  const { me, loading, clear } = useMe()
   const [search, setSearch] = useState('')
   const [pendingAccessRequests, setPendingAccessRequests] = useState(0)
 
+  // Role gate. The middleware already requires the session cookie; this
+  // catches the case where a logged-in UE user tries to load /admin/* —
+  // they get bounced to /login (their portal is elsewhere).
   useEffect(() => {
-    const role = localStorage.getItem('user_role')
-    if (role !== 'project_manager' && role !== 'main' && role !== 'company') {
+    if (loading) return
+    if (!me || (me.role !== 'project_manager' && me.role !== 'main' && me.role !== 'company')) {
       router.replace('/login')
-    } else {
-      setUserName(localStorage.getItem('user_name') ?? '')
-      setReady(true)
     }
-  }, [router])
+  }, [loading, me, router])
+
+  const ready = !loading && me !== null
 
   // Poll the pending-request count so the sidebar badge stays roughly fresh.
   // 30s is frequent enough to feel live but cheap on the DB.
@@ -112,11 +114,13 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
+    clear()
+    // Transitional: older pages still read user_id/role/name from localStorage.
     localStorage.clear()
     router.push('/login')
   }
 
-  if (!ready) {
+  if (!ready || !me) {
     return <div className="min-h-screen flex items-center justify-center text-gray-500">Laster...</div>
   }
 
@@ -189,7 +193,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
               />
             </form>
           </div>
-          <span className="text-sm text-[var(--color-text-secondary)]">{userName}</span>
+          <span className="text-sm text-[var(--color-text-secondary)]">{me.full_name}</span>
           <button
             onClick={handleLogout}
             className="text-xs text-[var(--color-text-muted)] hover:text-danger transition-colors"

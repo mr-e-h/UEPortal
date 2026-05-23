@@ -1,4 +1,5 @@
 import { createClient, type SupabaseClient } from '@supabase/supabase-js'
+import { env } from './env'
 
 /**
  * Server-side Supabase client using the service_role key.
@@ -11,9 +12,7 @@ import { createClient, type SupabaseClient } from '@supabase/supabase-js'
  * not the database. When we move to Supabase Auth, swap to anon key in
  * browser + RLS policies based on auth.uid().
  *
- * Required env vars (set in .env.local and Vercel):
- *   SUPABASE_URL                — https://<project>.supabase.co
- *   SUPABASE_SERVICE_ROLE_KEY   — service_role key from Supabase API settings
+ * Env vars are validated in lib/env.ts on first import (prod throws, dev warns).
  */
 
 let cached: SupabaseClient | null = null
@@ -21,16 +20,7 @@ let cached: SupabaseClient | null = null
 export function getSupabaseAdmin(): SupabaseClient {
   if (cached) return cached
 
-  const url = process.env.SUPABASE_URL
-  const key = process.env.SUPABASE_SERVICE_ROLE_KEY
-
-  if (!url || !key) {
-    throw new Error(
-      'Supabase env vars missing: set SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY in .env.local'
-    )
-  }
-
-  cached = createClient(url, key, {
+  cached = createClient(env.SUPABASE_URL, env.SUPABASE_SERVICE_ROLE_KEY, {
     auth: {
       autoRefreshToken: false,
       persistSession: false,
