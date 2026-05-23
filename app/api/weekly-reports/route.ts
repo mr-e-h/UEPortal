@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson, getDeletedProjectIds } from '@/lib/data'
-import type { WeeklyReport, WeeklyReportLine } from '@/types'
+import { randomUUID } from 'crypto'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getDeletedProjectIds } from '@/lib/data'
 import { getSession } from '@/lib/auth'
+import type { WeeklyReport, WeeklyReportLine } from '@/types'
 
 export async function GET(request: NextRequest) {
   const session = await getSession()
@@ -13,24 +15,39 @@ export async function GET(request: NextRequest) {
   const year = searchParams.get('year')
   const weekNumber = searchParams.get('week_number')
   const withLines = searchParams.get('with_lines') === 'true'
-
   const isSubRole = session.role === 'sub' || session.role === 'subcontractor'
 
-  const deletedProjectIds = await getDeletedProjectIds()
-  let reports = (await readJson<WeeklyReport>('weekly_reports.json')).filter((r) => !deletedProjectIds.has(r.project_id))
-
+  const sb = getSupabaseAdmin()
+  const query = sb.from('weekly_reports').select('*')
   if (isSubRole) {
     if (!session.subcontractor_id) return NextResponse.json([])
-    reports = reports.filter((r) => r.subcontractor_id === session.subcontractor_id)
+    query.eq('subcontractor_id', session.subcontractor_id)
   }
-  if (projectId) reports = reports.filter((r) => r.project_id === projectId)
-  if (subcontractorId) reports = reports.filter((r) => r.subcontractor_id === subcontractorId)
-  if (year) reports = reports.filter((r) => r.year === Number(year))
-  if (weekNumber) reports = reports.filter((r) => r.week_number === Number(weekNumber))
+  if (projectId) query.eq('project_id', projectId)
+  if (subcontractorId) query.eq('subcontractor_id', subcontractorId)
+  if (year) query.eq('year', Number(year))
+  if (weekNumber) query.eq('week_number', Number(weekNumber))
+
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  let reports = (data ?? []) as WeeklyReport[]
+
+  const deletedProjectIds = await getDeletedProjectIds()
+  reports = reports.filter((r) => !deletedProjectIds.has(r.project_id))
 
   if (withLines) {
-    const allLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
-    return NextResponse.json(reports.map((r) => ({ ...r, lines: allLines.filter((l) => l.weekly_report_id === r.id) })))
+    const reportIds = reports.map((r) => r.id)
+    const { data: linesData } = reportIds.length > 0
+      ? await sb.from('weekly_report_lines').select('*').in('weekly_report_id', reportIds)
+      : { data: [] as WeeklyReportLine[] }
+    const lines = (linesData ?? []) as WeeklyReportLine[]
+    const byReport = new Map<string, WeeklyReportLine[]>()
+    for (const l of lines) {
+      const arr = byReport.get(l.weekly_report_id) ?? []
+      arr.push(l)
+      byReport.set(l.weekly_report_id, arr)
+    }
+    return NextResponse.json(reports.map((r) => ({ ...r, lines: byReport.get(r.id) ?? [] })))
   }
 
   return NextResponse.json(reports)
@@ -40,7 +57,12 @@ export async function POST(request: NextRequest) {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
 
-  const body = await request.json() as { project_id: string; subcontractor_id: string; year: number; week_number: number }
+  const body = await request.json() as {
+    project_id: string
+    subcontractor_id: string
+    year: number
+    week_number: number
+  }
 
   const isSubRole = session.role === 'sub' || session.role === 'subcontractor'
   if (isSubRole && session.subcontractor_id !== body.subcontractor_id) {
@@ -50,20 +72,27 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
   }
 
-  const reports = await readJson<WeeklyReport>('weekly_reports.json')
-
-  const sameWeekCount = reports.filter(
-    (r) => r.project_id === body.project_id && r.subcontractor_id === body.subcontractor_id &&
-      r.year === body.year && r.week_number === body.week_number
-  ).length
+  // submission_number is per (project, sub, year, week). Compute by count.
+  // Race: two concurrent POSTs can read the same count and both write N+1.
+  // Mitigation: rely on the parent unique index (if one exists) to bounce the
+  // dup; if not, last-write-wins on submission_number is acceptable — it's
+  // a display field, not a key. The real key is `id`.
+  const sb = getSupabaseAdmin()
+  const { count } = await sb
+    .from('weekly_reports')
+    .select('id', { count: 'exact', head: true })
+    .eq('project_id', body.project_id)
+    .eq('subcontractor_id', body.subcontractor_id)
+    .eq('year', body.year)
+    .eq('week_number', body.week_number)
 
   const newReport: WeeklyReport = {
-    id: String(Date.now()),
+    id: randomUUID(), // randomUUID, not String(Date.now()) — collision-safe
     project_id: body.project_id,
     subcontractor_id: body.subcontractor_id,
     year: body.year,
     week_number: body.week_number,
-    submission_number: sameWeekCount + 1,
+    submission_number: (count ?? 0) + 1,
     status: 'draft',
     submitted_at: null,
     reviewed_at: null,
@@ -71,6 +100,7 @@ export async function POST(request: NextRequest) {
     admin_comment: null,
     created_at: new Date().toISOString(),
   }
-  await writeJson('weekly_reports.json', [...reports, newReport])
+  const { error } = await sb.from('weekly_reports').insert(newReport)
+  if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
   return NextResponse.json(newReport, { status: 201 })
 }

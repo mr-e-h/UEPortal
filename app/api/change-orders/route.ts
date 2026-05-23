@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
-import { readJson, writeJson, getDeletedProjectIds } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getDeletedProjectIds } from '@/lib/data'
 import { getSession } from '@/lib/auth'
 import { isSub } from '@/lib/api-guard'
 import type { ChangeOrder, Product, SubcontractorProductPrice, ProjectBudgetLine } from '@/types'
@@ -17,26 +18,32 @@ export async function GET(request: NextRequest) {
     const userIsSub = isSub(session)
 
     const params = new URL(request.url).searchParams
-    const deletedProjectIds = await getDeletedProjectIds()
-    let orders = (await readJson<ChangeOrder>('change_orders.json'))
-      .filter((o) => o.status !== 'draft' && !deletedProjectIds.has(o.project_id))
     const projectId = params.get('project_id')
     const subcontractorId = params.get('subcontractor_id')
     const id = params.get('id')
 
+    const sb = getSupabaseAdmin()
+    const query = sb.from('change_orders').select('*').neq('status', 'draft')
     if (userIsSub) {
       if (!session.subcontractor_id) return NextResponse.json([])
-      orders = orders.filter((o) => o.subcontractor_id === session.subcontractor_id)
+      query.eq('subcontractor_id', session.subcontractor_id)
     }
-    if (id) orders = orders.filter((o) => o.id === id)
-    if (projectId) orders = orders.filter((o) => o.project_id === projectId)
-    if (subcontractorId) orders = orders.filter((o) => o.subcontractor_id === subcontractorId)
+    if (id) query.eq('id', id)
+    if (projectId) query.eq('project_id', projectId)
+    if (subcontractorId) query.eq('subcontractor_id', subcontractorId)
+
+    const { data, error } = await query
+    if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+    let orders = (data ?? []) as ChangeOrder[]
+
+    const deletedProjectIds = await getDeletedProjectIds()
+    orders = orders.filter((o) => !deletedProjectIds.has(o.project_id))
 
     if (userIsSub) return NextResponse.json(orders.map(stripForUE))
     return NextResponse.json(orders)
   } catch (error) {
     console.error('change-orders GET error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Intern feil' }, { status: 500 })
   }
 }
 
@@ -62,35 +69,40 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
     }
 
-    const products = await readJson<Product>('products.json')
-    const prices = await readJson<SubcontractorProductPrice>('subcontractor_product_prices.json')
-
-    const product = products.find((p) => p.id === body.product_id)
-    if (!product) return NextResponse.json({ error: 'Product not found' }, { status: 404 })
-
-    const priceEntry = prices.find(
-      (p) => p.subcontractor_id === body.subcontractor_id && p.product_id === body.product_id
-    )
-    let costPrice = priceEntry?.cost_price ?? 0
-
-    if (costPrice === 0) {
-      const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
-      const bl = budgetLines.find(
-        (bl) =>
-          bl.project_id === body.project_id &&
-          bl.product_id === body.product_id &&
-          bl.assigned_subcontractor_id === body.subcontractor_id
-      )
-      if (bl && bl.subcontractor_cost_price_snapshot > 0) {
-        costPrice = bl.subcontractor_cost_price_snapshot
-      }
+    const qty = Number(body.requested_quantity)
+    if (!Number.isFinite(qty) || qty <= 0) {
+      return NextResponse.json({ error: 'Mengde må være et positivt tall' }, { status: 400 })
     }
 
-    const totalCost = costPrice * body.requested_quantity
-    const totalCustomerValue = product.customer_price * body.requested_quantity
+    const sb = getSupabaseAdmin()
+    // Three targeted lookups instead of full-table reads.
+    const [productRes, priceRes, blRes] = await Promise.all([
+      sb.from('products').select('customer_price, unit').eq('id', body.product_id).maybeSingle<Pick<Product, 'customer_price' | 'unit'>>(),
+      sb.from('subcontractor_product_prices').select('cost_price')
+        .eq('subcontractor_id', body.subcontractor_id)
+        .eq('product_id', body.product_id)
+        .maybeSingle<Pick<SubcontractorProductPrice, 'cost_price'>>(),
+      sb.from('project_budget_lines').select('subcontractor_cost_price_snapshot')
+        .eq('project_id', body.project_id)
+        .eq('product_id', body.product_id)
+        .eq('assigned_subcontractor_id', body.subcontractor_id)
+        .maybeSingle<Pick<ProjectBudgetLine, 'subcontractor_cost_price_snapshot'>>(),
+    ])
+
+    if (!productRes.data) return NextResponse.json({ error: 'Produkt ikke funnet' }, { status: 404 })
+    const product = productRes.data
+
+    let costPrice = priceRes.data?.cost_price ?? 0
+    if (costPrice === 0 && blRes.data && blRes.data.subcontractor_cost_price_snapshot > 0) {
+      // Fall back to the snapshot from the budget line — the line was assigned
+      // with a known price even if the master price list is missing now.
+      costPrice = blRes.data.subcontractor_cost_price_snapshot
+    }
+
+    const totalCost = costPrice * qty
+    const totalCustomerValue = product.customer_price * qty
     const profit = totalCustomerValue - totalCost
 
-    const orders = await readJson<ChangeOrder>('change_orders.json')
     const isDraft = body.status === 'draft'
     const now = new Date().toISOString()
     const newOrder: ChangeOrder = {
@@ -98,7 +110,7 @@ export async function POST(request: NextRequest) {
       project_id: body.project_id,
       product_id: body.product_id,
       subcontractor_id: body.subcontractor_id,
-      requested_quantity: body.requested_quantity,
+      requested_quantity: qty,
       unit: product.unit,
       cost_price_snapshot: costPrice,
       customer_price_snapshot: product.customer_price,
@@ -113,12 +125,12 @@ export async function POST(request: NextRequest) {
       reviewed_by: null,
       admin_comment: null,
     }
-    await writeJson('change_orders.json', [...orders, newOrder])
+    const { error } = await sb.from('change_orders').insert(newOrder)
+    if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
 
-    // Strip customer_price/profit/sales for UE — never leak via this endpoint.
     return NextResponse.json(userIsSub ? stripForUE(newOrder) : newOrder, { status: 201 })
   } catch (error) {
     console.error('change-orders POST error:', error)
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 })
+    return NextResponse.json({ error: 'Intern feil' }, { status: 500 })
   }
 }
