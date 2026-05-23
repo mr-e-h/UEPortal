@@ -1,10 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { useMe } from '@/lib/useMe'
+import { useProjectData } from './useProjectData'
 import { Download } from 'lucide-react'
 import type { Project, Product, ProjectBudgetLine, ReportLine, ProjectSubcontractor, Subcontractor, ChangeOrder, WeeklyReport, WeeklyReportLine, ProjectInternalCostEntry, SubcontractorProductPrice, GanttMilestone, BudgetVersion, ProjectMonthPlan } from '@/types'
 import SortableTable from '@/components/SortableTable'
@@ -20,6 +20,7 @@ const BudgetLineChart = dynamic(() => import('@/components/BudgetLineChart'), { 
 import ReportingsSection from './ReportingsSection'
 import InternalCostsSection from './InternalCostsSection'
 import MaterialSection from './MaterialSection'
+import ForecastSection from './ForecastSection'
 import { fmtNOK as fmt } from '@/lib/format'
 import { reportLineStatus } from '@/lib/statuses'
 import { lineTypeLabel } from '@/lib/line-types'
@@ -57,36 +58,29 @@ export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
 
-  const [activeTab, setActiveTab] = useState<ActiveTab>('oversikt')
+  // All data + mutation handlers live in the hook. Page-local UI state
+  // (tabs, dialog open/close, draft form values) stays here.
+  const {
+    project, allProducts, budgetLines, reportLines, projectSubs, allSubs,
+    changeOrders, internalCosts, weeklyReportsWL, subPrices, milestones,
+    budgetVersions, monthPlans, loading, adminName,
+    fetchAll, addBudgetLine: addBudgetLineHandler, addSubToProject: addSubHandler,
+    removeSubFromProject, updateReportStatus, updateChangeOrderStatus: updateCOStatus,
+    deleteInternalCost,
+  } = useProjectData(id)
 
-  const [project, setProject] = useState<Project | null>(null)
-  const [allProducts, setAllProducts] = useState<Product[]>([])
-  const [budgetLines, setBudgetLines] = useState<ProjectBudgetLine[]>([])
-  const [reportLines, setReportLines] = useState<ReportLine[]>([])
-  const [projectSubs, setProjectSubs] = useState<ProjectSubcontractor[]>([])
-  const [allSubs, setAllSubs] = useState<Subcontractor[]>([])
-  const [changeOrders, setChangeOrders] = useState<ChangeOrder[]>([])
-  const [loading, setLoading] = useState(true)
+  const [activeTab, setActiveTab] = useState<ActiveTab>('oversikt')
 
   const [showAddLine, setShowAddLine] = useState(false)
   const [newLine, setNewLine] = useState({ product_id: '', budget_quantity: '', line_type: 'subcontractor_work' })
   const [savingLine, setSavingLine] = useState(false)
 
-  const [subPrices, setSubPrices] = useState<SubcontractorProductPrice[]>([])
   const [selected, setSelected] = useState<string[]>([])
   const [bulkSubcontractor, setBulkSubcontractor] = useState('')
   const [bulkError, setBulkError] = useState('')
   const [missingPriceDialog, setMissingPriceDialog] = useState<{ subId: string; subName: string; products: Product[] } | null>(null)
 
   const [addSubId, setAddSubId] = useState('')
-  const { me } = useMe()
-  const adminName = me?.full_name ?? 'Admin'
-
-  const [internalCosts, setInternalCosts] = useState<ProjectInternalCostEntry[]>([])
-
-  const [milestones, setMilestones] = useState<GanttMilestone[]>([])
-  const [budgetVersions, setBudgetVersions] = useState<BudgetVersion[]>([])
-  const [monthPlans, setMonthPlans] = useState<ProjectMonthPlan[]>([])
 
   const [confirmRemoveSubId, setConfirmRemoveSubId] = useState<string | null>(null)
   const [confirmDeleteCostId, setConfirmDeleteCostId] = useState<string | null>(null)
@@ -95,8 +89,6 @@ export default function ProjectDetailPage() {
   // Line type filter for Budsjettlinjer tab
   const [lineTypeFilter, setLineTypeFilter] = useState<string>('all')
 
-  type WRWithLines = WeeklyReport & { lines: WeeklyReportLine[] }
-  const [weeklyReportsWL, setWeeklyReportsWL] = useState<WRWithLines[]>([])
   const [expandedSub, setExpandedSub] = useState<string | null>(null)
 
   // Excel post-import
@@ -105,52 +97,8 @@ export default function ProjectDetailPage() {
   const [importing, setImporting] = useState(false)
   const [dragOver, setDragOver] = useState(false)
 
-  const safeArr = <T,>(val: unknown): T[] => Array.isArray(val) ? val as T[] : []
-
-  const fetchAll = useCallback(async () => {
-    const responses = await Promise.all([
-      fetch('/api/projects'),
-      fetch('/api/products'),
-      fetch(`/api/budget-lines?project_id=${id}`),
-      fetch(`/api/report-lines?project_id=${id}`),
-      fetch(`/api/project-subcontractors?project_id=${id}`),
-      fetch('/api/subcontractors'),
-      fetch(`/api/change-orders?project_id=${id}`),
-      fetch(`/api/project-internal-costs?project_id=${id}`),
-      fetch(`/api/weekly-reports?project_id=${id}&with_lines=true`),
-      fetch('/api/subcontractor-prices'),
-      fetch(`/api/milestones?project_id=${id}`),
-      fetch(`/api/budget-versions?project_id=${id}`),
-      fetch(`/api/project-month-plans?project_id=${id}`),
-    ])
-
-    if (responses.some((r) => r.status === 401)) {
-      router.replace('/login')
-      return
-    }
-
-    const [allProj, prods, bls, rls, pSubs, subs, cos, ics, wrls, sps, ms, bv, mp] = await Promise.all(
-      responses.map((r) => r.json())
-    )
-
-    setProject(safeArr<Project>(allProj).find((p) => p.id === id) ?? null)
-    setAllProducts(safeArr(prods))
-    setBudgetLines(safeArr(bls))
-    setReportLines(safeArr(rls))
-    setProjectSubs(safeArr(pSubs))
-    setAllSubs(safeArr(subs))
-    setChangeOrders(safeArr(cos))
-    setInternalCosts(safeArr(ics))
-    setWeeklyReportsWL(safeArr(wrls))
-    setSubPrices(safeArr(sps))
-    setMilestones(safeArr(ms))
-    setBudgetVersions(safeArr(bv))
-    setMonthPlans(safeArr(mp))
-    setLoading(false)
-  }, [id, router])
-
+  // Restore pending assignment if coming back from the prices page (UI-only).
   useEffect(() => {
-    // Restore pending assignment if coming back from the prices page
     try {
       const pending = sessionStorage.getItem('pending_assignment')
       if (pending) {
@@ -164,22 +112,19 @@ export default function ProjectDetailPage() {
         }
       }
     } catch {}
-
-    fetchAll()
-  }, [fetchAll, id])
+  }, [id])
 
   async function addBudgetLine(e: React.FormEvent) {
     e.preventDefault()
     setSavingLine(true)
-    await fetch('/api/budget-lines', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: id, product_id: newLine.product_id, budget_quantity: Number(newLine.budget_quantity), line_type: newLine.line_type }),
+    await addBudgetLineHandler({
+      product_id: newLine.product_id,
+      budget_quantity: Number(newLine.budget_quantity),
+      line_type: newLine.line_type,
     })
     setNewLine({ product_id: '', budget_quantity: '', line_type: 'subcontractor_work' })
     setShowAddLine(false)
     setSavingLine(false)
-    fetchAll()
   }
 
   async function handleBulkAssign() {
@@ -224,27 +169,8 @@ export default function ProjectDetailPage() {
 
   async function addSubToProject() {
     if (!addSubId) return
-    await fetch('/api/project-subcontractors', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: id, subcontractor_id: addSubId }),
-    })
+    await addSubHandler(addSubId)
     setAddSubId('')
-    fetchAll()
-  }
-
-  async function removeSubFromProject(linkId: string) {
-    await fetch(`/api/project-subcontractors?id=${linkId}`, { method: 'DELETE' })
-    fetchAll()
-  }
-
-  async function updateReportStatus(reportId: string, status: 'approved' | 'rejected') {
-    await fetch(`/api/report-lines/${reportId}/status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status }),
-    })
-    fetchAll()
   }
 
   async function handlePostImport(file: File) {
@@ -273,20 +199,6 @@ export default function ProjectDetailPage() {
       setImportMsg(data.error ?? 'Import feilet')
     }
     setImporting(false)
-  }
-
-  async function updateCOStatus(coId: string, status: 'approved' | 'rejected') {
-    await fetch(`/api/change-orders/${coId}/status`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, reviewed_by: adminName }),
-    })
-    fetchAll()
-  }
-
-  async function deleteInternalCost(entryId: string) {
-    await fetch(`/api/project-internal-costs?id=${entryId}`, { method: 'DELETE' })
-    fetchAll()
   }
 
   if (loading) return <div className="flex items-center justify-center h-64 text-gray-500">Laster...</div>
@@ -942,55 +854,16 @@ export default function ProjectDetailPage() {
 
       {/* ── PROGNOSE ─────────────────────────────────────────────────── */}
       {activeTab === 'prognose' && (
-        <div className="space-y-6">
-          {hasForecast && (
-            <section>
-              <h2 className="text-lg font-semibold text-gray-900 mb-3">Prognose — månedlig plan</h2>
-              <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-                <div className="bg-indigo-50 border border-indigo-200 rounded-xl shadow-sm p-4">
-                  <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Forventet inntekt</p>
-                  <p className="text-2xl font-bold text-indigo-900 mt-1">{fmt(forecastRevenue)}</p>
-                  {forecastRevenue > 0 && totalSales > 0 && (
-                    <p className={`text-xs mt-0.5 font-medium ${forecastRevenue <= totalSales ? 'text-amber-600' : 'text-red-500'}`}>
-                      {forecastRevenue < totalSales ? `−${fmt(totalSales - forecastRevenue)} vs. kontrakt` : `+${fmt(forecastRevenue - totalSales)} vs. kontrakt`}
-                    </p>
-                  )}
-                </div>
-                <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4">
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Forventet UE-kost</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(forecastUECost)}</p>
-                </div>
-                <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4">
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Forventet internkost</p>
-                  <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(forecastInternalCost)}</p>
-                  {forecastOtherCost > 0 && <p className="text-xs text-gray-400 mt-0.5">+ {fmt(forecastOtherCost)} andre kost.</p>}
-                </div>
-                <div className={`rounded-xl shadow-sm p-4 border ${forecastProfit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-                  <p className="text-xs text-gray-500 uppercase tracking-wide">Forventet fortjeneste</p>
-                  <p className={`text-2xl font-bold mt-1 ${forecastProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>{fmt(forecastProfit)}</p>
-                </div>
-              </div>
-            </section>
-          )}
-
-          <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 flex flex-col items-center gap-4 text-center">
-            <div className="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center">
-              <svg className="w-8 h-8 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M2.25 18L9 11.25l4.306 4.307a11.95 11.95 0 015.814-5.519l2.74-1.22m0 0l-5.94-2.28m5.94 2.28l-2.28 5.941" />
-              </svg>
-            </div>
-            <div>
-              <h3 className="text-base font-semibold text-gray-900">Prognoseside</h3>
-              <p className="text-sm text-gray-500 mt-1">Legg inn månedlige prognose-tall, forventet inntekt og kostnader per periode.</p>
-            </div>
-            <Link
-              href={`/admin/projects/${id}/forecast`}
-              className="px-5 py-2.5 bg-indigo-600 text-white text-sm font-semibold rounded-lg hover:bg-indigo-700 transition-colors"
-            >
-              Åpne prognose →
-            </Link>
-          </div>
-        </div>
+        <ForecastSection
+          projectId={id}
+          totalSales={totalSales}
+          forecastRevenue={forecastRevenue}
+          forecastUECost={forecastUECost}
+          forecastInternalCost={forecastInternalCost}
+          forecastOtherCost={forecastOtherCost}
+          forecastProfit={forecastProfit}
+          hasForecast={hasForecast}
+        />
       )}
 
       {/* ── INTERNE KOSTNADER ────────────────────────────────────────── */}
