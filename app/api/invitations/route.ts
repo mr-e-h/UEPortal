@@ -30,7 +30,14 @@ export async function POST(request: NextRequest) {
 
   const invitations = await readJson<Invitation>('invitations.json')
 
-  const pending = invitations.find((i) => i.email === email && i.accepted_at === null)
+  // Only block on a *non-expired* pending invitation. Earlier this matched any
+  // un-accepted invite, so once one expired, admin could never re-invite.
+  const nowMs = Date.now()
+  const pending = invitations.find((i) =>
+    i.email === email
+    && i.accepted_at === null
+    && new Date(i.expires_at).getTime() > nowMs
+  )
   if (pending) {
     return NextResponse.json({ error: 'Det finnes allerede en aktiv invitasjon for denne e-posten' }, { status: 409 })
   }

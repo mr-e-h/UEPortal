@@ -36,6 +36,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Feil e-post eller passord' }, { status: 401 })
   }
 
+  // Deactivated users keep the row in `users` (for audit + reassociation), but
+  // must not be able to sign in. Generic error — don't leak which accounts exist.
+  if (user.active === false) {
+    return NextResponse.json({ error: 'Kontoen er deaktivert. Kontakt admin.' }, { status: 403 })
+  }
+
   await setSession(user.id)
 
   return NextResponse.json({

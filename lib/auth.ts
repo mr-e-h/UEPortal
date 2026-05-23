@@ -52,7 +52,12 @@ export const getSession = cache(async (): Promise<User | null> => {
     .select('*')
     .eq('id', session.user_id)
     .maybeSingle<User>()
-  return user ?? null
+  if (!user) return null
+  // Treat a deactivated account as logged-out — admins toggle `active=false`
+  // expecting the user's session to die immediately. (We also delete sessions
+  // on the API path, but this catches any stragglers.)
+  if (user.active === false) return null
+  return user
 })
 
 /**

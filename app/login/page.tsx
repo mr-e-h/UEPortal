@@ -1,7 +1,7 @@
 'use client'
 
 import { useState } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 type LoginResponse =
@@ -10,6 +10,10 @@ type LoginResponse =
 
 export default function LoginPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
+  // The middleware sets ?redirect=&lt;original-path&gt; when bouncing an
+  // unauthenticated request. Honor it so deep links survive the login round-trip.
+  const requestedRedirect = searchParams.get('redirect')
   const [email, setEmail] = useState('')
   const [password, setPassword] = useState('')
   const [error, setError] = useState<string | null>(null)
@@ -22,28 +26,41 @@ export default function LoginPage() {
     setLoading(true)
     setError(null)
 
-    const res = await fetch('/api/auth/login', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email, password }),
-    })
-
-    const data = await res.json() as LoginResponse
-
-    if (!res.ok || 'error' in data) {
-      setError('error' in data ? data.error : 'Innlogging feilet')
+    let res: Response
+    try {
+      res = await fetch('/api/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email, password }),
+      })
+    } catch {
+      setError('Nettverksfeil — sjekk forbindelsen og prøv igjen')
       setLoading(false)
       return
     }
 
-    // Session cookie is the only auth state now. useMe() reads it via /api/me.
-    // (Older sessions still in flight may have leftover localStorage entries —
-    // logout clears them defensively. No production reader remains.)
+    // .json() can throw on empty/non-JSON bodies; coerce to a typed object.
+    const data = await res.json().catch(() => ({})) as LoginResponse | Record<string, never>
 
-    const dest = data.role === 'company' ? '/company'
+    if (!res.ok || 'error' in data) {
+      const msg = 'error' in data && typeof data.error === 'string' ? data.error : 'Innlogging feilet'
+      setError(msg)
+      setLoading(false)
+      return
+    }
+
+    // Resolve destination — honor ?redirect= only when it points at an internal
+    // path (open-redirect prevention) and matches the user's role tree.
+    const roleHome = data.role === 'company' ? '/company'
       : (data.role === 'project_manager' || data.role === 'main') ? '/admin'
       : (data.role === 'subcontractor' || data.role === 'sub') ? '/subcontractor'
       : '/subcontractor'
+
+    const safeRedirect = requestedRedirect && requestedRedirect.startsWith('/')
+      && !requestedRedirect.startsWith('//')
+      ? requestedRedirect
+      : null
+    const dest = safeRedirect ?? roleHome
     router.push(dest)
   }
 
