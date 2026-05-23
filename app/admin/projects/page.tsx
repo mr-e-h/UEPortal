@@ -1,16 +1,28 @@
-import { readJson } from '@/lib/data'
-import type { Project, ProjectBudgetLine } from '@/types'
+import { redirect } from 'next/navigation'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSession } from '@/lib/auth'
+import { ADMIN_ROLES } from '@/lib/roles'
+import type { Project, ProjectBudgetLine, ProjectSubcontractor } from '@/types'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import ProjectsListTable from '@/components/admin/ProjectsListTable'
 
+export const dynamic = 'force-dynamic'
+
 export default async function ProjectsPage() {
-  const [allProjects, budgetLines, projectSubs] = await Promise.all([
-    readJson<Project>('projects.json'),
-    readJson<ProjectBudgetLine>('project_budget_lines.json'),
-    readJson<{ id: string; project_id: string; subcontractor_id: string }>('project_subcontractors.json'),
+  const me = await getSession()
+  if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
+
+  const sb = getSupabaseAdmin()
+  const [projRes, blRes, psRes] = await Promise.all([
+    sb.from('projects').select('*').neq('deleted', true),
+    sb.from('project_budget_lines').select('project_id'),
+    sb.from('project_subcontractors').select('project_id'),
   ])
-  const projects = allProjects.filter((p) => !p.deleted)
+
+  const projects = (projRes.data ?? []) as Project[]
+  const budgetLines = (blRes.data ?? []) as Pick<ProjectBudgetLine, 'project_id'>[]
+  const projectSubs = (psRes.data ?? []) as Pick<ProjectSubcontractor, 'project_id'>[]
 
   const blCounts: Record<string, number> = {}
   for (const bl of budgetLines) {

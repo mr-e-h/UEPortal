@@ -6,6 +6,8 @@ import { useParams, useRouter } from 'next/navigation'
 import { ArrowLeft, Save, Trash2, Mail, Key } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import Field from '@/components/ui/Field'
+import ErrorBox from '@/components/ui/ErrorBox'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { ROLES, roleLabel } from '@/lib/roles'
 import { displayUsername, displayCompany } from '@/lib/usernames'
@@ -126,7 +128,7 @@ export default function UserDetailPage() {
   if (error && !user) return (
     <div className="p-6 space-y-4">
       <Link href="/admin/users" className="text-sm text-primary hover:underline">← Tilbake</Link>
-      <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</div>
+      <ErrorBox variant="error">{error}</ErrorBox>
     </div>
   )
   if (!user) return null
@@ -150,9 +152,7 @@ export default function UserDetailPage() {
         <p className="text-sm text-[var(--color-text-muted)] font-mono mt-0.5">{username}</p>
       </div>
 
-      {error && (
-        <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</div>
-      )}
+      {error && <ErrorBox variant="error">{error}</ErrorBox>}
 
       <Card className="p-6 space-y-4">
         <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Bruker-info</h2>
@@ -255,8 +255,8 @@ export default function UserDetailPage() {
             </Button>
           </form>
         </div>
-        {pwError && <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{pwError}</div>}
-        {pwSuccess && <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">Passord oppdatert — alle sesjoner ble invalidert</div>}
+        {pwError && <ErrorBox variant="error">{pwError}</ErrorBox>}
+        {pwSuccess && <ErrorBox variant="success">Passord oppdatert — alle sesjoner ble invalidert</ErrorBox>}
       </Card>
 
       <Card className="p-6 border-red-200 bg-red-50/30">
@@ -300,11 +300,4 @@ export default function UserDetailPage() {
   )
 }
 
-function Field({ label, children, className = '' }: { label: string; children: React.ReactNode; className?: string }) {
-  return (
-    <div className={className}>
-      <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">{label}</label>
-      {children}
-    </div>
-  )
-}
+// Field is imported from @/components/ui/Field — no local def needed.

@@ -4,6 +4,9 @@ import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import Field from '@/components/ui/Field'
+import ErrorBox from '@/components/ui/ErrorBox'
+import FormCard from '@/components/ui/FormCard'
 import { roleLabel } from '@/lib/roles'
 import { useMe } from '@/lib/useMe'
 
@@ -113,19 +116,11 @@ export default function AccountPage() {
         </div>
       </Card>
 
-      <Card className="p-6">
-        <h2 className="text-sm font-semibold text-[var(--color-text-primary)] mb-4">Endre passord</h2>
+      <FormCard title="Endre passord">
         <form onSubmit={handleChangePassword} className="space-y-3">
-          {pwError && (
-            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{pwError}</div>
-          )}
-          {pwSuccess && (
-            <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
-              Passord oppdatert
-            </div>
-          )}
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Nåværende passord</label>
+          {pwError && <ErrorBox variant="error">{pwError}</ErrorBox>}
+          {pwSuccess && <ErrorBox variant="success">Passord oppdatert</ErrorBox>}
+          <Field label="Nåværende passord">
             <input
               type="password"
               required
@@ -133,19 +128,18 @@ export default function AccountPage() {
               onChange={(e) => setOldPw(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:ring-1 focus:ring-primary"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Nytt passord</label>
+          </Field>
+          <Field label="Nytt passord">
             <input
               type="password"
               required
+              minLength={8}
               value={newPw}
               onChange={(e) => setNewPw(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:ring-1 focus:ring-primary"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Bekreft nytt passord</label>
+          </Field>
+          <Field label="Bekreft nytt passord">
             <input
               type="password"
               required
@@ -153,14 +147,14 @@ export default function AccountPage() {
               onChange={(e) => setConfirmPw(e.target.value)}
               className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:ring-1 focus:ring-primary"
             />
-          </div>
+          </Field>
           <div className="pt-1">
             <Button type="submit" variant="primary" className="px-4 py-2 text-sm" disabled={saving}>
               {saving ? 'Lagrer...' : 'Oppdater passord'}
             </Button>
           </div>
         </form>
-      </Card>
+      </FormCard>
 
       {isMainAdmin && (
         <Card className="p-6 border-red-200 bg-red-50/30">
