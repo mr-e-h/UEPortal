@@ -225,8 +225,15 @@ export default function ProjectDetailPage() {
 
   const totalInternalCost = internalCosts.reduce((s, c) => s + c.amount, 0)
 
-  const allChecked = selected.length === budgetLines.length && budgetLines.length > 0
-  const toggleAll = () => setSelected(allChecked ? [] : budgetLines.map((l) => l.id))
+  // "Select all" must match the visible filter — selecting hidden rows is
+  // confusing and the count "X valgt" would be wrong. Filter the same way
+  // the rendered table does (line_type filter).
+  const visibleBudgetLines = lineTypeFilter === 'all'
+    ? budgetLines
+    : budgetLines.filter((bl) => (bl.line_type ?? 'subcontractor_work') === lineTypeFilter)
+  const visibleIds = visibleBudgetLines.map((l) => l.id)
+  const allChecked = visibleIds.length > 0 && visibleIds.every((id) => selected.includes(id))
+  const toggleAll = () => setSelected(allChecked ? [] : visibleIds)
 
   // Prognose totals from monthly plan entries (passed to ForecastSection).
   const forecastRevenue = monthPlans.reduce((s, m) => s + (m.expected_revenue ?? 0), 0)
@@ -452,7 +459,9 @@ export default function ProjectDetailPage() {
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-semibold text-gray-900">Budsjettlinjer</h2>
             <div className="flex gap-2 items-center">
-              {importMsg && <span className={`text-xs ${importMsg.startsWith('Importerte') ? 'text-green-600' : 'text-red-600'}`}>{importMsg}</span>}
+              {/* handlePostImport builds messages like "3 nye linjer · 1 oppdatert" on success,
+                  or "<error>"/"Import feilet" on failure — pick color by "feil" substring. */}
+              {importMsg && <span className={`text-xs ${importMsg.toLowerCase().includes('feil') ? 'text-red-600' : 'text-green-600'}`}>{importMsg}</span>}
               <button onClick={() => importFileRef.current?.click()} disabled={importing} className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200 disabled:opacity-50">
                 {importing ? 'Importerer...' : '↑ Importer fra Excel'}
               </button>

@@ -285,7 +285,7 @@ export default function MonthlyPlanPage() {
                       }`}
                     >
                       <td className="sticky left-0 z-10 px-4 py-2 font-medium text-[var(--color-text-secondary)] bg-inherit whitespace-nowrap">
-                        {MONTH_NAMES[month]} {year !== now.getFullYear() ? '' : ''}{isCurrentMonth && (
+                        {MONTH_NAMES[month]}{isCurrentMonth && (
                           <span className="ml-1 text-[10px] bg-primary text-white px-1 py-0.5 rounded">nå</span>
                         )}
                       </td>

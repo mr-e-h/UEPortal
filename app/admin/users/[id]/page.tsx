@@ -39,6 +39,7 @@ export default function UserDetailPage() {
   const [pwSaving, setPwSaving] = useState(false)
   const [pwError, setPwError] = useState<string | null>(null)
   const [pwSuccess, setPwSuccess] = useState(false)
+  const [resetLinkMsg, setResetLinkMsg] = useState<string | null>(null)
 
   const [confirmDelete, setConfirmDelete] = useState(false)
   const [deleting, setDeleting] = useState(false)
@@ -104,12 +105,25 @@ export default function UserDetailPage() {
 
   async function handleSendResetLink() {
     if (!user) return
-    await fetch('/api/auth/forgot-password', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ email: user.email }),
-    })
-    alert(`Tilbakestillingslenke sendt (eller forsøkt sendt) til ${user.email}`)
+    setResetLinkMsg(null)
+    let res: Response
+    try {
+      res = await fetch('/api/auth/forgot-password', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ email: user.email }),
+      })
+    } catch {
+      setResetLinkMsg('Nettverksfeil — prøv igjen')
+      return
+    }
+    if (res.ok) {
+      setResetLinkMsg(`Tilbakestillingslenke sendt til ${user.email}`)
+      setTimeout(() => setResetLinkMsg(null), 4000)
+    } else {
+      const data = await res.json().catch(() => ({} as { error?: string }))
+      setResetLinkMsg(data.error ?? 'Klarte ikke å sende lenken')
+    }
   }
 
   async function handleDelete() {
@@ -255,6 +269,11 @@ export default function UserDetailPage() {
             </Button>
           </form>
         </div>
+        {resetLinkMsg && (
+          <ErrorBox variant={resetLinkMsg.toLowerCase().includes('sendt') ? 'success' : 'error'}>
+            {resetLinkMsg}
+          </ErrorBox>
+        )}
         {pwError && <ErrorBox variant="error">{pwError}</ErrorBox>}
         {pwSuccess && <ErrorBox variant="success">Passord oppdatert — alle sesjoner ble invalidert</ErrorBox>}
       </Card>

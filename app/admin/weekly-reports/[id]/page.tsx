@@ -125,7 +125,10 @@ export default function AdminWeeklyReportPage() {
   const totalSales = report.lines.reduce((s, l) => s + l.reported_quantity * l.customer_price_snapshot, 0)
 
   type LineRow = EnrichedLine & { cost: number; sales: number }
-  const lineRows: LineRow[] = report.lines.filter((l) => l.reported_quantity > 0).map((l) => ({
+  // Show ALL lines (including 0-qty) so admin can see what was submitted +
+  // approve/reject the zero entries too. Previously zeros were hidden, which
+  // caused the table count to mismatch the report's "Linjer: N" KPI.
+  const lineRows: LineRow[] = report.lines.map((l) => ({
     ...l,
     cost: l.reported_quantity * l.subcontractor_cost_price_snapshot,
     sales: l.reported_quantity * l.customer_price_snapshot,
