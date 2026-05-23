@@ -3,18 +3,18 @@
 import { useEffect, useState, useCallback, useMemo, Fragment } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react'
-import type { Subcontractor, Product, SubcontractorProductPrice, User } from '@/types'
+import type { Subcontractor, User } from '@/types'
 import { roleLabel } from '@/lib/roles'
 
 type SortKey = 'company_name' | 'contact_person' | 'county' | 'prices'
 type SortDir = 'asc' | 'desc'
 
+type SubWithMissing = Subcontractor & { missing_prices: number }
+
 const empty = { company_name: '', contact_person: '', email: '', phone: '', organization_number: '', county: '', active: true }
 
 export default function SubcontractorsPage() {
-  const [subcontractors, setSubcontractors] = useState<Subcontractor[]>([])
-  const [products, setProducts] = useState<Product[]>([])
-  const [prices, setPrices] = useState<SubcontractorProductPrice[]>([])
+  const [subcontractors, setSubcontractors] = useState<SubWithMissing[]>([])
   const [users, setUsers] = useState<User[]>([])
   const [usersLoaded, setUsersLoaded] = useState(false)
   const [showForm, setShowForm] = useState(false)
@@ -25,17 +25,13 @@ export default function SubcontractorsPage() {
   const [sortKey, setSortKey] = useState<SortKey>('company_name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
-  // Initial load: only the three datasets actually shown in the table.
-  // Users are loaded lazily on first row-expansion (see toggleExpanded).
+  // Single round-trip — the overview endpoint returns subs + product count
+  // + missing-prices already computed server-side. Avoids 2 of the 3 cold
+  // starts and skips shipping the full prices array to the browser.
   const fetchAll = useCallback(async () => {
-    const [subs, prods, prs] = await Promise.all([
-      fetch('/api/subcontractors').then((r) => r.json()),
-      fetch('/api/products').then((r) => r.json()),
-      fetch('/api/subcontractor-prices').then((r) => r.json()),
-    ])
-    setSubcontractors(Array.isArray(subs) ? subs : [])
-    setProducts(Array.isArray(prods) ? prods : [])
-    setPrices(Array.isArray(prs) ? prs : [])
+    const res = await fetch('/api/admin/subcontractors-overview')
+    const data = res.ok ? await res.json() as { subcontractors: SubWithMissing[]; product_count: number } : { subcontractors: [], product_count: 0 }
+    setSubcontractors(Array.isArray(data.subcontractors) ? data.subcontractors : [])
     setLoading(false)
   }, [])
 
@@ -55,26 +51,6 @@ export default function SubcontractorsPage() {
     if (next) loadUsersIfNeeded()
   }
 
-  // Pre-compute "missing prices count" per UE *once* per data change instead
-  // of inside the sort comparator and again inside each row render. Drops the
-  // hot path from O(subs × products × prices) per render to O(subs + prices).
-  const missingByUE = useMemo(() => {
-    const productIds = new Set(products.map((p) => p.id))
-    const haveByUE = new Map<string, Set<string>>()
-    for (const pr of prices) {
-      if (!productIds.has(pr.product_id)) continue
-      let set = haveByUE.get(pr.subcontractor_id)
-      if (!set) { set = new Set(); haveByUE.set(pr.subcontractor_id, set) }
-      set.add(pr.product_id)
-    }
-    const out = new Map<string, number>()
-    for (const s of subcontractors) {
-      const have = haveByUE.get(s.id)?.size ?? 0
-      out.set(s.id, products.length - have)
-    }
-    return out
-  }, [subcontractors, products, prices])
-
   // Memoized sort so changing an unrelated piece of state (e.g. form input)
   // doesn't trigger a full re-sort.
   const sorted = useMemo(() => {
@@ -84,11 +60,11 @@ export default function SubcontractorsPage() {
       if (sortKey === 'company_name') cmp = a.company_name.localeCompare(b.company_name, 'nb')
       else if (sortKey === 'contact_person') cmp = (a.contact_person ?? '').localeCompare(b.contact_person ?? '', 'nb')
       else if (sortKey === 'county') cmp = (a.county ?? '').localeCompare(b.county ?? '', 'nb')
-      else if (sortKey === 'prices') cmp = (missingByUE.get(a.id) ?? 0) - (missingByUE.get(b.id) ?? 0)
+      else if (sortKey === 'prices') cmp = a.missing_prices - b.missing_prices
       return sortDir === 'asc' ? cmp : -cmp
     })
     return arr
-  }, [subcontractors, sortKey, sortDir, missingByUE])
+  }, [subcontractors, sortKey, sortDir])
 
   // Per-UE user lists pre-grouped instead of re-filtering inside each render.
   const usersByUE = useMemo(() => {
@@ -214,7 +190,7 @@ export default function SubcontractorsPage() {
               sorted.map((s) => {
                 const isExpanded = expanded === s.id
                 const subUsers = usersByUE.get(s.id) ?? []
-                const missingPrices = missingByUE.get(s.id) ?? 0
+                const missingPrices = s.missing_prices
                 return (
                   <Fragment key={s.id}>
                     <tr
