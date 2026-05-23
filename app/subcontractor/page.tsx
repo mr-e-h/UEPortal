@@ -55,16 +55,30 @@ export default function SubcontractorPage() {
   const { me } = useMe()
   const userName = me?.full_name ?? ''
 
+  // Safe-fetch helper: anything that 4xx/5xx's becomes [] instead of crashing
+  // downstream array methods. An error UI was an option; for the dashboard a
+  // graceful empty state is friendlier than a red banner blocking everything.
+  async function safeJsonArray<T>(input: string): Promise<T[]> {
+    try {
+      const res = await fetch(input)
+      if (!res.ok) return []
+      const data = await res.json()
+      return Array.isArray(data) ? data as T[] : []
+    } catch {
+      return []
+    }
+  }
+
   const fetchAll = useCallback(async (subId: string) => {
     const [proj, cos, ms] = await Promise.all([
-      fetch(`/api/subcontractor/projects?subcontractor_id=${subId}`).then((r) => r.json()) as Promise<ProjectWithLines[]>,
-      fetch(`/api/subcontractor/change-orders?subcontractor_id=${subId}`).then((r) => r.json()) as Promise<UEChangeOrder[]>,
-      fetch(`/api/milestones?subcontractor_id=${subId}`).then((r) => r.json()) as Promise<GanttMilestone[]>,
+      safeJsonArray<ProjectWithLines>(`/api/subcontractor/projects?subcontractor_id=${subId}`),
+      safeJsonArray<UEChangeOrder>(`/api/subcontractor/change-orders?subcontractor_id=${subId}`),
+      safeJsonArray<GanttMilestone>(`/api/milestones?subcontractor_id=${subId}`),
     ])
     setProjects(proj)
     setChangeOrders(cos)
-    const projectMap = new Map((proj as ProjectWithLines[]).map((p) => [p.id, p.name]))
-    setMilestones((ms as GanttMilestone[]).map((m) => ({ ...m, project_name: projectMap.get(m.project_id) })))
+    const projectMap = new Map(proj.map((p) => [p.id, p.name]))
+    setMilestones(ms.map((m) => ({ ...m, project_name: projectMap.get(m.project_id) })))
     setLoading(false)
   }, [])
 

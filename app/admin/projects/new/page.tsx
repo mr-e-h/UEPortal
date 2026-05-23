@@ -34,6 +34,7 @@ export default function NewProjectPage() {
   const [excelError, setExcelError] = useState('')
   const [uploading, setUploading] = useState(false)
   const [loading, setLoading] = useState(false)
+  const [submitError, setSubmitError] = useState<string | null>(null)
   const [dragging, setDragging] = useState(false)
   const fileInputRef = useRef<HTMLInputElement>(null)
 
@@ -75,18 +76,40 @@ export default function NewProjectPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault()
+    setSubmitError(null)
     setLoading(true)
-    const res = await fetch('/api/projects', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        ...form,
-        status: 'active',
-        import_excel: importLines && !!excelData,
-        excel_data: importLines && excelData ? excelData.lines : undefined,
-      }),
-    })
-    const project = await res.json() as { id: string; imported?: number; new_products?: number }
+    let res: Response
+    try {
+      res = await fetch('/api/projects', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          ...form,
+          status: 'active',
+          import_excel: importLines && !!excelData,
+          excel_data: importLines && excelData ? excelData.lines : undefined,
+        }),
+      })
+    } catch {
+      setLoading(false)
+      setSubmitError('Nettverksfeil — prøv igjen')
+      return
+    }
+    const data = await res.json().catch(() => ({} as Record<string, unknown>))
+    if (!res.ok) {
+      setLoading(false)
+      const msg = typeof data === 'object' && data && 'error' in data && typeof data.error === 'string'
+        ? data.error
+        : 'Kunne ikke opprette prosjekt'
+      setSubmitError(msg)
+      return
+    }
+    const project = data as { id?: string }
+    if (!project.id) {
+      setLoading(false)
+      setSubmitError('Uventet svar fra serveren')
+      return
+    }
     router.push(`/admin/projects/${project.id}`)
   }
 
@@ -221,6 +244,12 @@ export default function NewProjectPage() {
               <span className="text-gray-400 ml-1">({excelData.lines.length} linjer)</span>
             </span>
           </label>
+        )}
+
+        {submitError && (
+          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
+            {submitError}
+          </div>
         )}
 
         <div className="flex gap-3 pt-2">

@@ -37,6 +37,9 @@ export async function POST(
     status: 'approved' | 'rejected' | 'pending'
     admin_comment?: string
   }
+  if (status !== 'approved' && status !== 'rejected' && status !== 'pending') {
+    return NextResponse.json({ error: 'Ugyldig status' }, { status: 400 })
+  }
 
   const sb = getSupabaseAdmin()
 

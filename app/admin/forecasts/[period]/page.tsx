@@ -102,24 +102,29 @@ export default function ForecastPeriodPage() {
   const load = useCallback(async () => {
     const year = new Date().getFullYear()
 
+    // Narrow each response to an array — if the API returned { error: ... }
+    // (auth lost, 500, etc.) we previously crashed on .find/.filter/.reduce.
+    const arr = <T,>(v: unknown): T[] => Array.isArray(v) ? v as T[] : []
+
     const [periodsData, projectsData, invoicesData, budgetLinesData] = await Promise.all([
-      fetch(`/api/forecast-periods?year=${year}`).then((r) => r.json()),
-      fetch('/api/projects').then((r) => r.json()),
-      fetch('/api/invoices').then((r) => r.json()),
-      fetch('/api/budget-lines').then((r) => r.json()),
+      fetch(`/api/forecast-periods?year=${year}`).then((r) => r.json()).then(arr<ForecastPeriod>),
+      fetch('/api/projects').then((r) => r.json()).then(arr<Project>),
+      fetch('/api/invoices').then((r) => r.json()).then(arr<ProjectInvoice>),
+      fetch('/api/budget-lines').then((r) => r.json()).then(arr<ProjectBudgetLine>),
     ])
 
-    const fp: ForecastPeriod = periodsData.find((p: ForecastPeriod) => p.name === periodName)
+    const fp = periodsData.find((p) => p.name === periodName)
     if (!fp) { setLoading(false); return }
     setPeriod(fp)
 
-    const forecasts: (ProjectForecast & { months: ProjectForecastMonth[] })[] = await fetch(
+    const forecastsRaw = await fetch(
       `/api/project-forecasts?period_id=${fp.id}&with_months=true`
-    ).then((r) => r.json())
+    ).then((r) => r.json()).catch(() => [])
+    const forecasts = arr<ProjectForecast & { months: ProjectForecastMonth[] }>(forecastsRaw)
 
-    const activeProjects: Project[] = (projectsData as Project[]).filter((p) => p.status === 'active')
-    const invoices: ProjectInvoice[] = invoicesData
-    const budgetLines: ProjectBudgetLine[] = budgetLinesData
+    const activeProjects = projectsData.filter((p) => p.status === 'active')
+    const invoices = invoicesData
+    const budgetLines = budgetLinesData
 
     const forecastMap = new Map(forecasts.map((f) => [f.project_id, f]))
     const months = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]

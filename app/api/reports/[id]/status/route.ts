@@ -1,22 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/api-guard'
+
+const VALID = new Set(['draft', 'submitted', 'approved', 'rejected'])
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
   const { status } = await request.json() as { status: string }
-  const reports = await readJson<{ id: string; [k: string]: unknown }>('reports.json')
+  if (!VALID.has(status)) {
+    return NextResponse.json({ error: 'Ugyldig status' }, { status: 400 })
+  }
 
-  const idx = reports.findIndex((r) => r.id === params.id)
-  if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-  reports[idx] = { ...reports[idx], status, updated_at: new Date().toISOString() }
-  await writeJson('reports.json', reports)
-
-  return NextResponse.json(reports[idx])
+  const { data, error } = await getSupabaseAdmin()
+    .from('reports')
+    .update({ status, updated_at: new Date().toISOString() })
+    .eq('id', params.id)
+    .select()
+    .maybeSingle()
+  if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })
+  return NextResponse.json(data)
 }

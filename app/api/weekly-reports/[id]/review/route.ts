@@ -34,6 +34,9 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     action: 'approve_all' | 'reject_all' | 'revert'
     admin_comment?: string
   }
+  if (body.action !== 'approve_all' && body.action !== 'reject_all' && body.action !== 'revert') {
+    return NextResponse.json({ error: 'Ugyldig handling' }, { status: 400 })
+  }
 
   const sb = getSupabaseAdmin()
   const actor = auth.user.full_name

@@ -90,8 +90,11 @@ export default async function AdminDashboard() {
       0
     ) + approvedCOs.reduce((s, co) => s + co.total_cost, 0)
 
+  // Use the work date (`he.date`), not when the entry was typed in.
+  // Backfilling a timesheet from last year should land in last year's KPI,
+  // not today's. Matches /admin/projects/[id]/forecast which already uses .date.
   const yearInternalCost = hourEntries
-    .filter((he) => he.created_at.startsWith(String(thisYear)))
+    .filter((he) => he.date?.startsWith(String(thisYear)))
     .reduce((s, he) => s + he.hours * he.cost_per_hour_snapshot, 0)
 
   const yearProfit = yearRevenue - yearCost - yearInternalCost
