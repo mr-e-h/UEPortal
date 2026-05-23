@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { Download, RefreshCw, Plus, Trash2 } from 'lucide-react'
 import type { Project } from '@/types'
 import { fmtNOK as fmt, fmtNumber } from '@/lib/format'
+import { useMe } from '@/lib/useMe'
 
 const fmtQty = (n: number) => fmtNumber(n, 2)
 
@@ -37,7 +38,8 @@ type UEInvoice = {
 }
 
 export default function UEInvoiceBasisPage() {
-  const [subId, setSubId] = useState('')
+  const { me } = useMe()
+  const subId = me?.subcontractor_id ?? ''
   const [projects, setProjects] = useState<Project[]>([])
   const [lines, setLines] = useState<LineItem[]>([])
   const [summary, setSummary] = useState<Summary | null>(null)
@@ -56,14 +58,11 @@ export default function UEInvoiceBasisPage() {
   const [savingInvoice, setSavingInvoice] = useState(false)
 
   useEffect(() => {
-    const sid = localStorage.getItem('subcontractor_id') ?? ''
-    setSubId(sid)
-    if (sid) {
-      fetch(`/api/subcontractor/projects?subcontractor_id=${sid}`)
-        .then((r) => r.json())
-        .then((data) => setProjects(Array.isArray(data) ? data : []))
-    }
-  }, [])
+    if (!subId) return
+    fetch(`/api/subcontractor/projects?subcontractor_id=${subId}`)
+      .then((r) => r.json())
+      .then((data) => setProjects(Array.isArray(data) ? data : []))
+  }, [subId])
 
   const fetchBasis = useCallback(async () => {
     if (!subId) return

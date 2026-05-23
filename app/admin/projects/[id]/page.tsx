@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { useMe } from '@/lib/useMe'
 import { Download } from 'lucide-react'
 import type { Project, Product, ProjectBudgetLine, ReportLine, ProjectSubcontractor, Subcontractor, ChangeOrder, WeeklyReport, WeeklyReportLine, ProjectInternalCostEntry, SubcontractorProductPrice, GanttMilestone, BudgetVersion, ProjectMonthPlan } from '@/types'
 import SortableTable from '@/components/SortableTable'
@@ -85,7 +86,8 @@ export default function ProjectDetailPage() {
   const [missingPriceDialog, setMissingPriceDialog] = useState<{ subId: string; subName: string; products: Product[] } | null>(null)
 
   const [addSubId, setAddSubId] = useState('')
-  const [adminName, setAdminName] = useState('')
+  const { me } = useMe()
+  const adminName = me?.full_name ?? 'Admin'
 
   const [internalCosts, setInternalCosts] = useState<ProjectInternalCostEntry[]>([])
   const [newInternalCost, setNewInternalCost] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, amount: '', comment: '' })
@@ -157,8 +159,6 @@ export default function ProjectDetailPage() {
   }, [id, router])
 
   useEffect(() => {
-    setAdminName(localStorage.getItem('user_name') ?? 'Admin')
-
     // Restore pending assignment if coming back from the prices page
     try {
       const pending = sessionStorage.getItem('pending_assignment')

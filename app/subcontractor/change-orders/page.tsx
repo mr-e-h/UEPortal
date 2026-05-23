@@ -9,6 +9,7 @@ import Card from '@/components/ui/Card'
 import SortableTable from '@/components/SortableTable'
 import type { Column } from '@/components/SortableTable'
 import { fmtNOK as fmt } from '@/lib/format'
+import { useMe } from '@/lib/useMe'
 
 type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'>
 
@@ -45,6 +46,7 @@ type EMRow = {
 
 export default function SubcontractorChangeOrdersPage() {
   const router = useRouter()
+  const { me } = useMe()
   const [projects, setProjects] = useState<ProjectWithLines[]>([])
   const [changeOrders, setChangeOrders] = useState<UEChangeOrder[]>([])
   const [loading, setLoading] = useState(true)
@@ -62,11 +64,11 @@ export default function SubcontractorChangeOrdersPage() {
   }, [])
 
   useEffect(() => {
-    if (localStorage.getItem('user_role') !== 'subcontractor') { router.replace('/login'); return }
-    const subId = localStorage.getItem('subcontractor_id')
-    if (!subId) { router.replace('/login'); return }
-    fetchAll(subId)
-  }, [router, fetchAll])
+    if (!me) return
+    if (me.role !== 'subcontractor' && me.role !== 'sub') { router.replace('/login'); return }
+    if (!me.subcontractor_id) { router.replace('/login'); return }
+    fetchAll(me.subcontractor_id)
+  }, [me, router, fetchAll])
 
   const projectMap = new Map(projects.map((p) => [p.id, p.name]))
   const productNameMap = new Map(

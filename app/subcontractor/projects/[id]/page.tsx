@@ -12,6 +12,7 @@ import SortableTable from '@/components/SortableTable'
 import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
+import { useMe } from '@/lib/useMe'
 
 // Lazy-load heavy interactive components — they're only shown after a click
 // (modal opens, budget line expands, Gantt tab activated). Keeps the initial
@@ -61,8 +62,8 @@ type BudgetLineOption = Pick<BudgetLineWithProduct, 'product_id' | 'product_name
 export default function SubcontractorProjectPage() {
   const router = useRouter()
   const { id } = useParams<{ id: string }>()
-
-  const [subcontractorId, setSubcontractorId] = useState('')
+  const { me } = useMe()
+  const subcontractorId = me?.subcontractor_id ?? ''
   const [project, setProject] = useState<ProjectWithLines | null>(null)
   const [loading, setLoading] = useState(true)
 
@@ -129,11 +130,10 @@ export default function SubcontractorProjectPage() {
   }
 
   useEffect(() => {
-    const role = localStorage.getItem('user_role')
-    if (role !== 'subcontractor' && role !== 'sub') { router.replace('/login'); return }
-    const subId = localStorage.getItem('subcontractor_id')
-    if (!subId) { router.replace('/login'); return }
-    setSubcontractorId(subId)
+    if (!me) return
+    if (me.role !== 'subcontractor' && me.role !== 'sub') { router.replace('/login'); return }
+    if (!me.subcontractor_id) { router.replace('/login'); return }
+    const subId = me.subcontractor_id
 
     const init = async () => {
       const [, reports] = await Promise.all([
@@ -150,7 +150,7 @@ export default function SubcontractorProjectPage() {
     }
     init()
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  }, [me])
 
   async function changeWeek(newYear: number, newWeek: number) {
     if (!subcontractorId) return

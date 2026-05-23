@@ -1,10 +1,11 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
 import { LayoutDashboard, Users, Mail, Settings } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
+import { useMe } from '@/lib/useMe'
 
 type NavLink = { href: string; label: string; icon: LucideIcon; exact?: boolean }
 type NavSection = { label: string; links: NavLink[] }
@@ -34,27 +35,24 @@ const sections: NavSection[] = [
 export default function CompanyLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
   const pathname = usePathname()
-  const [ready, setReady] = useState(false)
-  const [userName, setUserName] = useState('')
+  const { me, loading, clear } = useMe()
 
   useEffect(() => {
-    if (localStorage.getItem('user_role') !== 'company') {
-      router.replace('/login')
-    } else {
-      setUserName(localStorage.getItem('user_name') ?? '')
-      setReady(true)
-    }
-  }, [router])
+    if (loading) return
+    if (!me || me.role !== 'company') router.replace('/login')
+  }, [loading, me, router])
 
   async function handleLogout() {
     await fetch('/api/auth/logout', { method: 'POST' })
+    clear()
     localStorage.clear()
     router.push('/login')
   }
 
-  if (!ready) {
+  if (loading || !me) {
     return <div className="min-h-screen flex items-center justify-center text-[var(--color-text-muted)]">Laster...</div>
   }
+  const userName = me.full_name
 
   return (
     <div className="min-h-screen flex bg-[var(--color-bg-page)]">

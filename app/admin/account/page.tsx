@@ -1,18 +1,20 @@
 'use client'
 
-import { useEffect, useState } from 'react'
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import { roleLabel } from '@/lib/roles'
+import { useMe } from '@/lib/useMe'
 
 const RESET_CONFIRMATION = 'RESET-SYSTEM'
 
 export default function AccountPage() {
   const router = useRouter()
-  const [name, setName] = useState('')
-  const [email, setEmail] = useState('')
-  const [role, setRole] = useState('')
+  const { me } = useMe()
+  const name = me?.full_name ?? ''
+  const email = me?.email ?? ''
+  const role = me?.role ?? ''
 
   const [oldPw, setOldPw] = useState('')
   const [newPw, setNewPw] = useState('')
@@ -25,23 +27,6 @@ export default function AccountPage() {
   const [resetText, setResetText] = useState('')
   const [resetError, setResetError] = useState<string | null>(null)
   const [resetting, setResetting] = useState(false)
-
-  useEffect(() => {
-    setName(localStorage.getItem('user_name') ?? '')
-    setEmail(localStorage.getItem('user_id') ?? '')
-    setRole(localStorage.getItem('user_role') ?? '')
-
-    const id = localStorage.getItem('user_id')
-    if (id) {
-      fetch('/api/users')
-        .then((r) => r.json())
-        .then((users: { id: string; email: string }[]) => {
-          const me = users.find((u) => u.id === id)
-          if (me) setEmail(me.email)
-        })
-        .catch(() => {})
-    }
-  }, [])
 
   async function handleChangePassword(e: React.FormEvent) {
     e.preventDefault()
@@ -91,16 +76,9 @@ export default function AccountPage() {
     })
     setResetting(false)
     if (res.ok) {
-      // Keep just the admin's identity in localStorage; clear anything UE-related.
-      const keep = {
-        user_id: localStorage.getItem('user_id'),
-        user_name: localStorage.getItem('user_name'),
-        user_role: localStorage.getItem('user_role'),
-      }
+      // Identity lives in the session cookie now (useMe), so no localStorage
+      // dance needed. Wipe any UE-related crumbs left over from earlier code.
       localStorage.clear()
-      if (keep.user_id) localStorage.setItem('user_id', keep.user_id)
-      if (keep.user_name) localStorage.setItem('user_name', keep.user_name)
-      if (keep.user_role) localStorage.setItem('user_role', keep.user_role)
       router.push('/admin?reset=ok')
       router.refresh()
     } else {

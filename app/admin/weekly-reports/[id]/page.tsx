@@ -9,6 +9,7 @@ import SortableTable from '@/components/SortableTable'
 import { fmtNOK as fmt } from '@/lib/format'
 import { weeklyReportStatus, weeklyReportLineStatus } from '@/lib/statuses'
 import { activityActionLabel } from '@/lib/activity-actions'
+import { useMe } from '@/lib/useMe'
 
 type EnrichedLine = WeeklyReportLine & {
   product_name: string
@@ -35,7 +36,8 @@ export default function AdminWeeklyReportPage() {
   const [budgetLines, setBudgetLines] = useState<BudgetLine[]>([])
   const [activity, setActivity] = useState<ActivityEntry[]>([])
   const [loading, setLoading] = useState(true)
-  const [adminName, setAdminName] = useState('')
+  const { me } = useMe()
+  const adminName = me?.full_name ?? 'Admin'
   const [bulkComment, setBulkComment] = useState('')
   const [newComment, setNewComment] = useState('')
   const [saving, setSaving] = useState(false)
@@ -64,10 +66,7 @@ export default function AdminWeeklyReportPage() {
     setLoading(false)
   }, [id])
 
-  useEffect(() => {
-    setAdminName(localStorage.getItem('user_name') ?? 'Admin')
-    load()
-  }, [load])
+  useEffect(() => { load() }, [load])
 
   async function bulkReview(action: 'approve_all' | 'reject_all') {
     setSaving(true)

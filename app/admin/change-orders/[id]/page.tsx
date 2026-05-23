@@ -7,9 +7,12 @@ import type { ChangeOrder, Project, Product, Subcontractor, ActivityEntry } from
 import { fmtNOK as fmt } from '@/lib/format'
 import { changeOrderStatus } from '@/lib/statuses'
 import { activityActionLabel } from '@/lib/activity-actions'
+import { useMe } from '@/lib/useMe'
 
 export default function ChangeOrderDetailPage() {
   const { id } = useParams<{ id: string }>()
+  const { me } = useMe()
+  const adminName = me?.full_name ?? 'Admin'
   const [co, setCo] = useState<ChangeOrder | null>(null)
   const [project, setProject] = useState<Project | null>(null)
   const [product, setProduct] = useState<Product | null>(null)
@@ -17,7 +20,6 @@ export default function ChangeOrderDetailPage() {
   const [activity, setActivity] = useState<ActivityEntry[]>([])
   const [comment, setComment] = useState('')
   const [newComment, setNewComment] = useState('')
-  const [adminName, setAdminName] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
 
@@ -41,10 +43,7 @@ export default function ChangeOrderDetailPage() {
     setLoading(false)
   }, [id])
 
-  useEffect(() => {
-    setAdminName(localStorage.getItem('user_name') ?? 'Admin')
-    load()
-  }, [load])
+  useEffect(() => { load() }, [load])
 
   async function handleStatus(status: 'approved' | 'rejected' | 'pending') {
     setSubmitting(true)

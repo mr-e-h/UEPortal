@@ -10,6 +10,7 @@ import Card from '@/components/ui/Card'
 import SortableTable from '@/components/SortableTable'
 import type { Column } from '@/components/SortableTable'
 import { fmtNOK as fmt } from '@/lib/format'
+import { useMe } from '@/lib/useMe'
 
 type BudgetLine = {
   id: string
@@ -51,7 +52,8 @@ export default function SubcontractorPage() {
   const [changeOrders, setChangeOrders] = useState<UEChangeOrder[]>([])
   const [milestones, setMilestones] = useState<(GanttMilestone & { project_name?: string })[]>([])
   const [loading, setLoading] = useState(true)
-  const [userName, setUserName] = useState('')
+  const { me } = useMe()
+  const userName = me?.full_name ?? ''
 
   const fetchAll = useCallback(async (subId: string) => {
     const [proj, cos, ms] = await Promise.all([
@@ -67,13 +69,11 @@ export default function SubcontractorPage() {
   }, [])
 
   useEffect(() => {
-    const role = localStorage.getItem('user_role')
-    if (role !== 'subcontractor' && role !== 'sub') { router.replace('/login'); return }
-    const subId = localStorage.getItem('subcontractor_id')
-    if (!subId) { router.replace('/login'); return }
-    setUserName(localStorage.getItem('user_name') ?? '')
-    fetchAll(subId)
-  }, [router, fetchAll])
+    if (!me) return
+    if (me.role !== 'subcontractor' && me.role !== 'sub') { router.replace('/login'); return }
+    if (!me.subcontractor_id) { router.replace('/login'); return }
+    fetchAll(me.subcontractor_id)
+  }, [me, router, fetchAll])
 
   const thisYear = new Date().getFullYear()
   const activeProjects = projects.filter((p) => p.status === 'active')

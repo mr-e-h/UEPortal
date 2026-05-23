@@ -9,6 +9,7 @@ import Button from '@/components/ui/Button'
 import NumberInput from '@/components/NumberInput'
 import { MONTHS_SHORT as MONTH_NAMES, fmtNOK as fmt } from '@/lib/format'
 import { forecastStatus } from '@/lib/statuses'
+import { useMe } from '@/lib/useMe'
 import type {
   Project,
   ProjectBudgetLine,
@@ -89,22 +90,16 @@ export default function ForecastPeriodPage() {
   const [period, setPeriod] = useState<ForecastPeriod | null>(null)
   const [entries, setEntries] = useState<Record<string, ForecastEntry>>({})
   const [loading, setLoading] = useState(true)
-  const [userId, setUserId] = useState('')
-  const [userRole, setUserRole] = useState('')
-  const [userName, setUserName] = useState('')
+  const { me } = useMe()
+  const userId = me?.id ?? ''
+  const userRole = me?.role ?? ''
+  const userName = me?.full_name ?? ''
   const [returnInputs, setReturnInputs] = useState<Record<string, string>>({})
   const [showReturnInput, setShowReturnInput] = useState<Record<string, boolean>>({})
 
   const isAdmin = useCallback(() => userRole === 'main' || userRole === 'project_manager', [userRole])
 
   const load = useCallback(async () => {
-    const uid = localStorage.getItem('user_id') ?? ''
-    const role = localStorage.getItem('user_role') ?? ''
-    const uname = localStorage.getItem('user_name') ?? ''
-    setUserId(uid)
-    setUserRole(role)
-    setUserName(uname)
-
     const year = new Date().getFullYear()
 
     const [periodsData, projectsData, invoicesData, budgetLinesData] = await Promise.all([
