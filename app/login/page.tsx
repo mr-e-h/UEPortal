@@ -36,12 +36,9 @@ export default function LoginPage() {
       return
     }
 
-    localStorage.setItem('user_id', data.id)
-    localStorage.setItem('user_role', data.role)
-    localStorage.setItem('user_name', data.full_name)
-    if (data.subcontractor_id) {
-      localStorage.setItem('subcontractor_id', data.subcontractor_id)
-    }
+    // Session cookie is the only auth state now. useMe() reads it via /api/me.
+    // (Older sessions still in flight may have leftover localStorage entries —
+    // logout clears them defensively. No production reader remains.)
 
     const dest = data.role === 'company' ? '/company'
       : (data.role === 'project_manager' || data.role === 'main') ? '/admin'
