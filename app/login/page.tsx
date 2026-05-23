@@ -1,6 +1,6 @@
 'use client'
 
-import { useState } from 'react'
+import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
@@ -8,10 +8,22 @@ type LoginResponse =
   | { id: string; role: 'company' | 'project_manager' | 'subcontractor' | 'main' | 'sub'; full_name: string; subcontractor_id: string | null }
   | { error: string }
 
+// useSearchParams() forces a CSR bailout under static prerender (Next 14).
+// Wrap in Suspense with a minimal fallback so the build succeeds — the real
+// form mounts on the client a tick later. The fallback must NOT itself call
+// useSearchParams (would infinite-bail).
 export default function LoginPage() {
+  return (
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-gray-500">Laster...</div>}>
+      <LoginForm />
+    </Suspense>
+  )
+}
+
+function LoginForm() {
   const router = useRouter()
   const searchParams = useSearchParams()
-  // The middleware sets ?redirect=&lt;original-path&gt; when bouncing an
+  // The middleware sets ?redirect=<original-path> when bouncing an
   // unauthenticated request. Honor it so deep links survive the login round-trip.
   const requestedRedirect = searchParams.get('redirect')
   const [email, setEmail] = useState('')
@@ -51,8 +63,8 @@ export default function LoginPage() {
 
     // Resolve destination — honor ?redirect= only when it points at an internal
     // path (open-redirect prevention) and matches the user's role tree.
-    const roleHome = data.role === 'company' ? '/company'
-      : (data.role === 'project_manager' || data.role === 'main') ? '/admin'
+    // company → /admin until the dedicated /company portal exists.
+    const roleHome = (data.role === 'project_manager' || data.role === 'main' || data.role === 'company') ? '/admin'
       : (data.role === 'subcontractor' || data.role === 'sub') ? '/subcontractor'
       : '/subcontractor'
 
