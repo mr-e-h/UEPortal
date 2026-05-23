@@ -17,6 +17,9 @@ const InvoicesSection = dynamic(() => import('./InvoicesSection'), { ssr: false 
 const ChangeOrdersSection = dynamic(() => import('./ChangeOrdersSection'), { ssr: false })
 const GanttSection = dynamic(() => import('./GanttSection'), { ssr: false })
 const BudgetLineChart = dynamic(() => import('@/components/BudgetLineChart'), { ssr: false })
+import ReportingsSection from './ReportingsSection'
+import InternalCostsSection from './InternalCostsSection'
+import MaterialSection from './MaterialSection'
 import { fmtNOK as fmt } from '@/lib/format'
 import { reportLineStatus } from '@/lib/statuses'
 import { lineTypeLabel } from '@/lib/line-types'
@@ -50,16 +53,6 @@ type BLRow = {
   line_type: string
 }
 
-type RLRow = {
-  id: string
-  product_code: string
-  product_name: string
-  sub_name: string
-  quantity_str: string
-  report_date: string
-  status: string
-}
-
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -90,8 +83,6 @@ export default function ProjectDetailPage() {
   const adminName = me?.full_name ?? 'Admin'
 
   const [internalCosts, setInternalCosts] = useState<ProjectInternalCostEntry[]>([])
-  const [newInternalCost, setNewInternalCost] = useState({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, amount: '', comment: '' })
-  const [savingInternalCost, setSavingInternalCost] = useState(false)
 
   const [milestones, setMilestones] = useState<GanttMilestone[]>([])
   const [budgetVersions, setBudgetVersions] = useState<BudgetVersion[]>([])
@@ -290,19 +281,6 @@ export default function ProjectDetailPage() {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ status, reviewed_by: adminName }),
     })
-    fetchAll()
-  }
-
-  async function addInternalCost(e: React.FormEvent) {
-    e.preventDefault()
-    setSavingInternalCost(true)
-    await fetch('/api/project-internal-costs', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: id, year: newInternalCost.year, month: newInternalCost.month, amount: Number(newInternalCost.amount), comment: newInternalCost.comment }),
-    })
-    setNewInternalCost({ year: new Date().getFullYear(), month: new Date().getMonth() + 1, amount: '', comment: '' })
-    setSavingInternalCost(false)
     fetchAll()
   }
 
@@ -1017,161 +995,36 @@ export default function ProjectDetailPage() {
 
       {/* ── INTERNE KOSTNADER ────────────────────────────────────────── */}
       {activeTab === 'interne' && (
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Internkostnader</h2>
-          <form onSubmit={addInternalCost} className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex flex-wrap gap-4 items-end">
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">År</label>
-              <input type="number" required min="2020" max="2040" value={newInternalCost.year} onChange={(e) => setNewInternalCost((p) => ({ ...p, year: Number(e.target.value) }))} className="w-24 px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Måned</label>
-              <select required value={newInternalCost.month} onChange={(e) => setNewInternalCost((p) => ({ ...p, month: Number(e.target.value) }))} className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500">
-                {['Jan','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des'].map((m, i) => <option key={i + 1} value={i + 1}>{m}</option>)}
-              </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Beløp (NOK)</label>
-              <NumberInput required value={newInternalCost.amount} onChange={(raw) => setNewInternalCost((p) => ({ ...p, amount: raw }))} className="w-36 px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500" />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Kommentar</label>
-              <input type="text" value={newInternalCost.comment} onChange={(e) => setNewInternalCost((p) => ({ ...p, comment: e.target.value }))} className="w-48 px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500" placeholder="Valgfri kommentar" />
-            </div>
-            <button type="submit" disabled={savingInternalCost} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
-              {savingInternalCost ? 'Lagrer...' : '+ Legg til'}
-            </button>
-          </form>
-
-          <div className="bg-white rounded-lg shadow overflow-hidden">
-            <table className="w-full text-sm">
-              <thead>
-                <tr className="bg-gray-50 border-b border-gray-100">
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">År / Mnd</th>
-                  <th className="px-4 py-2.5 text-right text-xs font-medium text-gray-500">Beløp</th>
-                  <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500">Kommentar</th>
-                  <th className="px-4 py-2.5" />
-                </tr>
-              </thead>
-              <tbody>
-                {internalCosts.length === 0 ? (
-                  <tr><td colSpan={4} className="px-4 py-6 text-center text-sm text-gray-400">Ingen internkostnader registrert</td></tr>
-                ) : (
-                  [...internalCosts]
-                    .sort((a, b) => a.year !== b.year ? a.year - b.year : a.month - b.month)
-                    .map((c) => (
-                      <tr key={c.id} className="border-b border-gray-100 last:border-0 hover:bg-gray-50">
-                        <td className="px-4 py-2.5 font-medium text-gray-900">{['Jan','Feb','Mar','Apr','Mai','Jun','Jul','Aug','Sep','Okt','Nov','Des'][c.month - 1]} {c.year}</td>
-                        <td className="px-4 py-2.5 text-right text-gray-900 font-medium">{fmt(c.amount)}</td>
-                        <td className="px-4 py-2.5 text-gray-500 text-xs">{c.comment}</td>
-                        <td className="px-4 py-2.5 text-right">
-                          <button onClick={() => setConfirmDeleteCostId(c.id)} className="text-xs text-red-500 hover:text-red-700">Slett</button>
-                        </td>
-                      </tr>
-                    ))
-                )}
-              </tbody>
-              {internalCosts.length > 0 && (
-                <tfoot>
-                  <tr className="bg-gray-50 border-t border-gray-200">
-                    <td className="px-4 py-2.5 text-xs font-semibold text-gray-600 uppercase">Totalt</td>
-                    <td className="px-4 py-2.5 text-right font-bold text-gray-900">{fmt(totalInternalCost)}</td>
-                    <td colSpan={2} />
-                  </tr>
-                </tfoot>
-              )}
-            </table>
-          </div>
-        </section>
+        <InternalCostsSection
+          projectId={id}
+          internalCosts={internalCosts}
+          totalInternalCost={totalInternalCost}
+          onAdded={fetchAll}
+          onRequestDelete={setConfirmDeleteCostId}
+        />
       )}
 
       {/* ── MATERIELL ────────────────────────────────────────────────── */}
       {activeTab === 'materiell' && (
-        <section className="space-y-4">
-          <div className="flex items-center justify-between">
-            <h2 className="text-lg font-semibold text-gray-900">Materiell</h2>
-            <span className="text-xs text-gray-400">Viser budsjettlinjer av type «Materiell»</span>
-          </div>
-          {(() => {
-            const materialRows = buildBLRows(budgetLines.filter((bl) => bl.line_type === 'material'))
-            if (materialRows.length === 0) {
-              return (
-                <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center">
-                  <p className="text-sm text-gray-400">Ingen materiell-linjer lagt til ennå.</p>
-                  <p className="text-xs text-gray-400 mt-1">Gå til <button className="text-blue-600 hover:underline" onClick={() => setActiveTab('budsjettlinjer')}>Budsjettlinjer</button> og legg til linjer av type «Materiell».</p>
-                </div>
-              )
-            }
-            const matColumns = blColumns.filter((c) => c.key !== 'select' && c.key !== 'line_type')
-            return (
-              <div className="bg-white rounded-lg shadow">
-                <SortableTable
-                  columns={matColumns}
-                  data={materialRows}
-                  emptyText="Ingen materiell-linjer"
-                  rowClassName={() => 'border-b border-gray-100 hover:bg-orange-50'}
-                  expandedRowId={chartLineId}
-                  onRowExpand={(rowId) => setChartLineId(rowId)}
-                  expandedRowRender={expandedRowRenderFn}
-                />
-              </div>
-            )
-          })()}
-        </section>
+        <MaterialSection
+          rows={buildBLRows(budgetLines.filter((bl) => bl.line_type === 'material'))}
+          columns={blColumns.filter((c) => c.key !== 'select' && c.key !== 'line_type')}
+          expandedRowId={chartLineId}
+          onRowExpand={(rowId) => setChartLineId(rowId)}
+          expandedRowRender={expandedRowRenderFn}
+          onGoToBudgetLines={() => setActiveTab('budsjettlinjer')}
+        />
       )}
 
       {/* ── RAPPORTERINGER ───────────────────────────────────────────── */}
       {activeTab === 'rapporteringer' && (
-        <section className="space-y-4">
-          <h2 className="text-lg font-semibold text-gray-900">Rapporteringer</h2>
-          {(() => {
-            const rlRows: RLRow[] = reportLines.map((rl) => {
-              const bl = budgetLines.find((b) => b.id === rl.project_budget_line_id)
-              const product = allProducts.find((p) => p.id === bl?.product_id)
-              const sub = allSubs.find((s) => s.id === rl.subcontractor_id)
-              return {
-                id: rl.id,
-                product_code: product?.description ?? '–',
-                product_name: product?.name ?? '–',
-                sub_name: sub?.company_name ?? '–',
-                quantity_str: `${rl.reported_quantity} ${product?.unit ?? ''}`,
-                report_date: rl.report_date,
-                status: rl.status,
-              }
-            })
-            const rlColumns = [
-              { key: 'product_code', label: 'Kode', sortable: true },
-              { key: 'product_name', label: 'Produkt', sortable: true },
-              { key: 'sub_name', label: 'Underentreprenør', sortable: true },
-              { key: 'quantity_str', label: 'Mengde' },
-              { key: 'report_date', label: 'Dato', sortable: true },
-              {
-                key: 'status',
-                label: 'Status',
-                sortable: true,
-                render: (row: RLRow) => {
-                  const meta = reportLineStatus(row.status)
-                  return <span className={`text-xs px-2 py-0.5 rounded ${meta.cls}`}>{meta.label}</span>
-                },
-              },
-              {
-                key: 'actions',
-                label: '',
-                render: (row: RLRow) => row.status === 'submitted' ? (
-                  <div className="flex gap-2">
-                    <button onClick={() => updateReportStatus(row.id, 'approved')} className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">Godkjenn</button>
-                    <button onClick={() => updateReportStatus(row.id, 'rejected')} className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">Avvis</button>
-                  </div>
-                ) : null,
-              },
-            ]
-            return (
-              <div className="bg-white rounded-lg shadow">
-                <SortableTable columns={rlColumns} data={rlRows} emptyText="Ingen rapporteringer ennå" />
-              </div>
-            )
-          })()}
-        </section>
+        <ReportingsSection
+          reportLines={reportLines}
+          budgetLines={budgetLines}
+          allProducts={allProducts}
+          allSubs={allSubs}
+          onUpdateStatus={updateReportStatus}
+        />
       )}
 
       {/* ── ENDRINGSMELDINGER ────────────────────────────────────────── */}
