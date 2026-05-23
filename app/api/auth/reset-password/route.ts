@@ -63,6 +63,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Lenken er ugyldig eller utløpt' }, { status: 400 })
   }
 
+  // Don't let a password reset re-enable a deactivated account through the
+  // back door. Admin must explicitly flip `active` back on first.
+  if (users[userIdx].active === false) {
+    return NextResponse.json({ error: 'Kontoen er deaktivert. Kontakt admin.' }, { status: 403 })
+  }
+
   const hashedPassword = await bcrypt.hash(password, BCRYPT_COST)
   users[userIdx] = { ...users[userIdx], password: hashedPassword }
   await writeJson('users.json', users)

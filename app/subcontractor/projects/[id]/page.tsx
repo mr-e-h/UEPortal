@@ -189,30 +189,49 @@ export default function SubcontractorProjectPage() {
     setCreatingDraft(false)
   }
 
-  async function saveLines() {
-    if (!currentReport) return
+  // Returns true on success — caller can decide whether to proceed. Previously
+  // a failed save() was swallowed and a subsequent submit() would lock in a
+  // stale server-side draft.
+  async function saveLines(): Promise<boolean> {
+    if (!currentReport) return false
     const lines = (project?.budget_lines ?? []).map((bl) => ({
       project_budget_line_id: bl.id,
       reported_quantity: Number(inputs[bl.id]?.quantity ?? 0) || 0,
       comment: inputs[bl.id]?.comment ?? '',
     }))
-    await fetch(`/api/weekly-reports/${currentReport.id}/lines`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lines }),
-    })
+    try {
+      const res = await fetch(`/api/weekly-reports/${currentReport.id}/lines`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ lines }),
+      })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({} as { error?: string }))
+        setSubmitError(data.error ?? 'Klarte ikke å lagre linjene')
+        return false
+      }
+      return true
+    } catch {
+      setSubmitError('Nettverksfeil under lagring — prøv igjen')
+      return false
+    }
   }
 
   async function handleSubmit() {
     if (!currentReport) return
     setSubmitting(true)
     setSubmitError('')
-    await saveLines()
+    const saved = await saveLines()
+    if (!saved) { setSubmitting(false); return }
+
     const res = await fetch(`/api/weekly-reports/${currentReport.id}/submit`, { method: 'POST' })
     if (!res.ok) {
-      const data = await res.json() as { error?: string }
+      const data = await res.json().catch(() => ({} as { error?: string }))
       setSubmitError(data.error ?? 'Innsending feilet')
       setSubmitting(false)
+      // Re-load history so UI reflects actual server state (e.g. already-
+      // submitted-elsewhere scenario).
+      await loadHistory(subcontractorId)
       return
     }
     setCurrentReport(null)
