@@ -1,8 +1,8 @@
 import { cookies } from 'next/headers'
+import { cache } from 'react'
 import { randomUUID } from 'crypto'
 import { generateToken, hashToken, safeCompareHash } from './tokens'
 import { getSupabaseAdmin } from './supabase'
-import { readJson } from './data'
 import type { User } from '@/types'
 
 const SESSION_COOKIE = 'session'
@@ -19,29 +19,40 @@ interface SessionRow {
  * Look up the current user from the session cookie. The cookie holds a
  * crypto-random token whose SHA-256 hash is stored in the `sessions` table;
  * we never trust user IDs in the cookie itself.
+ *
+ * Wrapped in React.cache so multiple callers within one request share a
+ * single lookup — endpoints that call requireAuth multiple times don't pay
+ * the round-trip twice. Cache scope is per-request (Next.js handles teardown).
  */
-export async function getSession(): Promise<User | null> {
+export const getSession = cache(async (): Promise<User | null> => {
   const cookieStore = await cookies()
   const token = cookieStore.get(SESSION_COOKIE)?.value
   if (!token) return null
 
   const hash = hashToken(token)
   const sb = getSupabaseAdmin()
-  const { data, error } = await sb
+  const { data: session, error } = await sb
     .from('sessions')
     .select('id, user_id, token_hash, expires_at')
     .eq('token_hash', hash)
     .maybeSingle<SessionRow>()
-  if (error || !data) return null
-  if (!safeCompareHash(data.token_hash, hash)) return null
-  if (new Date(data.expires_at).getTime() < Date.now()) {
-    await sb.from('sessions').delete().eq('id', data.id)
+  if (error || !session) return null
+  if (!safeCompareHash(session.token_hash, hash)) return null
+  if (new Date(session.expires_at).getTime() < Date.now()) {
+    await sb.from('sessions').delete().eq('id', session.id)
     return null
   }
 
-  const users = await readJson<User>('users.json')
-  return users.find((u) => u.id === data.user_id) ?? null
-}
+  // Targeted single-row lookup. The previous implementation read the entire
+  // users table on every authenticated API call — fine at 7 rows, terrible
+  // when it grows. Now it's an indexed PK lookup.
+  const { data: user } = await sb
+    .from('users')
+    .select('*')
+    .eq('id', session.user_id)
+    .maybeSingle<User>()
+  return user ?? null
+})
 
 /**
  * Create a new session for the given user. Returns nothing; the caller's

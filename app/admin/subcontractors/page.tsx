@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback, Fragment } from 'react'
+import { useEffect, useState, useCallback, useMemo, Fragment } from 'react'
 import Link from 'next/link'
 import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react'
 import type { Subcontractor, Product, SubcontractorProductPrice, User } from '@/types'
@@ -16,6 +16,7 @@ export default function SubcontractorsPage() {
   const [products, setProducts] = useState<Product[]>([])
   const [prices, setPrices] = useState<SubcontractorProductPrice[]>([])
   const [users, setUsers] = useState<User[]>([])
+  const [usersLoaded, setUsersLoaded] = useState(false)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(empty)
   const [saving, setSaving] = useState(false)
@@ -24,21 +25,82 @@ export default function SubcontractorsPage() {
   const [sortKey, setSortKey] = useState<SortKey>('company_name')
   const [sortDir, setSortDir] = useState<SortDir>('asc')
 
+  // Initial load: only the three datasets actually shown in the table.
+  // Users are loaded lazily on first row-expansion (see toggleExpanded).
   const fetchAll = useCallback(async () => {
-    const [subs, prods, prs, usrsRaw] = await Promise.all([
+    const [subs, prods, prs] = await Promise.all([
       fetch('/api/subcontractors').then((r) => r.json()),
       fetch('/api/products').then((r) => r.json()),
       fetch('/api/subcontractor-prices').then((r) => r.json()),
-      fetch('/api/users').then((r) => r.ok ? r.json() : []),
     ])
     setSubcontractors(Array.isArray(subs) ? subs : [])
     setProducts(Array.isArray(prods) ? prods : [])
     setPrices(Array.isArray(prs) ? prs : [])
-    setUsers(Array.isArray(usrsRaw) ? usrsRaw : [])
     setLoading(false)
   }, [])
 
   useEffect(() => { fetchAll() }, [fetchAll])
+
+  async function loadUsersIfNeeded() {
+    if (usersLoaded) return
+    const res = await fetch('/api/users')
+    const data = res.ok ? await res.json() : []
+    setUsers(Array.isArray(data) ? data : [])
+    setUsersLoaded(true)
+  }
+
+  function toggleExpanded(id: string) {
+    const next = expanded === id ? null : id
+    setExpanded(next)
+    if (next) loadUsersIfNeeded()
+  }
+
+  // Pre-compute "missing prices count" per UE *once* per data change instead
+  // of inside the sort comparator and again inside each row render. Drops the
+  // hot path from O(subs × products × prices) per render to O(subs + prices).
+  const missingByUE = useMemo(() => {
+    const productIds = new Set(products.map((p) => p.id))
+    const haveByUE = new Map<string, Set<string>>()
+    for (const pr of prices) {
+      if (!productIds.has(pr.product_id)) continue
+      let set = haveByUE.get(pr.subcontractor_id)
+      if (!set) { set = new Set(); haveByUE.set(pr.subcontractor_id, set) }
+      set.add(pr.product_id)
+    }
+    const out = new Map<string, number>()
+    for (const s of subcontractors) {
+      const have = haveByUE.get(s.id)?.size ?? 0
+      out.set(s.id, products.length - have)
+    }
+    return out
+  }, [subcontractors, products, prices])
+
+  // Memoized sort so changing an unrelated piece of state (e.g. form input)
+  // doesn't trigger a full re-sort.
+  const sorted = useMemo(() => {
+    const arr = [...subcontractors]
+    arr.sort((a, b) => {
+      let cmp = 0
+      if (sortKey === 'company_name') cmp = a.company_name.localeCompare(b.company_name, 'nb')
+      else if (sortKey === 'contact_person') cmp = (a.contact_person ?? '').localeCompare(b.contact_person ?? '', 'nb')
+      else if (sortKey === 'county') cmp = (a.county ?? '').localeCompare(b.county ?? '', 'nb')
+      else if (sortKey === 'prices') cmp = (missingByUE.get(a.id) ?? 0) - (missingByUE.get(b.id) ?? 0)
+      return sortDir === 'asc' ? cmp : -cmp
+    })
+    return arr
+  }, [subcontractors, sortKey, sortDir, missingByUE])
+
+  // Per-UE user lists pre-grouped instead of re-filtering inside each render.
+  const usersByUE = useMemo(() => {
+    const m = new Map<string, User[]>()
+    for (const u of users) {
+      if (!u.subcontractor_id) continue
+      const arr = m.get(u.subcontractor_id) ?? []
+      arr.push(u)
+      m.set(u.subcontractor_id, arr)
+    }
+    return m
+  }, [users])
 
   function set(key: keyof typeof form, value: string) {
     setForm((prev) => ({ ...prev, [key]: value }))
@@ -142,35 +204,22 @@ export default function SubcontractorsPage() {
             </tr>
           </thead>
           <tbody>
-            {subcontractors.length === 0 ? (
+            {sorted.length === 0 ? (
               <tr>
                 <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400">
                   Ingen underentreprenører ennå
                 </td>
               </tr>
             ) : (
-              [...subcontractors].sort((a, b) => {
-                let cmp = 0
-                if (sortKey === 'company_name') cmp = a.company_name.localeCompare(b.company_name, 'nb')
-                else if (sortKey === 'contact_person') cmp = (a.contact_person ?? '').localeCompare(b.contact_person ?? '', 'nb')
-                else if (sortKey === 'county') cmp = (a.county ?? '').localeCompare(b.county ?? '', 'nb')
-                else if (sortKey === 'prices') {
-                  const missingA = products.filter((p) => !prices.find((x) => x.subcontractor_id === a.id && x.product_id === p.id)).length
-                  const missingB = products.filter((p) => !prices.find((x) => x.subcontractor_id === b.id && x.product_id === p.id)).length
-                  cmp = missingA - missingB
-                }
-                return sortDir === 'asc' ? cmp : -cmp
-              }).map((s) => {
+              sorted.map((s) => {
                 const isExpanded = expanded === s.id
-                const subUsers = users.filter((u) => u.subcontractor_id === s.id)
-                const missingPrices = products.filter(
-                  (p) => !prices.find((x) => x.subcontractor_id === s.id && x.product_id === p.id)
-                ).length
+                const subUsers = usersByUE.get(s.id) ?? []
+                const missingPrices = missingByUE.get(s.id) ?? 0
                 return (
                   <Fragment key={s.id}>
                     <tr
                       className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/40' : ''}`}
-                      onClick={() => setExpanded(isExpanded ? null : s.id)}
+                      onClick={() => toggleExpanded(s.id)}
                     >
                       <td className="px-4 py-3 text-gray-400">
                         {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
@@ -203,9 +252,11 @@ export default function SubcontractorsPage() {
                       <tr key={`${s.id}-expanded`} className="bg-blue-50/20 border-b border-gray-100">
                         <td colSpan={9} className="px-6 py-3">
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
-                            Brukere ({subUsers.length})
+                            Brukere {usersLoaded ? `(${subUsers.length})` : ''}
                           </p>
-                          {subUsers.length === 0 ? (
+                          {!usersLoaded ? (
+                            <p className="text-sm text-gray-400">Laster brukere...</p>
+                          ) : subUsers.length === 0 ? (
                             <p className="text-sm text-gray-400">Ingen brukere koblet til denne UE</p>
                           ) : (
                             <div className="flex flex-col gap-1.5">
