@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
-import type { WeeklyReport, WeeklyReportLine, ActivityEntry } from '@/types'
+import type { WeeklyReport, ActivityEntry } from '@/types'
 
+/**
+ * Append an audit row directly. The old impl read the whole activity_log
+ * table, pushed one row, and wrote it back — a guaranteed dropped-write under
+ * concurrent reviews.
+ */
 async function logActivity(
   entityId: string,
   action: ActivityEntry['action'],
   actor: string,
-  comment?: string
+  comment?: string,
 ): Promise<void> {
-  const entries = await readJson<ActivityEntry>('activity_log.json')
-  entries.push({
+  await getSupabaseAdmin().from('activity_log').insert({
     id: randomUUID(),
     entity_type: 'weekly_report',
     entity_id: entityId,
@@ -20,7 +24,6 @@ async function logActivity(
     comment,
     created_at: new Date().toISOString(),
   })
-  await writeJson('activity_log.json', entries)
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
@@ -32,60 +35,68 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     admin_comment?: string
   }
 
-  const reports = await readJson<WeeklyReport>('weekly_reports.json')
-  const idx = reports.findIndex((r) => r.id === params.id)
-  if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
-  const now = new Date().toISOString()
-  // Actor derived from session — clients can't spoof identity.
+  const sb = getSupabaseAdmin()
   const actor = auth.user.full_name
-  const allLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
+  const now = new Date().toISOString()
+
+  // Make sure the report exists before doing any line work.
+  const { data: report, error: readErr } = await sb
+    .from('weekly_reports')
+    .select('id')
+    .eq('id', params.id)
+    .maybeSingle<Pick<WeeklyReport, 'id'>>()
+  if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 })
+  if (!report) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
   if (body.action === 'revert') {
-    await writeJson(
-      'weekly_report_lines.json',
-      allLines.map((l) =>
-        l.weekly_report_id === params.id ? { ...l, status: 'pending', reviewed_at: null, reviewed_by: null } : l
-      )
-    )
-    reports[idx] = {
-      ...reports[idx],
-      status: 'submitted',
-      reviewed_at: null,
-      reviewed_by: null,
-      admin_comment: null,
-    }
-    await writeJson('weekly_reports.json', reports)
+    // Reset every line for this report back to pending in one update.
+    const { error: lineErr } = await sb
+      .from('weekly_report_lines')
+      .update({ status: 'pending', reviewed_at: null, reviewed_by: null })
+      .eq('weekly_report_id', params.id)
+    if (lineErr) return NextResponse.json({ error: lineErr.message }, { status: 500 })
+
+    const { data: updated, error: updErr } = await sb
+      .from('weekly_reports')
+      .update({ status: 'submitted', reviewed_at: null, reviewed_by: null, admin_comment: null })
+      .eq('id', params.id)
+      .select()
+      .maybeSingle<WeeklyReport>()
+    if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+
     await logActivity(params.id, 'reverted', actor, body.admin_comment)
-    return NextResponse.json(reports[idx])
+    return NextResponse.json(updated)
   }
 
-  const lineStatus = body.action === 'approve_all' ? 'approved' as const : 'rejected' as const
-  const reportStatus = body.action === 'approve_all' ? 'approved' as const : 'rejected' as const
+  // Approve-all or reject-all: flip lines in one update, then the report header.
+  const lineStatus = body.action === 'approve_all' ? 'approved' : 'rejected'
+  const reportStatus = body.action === 'approve_all' ? 'approved' : 'rejected'
 
-  await writeJson(
-    'weekly_report_lines.json',
-    allLines.map((l) =>
-      l.weekly_report_id === params.id
-        ? { ...l, status: lineStatus, reviewed_at: now, reviewed_by: actor }
-        : l
-    )
-  )
+  const { error: lineErr } = await sb
+    .from('weekly_report_lines')
+    .update({ status: lineStatus, reviewed_at: now, reviewed_by: actor })
+    .eq('weekly_report_id', params.id)
+  if (lineErr) return NextResponse.json({ error: lineErr.message }, { status: 500 })
 
-  reports[idx] = {
-    ...reports[idx],
-    status: reportStatus,
-    reviewed_at: now,
-    reviewed_by: actor,
-    admin_comment: body.admin_comment ?? null,
-  }
-  await writeJson('weekly_reports.json', reports)
+  const { data: updated, error: updErr } = await sb
+    .from('weekly_reports')
+    .update({
+      status: reportStatus,
+      reviewed_at: now,
+      reviewed_by: actor,
+      admin_comment: body.admin_comment ?? null,
+    })
+    .eq('id', params.id)
+    .select()
+    .maybeSingle<WeeklyReport>()
+  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
+
   await logActivity(
     params.id,
     body.action === 'approve_all' ? 'approved' : 'rejected',
     actor,
-    body.admin_comment
+    body.admin_comment,
   )
 
-  return NextResponse.json(reports[idx])
+  return NextResponse.json(updated)
 }

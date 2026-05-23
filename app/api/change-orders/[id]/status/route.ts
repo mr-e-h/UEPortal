@@ -1,17 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
-import type { ChangeOrder, ProjectBudgetLine, ActivityEntry, ProjectSubcontractor } from '@/types'
+import type { ChangeOrder, ProjectBudgetLine, ActivityEntry } from '@/types'
 
+/**
+ * Append an audit row directly instead of reading the whole table, mutating
+ * the array, and writing the whole thing back. Concurrent calls now compose
+ * safely — Postgres serializes the inserts.
+ */
 async function logActivity(
   entityId: string,
   action: ActivityEntry['action'],
   actor: string,
-  comment?: string
+  comment?: string,
 ): Promise<void> {
-  const entries = await readJson<ActivityEntry>('activity_log.json')
-  entries.push({
+  await getSupabaseAdmin().from('activity_log').insert({
     id: randomUUID(),
     entity_type: 'change_order',
     entity_id: entityId,
@@ -20,12 +24,11 @@ async function logActivity(
     comment,
     created_at: new Date().toISOString(),
   })
-  await writeJson('activity_log.json', entries)
 }
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: { id: string } },
 ) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
@@ -35,77 +38,91 @@ export async function POST(
     admin_comment?: string
   }
 
-  const orders = await readJson<ChangeOrder>('change_orders.json')
-  const idx = orders.findIndex((o) => o.id === params.id)
-  if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+  const sb = getSupabaseAdmin()
 
-  const order = orders[idx]
-  // Actor derived from session — clients can't spoof identity in the audit log.
+  // Read the order first so we can branch on prev-status (for revert).
+  const { data: order, error: readErr } = await sb
+    .from('change_orders')
+    .select('*')
+    .eq('id', params.id)
+    .maybeSingle<ChangeOrder>()
+  if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 })
+  if (!order) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
   const actor = auth.user.full_name
   const now = new Date().toISOString()
 
   if (status === 'pending') {
-    // Revert: undo a previous approval/rejection
+    // Revert: undo a previous approval/rejection.
     const prevStatus = order.status
 
-    orders[idx] = {
-      ...order,
-      status: 'pending',
-      admin_comment: null,
-      reviewed_at: null,
-      reviewed_by: null,
-    }
-    await writeJson('change_orders.json', orders)
+    const { data: updated, error: updErr } = await sb
+      .from('change_orders')
+      .update({
+        status: 'pending',
+        admin_comment: null,
+        reviewed_at: null,
+        reviewed_by: null,
+      })
+      .eq('id', params.id)
+      .select()
+      .maybeSingle<ChangeOrder>()
+    if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
 
-    // If it was approved, reverse the budget line effect
     if (prevStatus === 'approved') {
-      const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
-      const existing = budgetLines.find(
-        (bl) =>
-          bl.project_id === order.project_id &&
-          bl.product_id === order.product_id &&
-          bl.assigned_subcontractor_id === order.subcontractor_id
-      )
+      // Reverse the budget effect: find the line this change-order created,
+      // subtract the qty, drop the line if it falls to zero.
+      const { data: existing } = await sb
+        .from('project_budget_lines')
+        .select('*')
+        .eq('project_id', order.project_id)
+        .eq('product_id', order.product_id)
+        .eq('assigned_subcontractor_id', order.subcontractor_id)
+        .maybeSingle<ProjectBudgetLine>()
+
       if (existing) {
         const newQty = existing.budget_quantity - order.requested_quantity
         if (newQty <= 0) {
-          // Remove the line if it was entirely from this change order
-          await writeJson('project_budget_lines.json', budgetLines.filter((bl) => bl.id !== existing.id))
+          await sb.from('project_budget_lines').delete().eq('id', existing.id)
         } else {
-          const blIdx = budgetLines.findIndex((bl) => bl.id === existing.id)
-          budgetLines[blIdx] = { ...existing, budget_quantity: newQty }
-          await writeJson('project_budget_lines.json', budgetLines)
+          await sb.from('project_budget_lines').update({ budget_quantity: newQty }).eq('id', existing.id)
         }
       }
     }
 
     await logActivity(params.id, 'reverted', actor, admin_comment)
-    return NextResponse.json(orders[idx])
+    return NextResponse.json(updated)
   }
 
-  orders[idx] = {
-    ...order,
-    status,
-    admin_comment: admin_comment ?? null,
-    reviewed_at: now,
-    reviewed_by: actor,
-  }
-  await writeJson('change_orders.json', orders)
+  // Approve or reject.
+  const { data: updated, error: updErr } = await sb
+    .from('change_orders')
+    .update({
+      status,
+      admin_comment: admin_comment ?? null,
+      reviewed_at: now,
+      reviewed_by: actor,
+    })
+    .eq('id', params.id)
+    .select()
+    .maybeSingle<ChangeOrder>()
+  if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
 
   if (status === 'approved') {
-    const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
-    const existing = budgetLines.find(
-      (bl) =>
-        bl.project_id === order.project_id &&
-        bl.product_id === order.product_id &&
-        bl.assigned_subcontractor_id === order.subcontractor_id
-    )
+    // Apply the change to the project budget. Either bump an existing line or
+    // insert a new one tagged source='change_order'.
+    const { data: existing } = await sb
+      .from('project_budget_lines')
+      .select('*')
+      .eq('project_id', order.project_id)
+      .eq('product_id', order.product_id)
+      .eq('assigned_subcontractor_id', order.subcontractor_id)
+      .maybeSingle<ProjectBudgetLine>()
+
     if (existing) {
-      const blIdx = budgetLines.findIndex((bl) => bl.id === existing.id)
-      budgetLines[blIdx] = {
-        ...existing,
+      await sb.from('project_budget_lines').update({
         budget_quantity: existing.budget_quantity + order.requested_quantity,
-      }
+      }).eq('id', existing.id)
     } else {
       const newLine: ProjectBudgetLine = {
         id: randomUUID(),
@@ -117,21 +134,28 @@ export async function POST(
         subcontractor_cost_price_snapshot: order.cost_price_snapshot,
         source: 'change_order',
       }
-      budgetLines.push(newLine)
+      await sb.from('project_budget_lines').insert(newLine)
     }
-    await writeJson('project_budget_lines.json', budgetLines)
 
-    // Ensure UE has access to the project (defensive link creation)
-    const links = await readJson<ProjectSubcontractor>('project_subcontractors.json')
-    const hasLink = links.some(
-      (l) => l.project_id === order.project_id && l.subcontractor_id === order.subcontractor_id
-    )
-    if (!hasLink) {
-      links.push({ id: randomUUID(), project_id: order.project_id, subcontractor_id: order.subcontractor_id })
-      await writeJson('project_subcontractors.json', links)
+    // Defensive: ensure the UE is linked to the project so they can see it.
+    // Check first, then insert — could race in theory, but the unique index
+    // on (project_id, subcontractor_id) (if present) makes a dup harmless.
+    const { data: linkExists } = await sb
+      .from('project_subcontractors')
+      .select('id')
+      .eq('project_id', order.project_id)
+      .eq('subcontractor_id', order.subcontractor_id)
+      .maybeSingle()
+
+    if (!linkExists) {
+      await sb.from('project_subcontractors').insert({
+        id: randomUUID(),
+        project_id: order.project_id,
+        subcontractor_id: order.subcontractor_id,
+      })
     }
   }
 
   await logActivity(params.id, status === 'approved' ? 'approved' : 'rejected', actor, admin_comment)
-  return NextResponse.json(orders[idx])
+  return NextResponse.json(updated)
 }

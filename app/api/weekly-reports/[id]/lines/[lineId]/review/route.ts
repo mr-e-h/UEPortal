@@ -1,36 +1,57 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/api-guard'
-import type { WeeklyReport, WeeklyReportLine, WeeklyReportStatus } from '@/types'
+import type { WeeklyReportLine, WeeklyReportStatus } from '@/types'
 
-export async function POST(request: NextRequest, { params }: { params: { id: string; lineId: string } }) {
+/**
+ * Per-line approve/reject. After updating the line, we re-derive the parent
+ * report's aggregate status (all approved → 'approved', all rejected →
+ * 'rejected', otherwise 'partially_approved') and write that back.
+ *
+ * Each step is a targeted Postgres update instead of a read-everything,
+ * mutate-array, write-everything pattern.
+ */
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string; lineId: string } },
+) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
   const body = await request.json() as { status: 'approved' | 'rejected' }
   const actor = auth.user.full_name
-
-  const allLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
-  const idx = allLines.findIndex((l) => l.id === params.lineId)
-  if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-
   const now = new Date().toISOString()
-  allLines[idx] = { ...allLines[idx], status: body.status, reviewed_at: now, reviewed_by: actor }
-  await writeJson('weekly_report_lines.json', allLines)
+  const sb = getSupabaseAdmin()
 
-  const reportLines = allLines.filter((l) => l.weekly_report_id === params.id)
-  const allApproved = reportLines.length > 0 && reportLines.every((l) => l.status === 'approved')
-  const allRejected = reportLines.length > 0 && reportLines.every((l) => l.status === 'rejected')
-  let newStatus: WeeklyReportStatus = 'partially_approved'
-  if (allApproved) newStatus = 'approved'
-  else if (allRejected) newStatus = 'rejected'
+  const { data: updatedLine, error: lineErr } = await sb
+    .from('weekly_report_lines')
+    .update({ status: body.status, reviewed_at: now, reviewed_by: actor })
+    .eq('id', params.lineId)
+    .select()
+    .maybeSingle<WeeklyReportLine>()
+  if (lineErr) return NextResponse.json({ error: lineErr.message }, { status: 500 })
+  if (!updatedLine) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-  const reports = await readJson<WeeklyReport>('weekly_reports.json')
-  const rIdx = reports.findIndex((r) => r.id === params.id)
-  if (rIdx !== -1) {
-    reports[rIdx] = { ...reports[rIdx], status: newStatus, reviewed_at: now, reviewed_by: actor }
-    await writeJson('weekly_reports.json', reports)
-  }
+  // Re-derive the report's aggregate status.
+  const { data: reportLines, error: readErr } = await sb
+    .from('weekly_report_lines')
+    .select('status')
+    .eq('weekly_report_id', params.id)
+  if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 })
 
-  return NextResponse.json(allLines[idx])
+  const lines = (reportLines ?? []) as Pick<WeeklyReportLine, 'status'>[]
+  const allApproved = lines.length > 0 && lines.every((l) => l.status === 'approved')
+  const allRejected = lines.length > 0 && lines.every((l) => l.status === 'rejected')
+  const newStatus: WeeklyReportStatus = allApproved
+    ? 'approved'
+    : allRejected
+      ? 'rejected'
+      : 'partially_approved'
+
+  await sb
+    .from('weekly_reports')
+    .update({ status: newStatus, reviewed_at: now, reviewed_by: actor })
+    .eq('id', params.id)
+
+  return NextResponse.json(updatedLine)
 }
