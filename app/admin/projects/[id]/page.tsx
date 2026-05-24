@@ -150,21 +150,51 @@ export default function ProjectDetailPage() {
       }
     }
 
-    const results = await Promise.all(
-      selected.map((lineId) =>
-        fetch('/api/budget-lines', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ id: lineId, assigned_subcontractor_id: bulkSubcontractor }),
-        })
-      )
+    // Per-line: run all PUTs in parallel, collect each line's outcome so
+    // we can show admin exactly which rows failed and why instead of a
+    // generic "noen feilet". Successful lines drop out of `selected`, the
+    // failures stick around for retry.
+    const settled = await Promise.allSettled(
+      selected.map(async (lineId) => {
+        let res: Response
+        try {
+          res = await fetch('/api/budget-lines', {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ id: lineId, assigned_subcontractor_id: bulkSubcontractor }),
+          })
+        } catch {
+          throw { lineId, error: 'Nettverksfeil' }
+        }
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({} as { error?: string }))
+          throw { lineId, error: d.error ?? `HTTP ${res.status}` }
+        }
+        return lineId
+      })
     )
-    if (results.some((r) => !r.ok)) {
-      setBulkError('En eller flere produkter mangler pris for valgt UE.')
-    } else {
-      setSelected([])
-      setBulkSubcontractor('')
+
+    const successIds = new Set<string>()
+    const failures: { lineId: string; error: string }[] = []
+    for (const r of settled) {
+      if (r.status === 'fulfilled') successIds.add(r.value)
+      else failures.push(r.reason as { lineId: string; error: string })
     }
+
+    if (failures.length > 0) {
+      const productNames = failures.map((f) => {
+        const bl = budgetLines.find((b) => b.id === f.lineId)
+        const p = bl ? allProducts.find((pp) => pp.id === bl.product_id) : null
+        return `${p?.name ?? bl?.product_id ?? f.lineId}: ${f.error}`
+      })
+      setBulkError(`${failures.length} av ${selected.length} feilet — ${productNames.slice(0, 3).join(' · ')}${productNames.length > 3 ? ` …` : ''}`)
+    }
+
+    // Drop successful lines from the selection. Failures stay selected so
+    // the admin can fix the underlying problem (usually missing price) and
+    // retry on the same rows.
+    setSelected((prev) => prev.filter((id) => !successIds.has(id)))
+    if (failures.length === 0) setBulkSubcontractor('')
     fetchAll()
   }
 
