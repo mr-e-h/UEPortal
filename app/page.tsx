@@ -10,7 +10,7 @@ export default async function Home() {
   const user = await getSession()
   if (!user) redirect('/login')
 
-  if (user.role === 'sub' || user.role === 'subcontractor') redirect('/subcontractor')
+  if (user.role === 'sub') redirect('/subcontractor')
   // main, project_manager, company all use /admin (company is in ADMIN_ROLES;
   // dedicated /company portal doesn't exist yet).
   redirect('/admin')

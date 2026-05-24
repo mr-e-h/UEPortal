@@ -10,7 +10,7 @@ import { randomUUID } from 'crypto'
 export async function GET() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
-  const isSubRole = session.role === 'sub' || session.role === 'subcontractor'
+  const isSubRole = session.role === 'sub'
   let projects = (await readJson<Project>('projects.json')).filter((p) => !p.deleted)
 
   if (isSubRole) {

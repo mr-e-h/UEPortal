@@ -95,7 +95,7 @@ export const api = {
   },
   invitations: {
     list: () => get<Invitation[]>('/api/invitations'),
-    create: (body: { email: string; role: 'project_manager' | 'subcontractor' }) =>
+    create: (body: { email: string; role: 'project_manager' | 'sub' }) =>
       post<Invitation>('/api/invitations', body),
   },
   subcontractors: {
@@ -126,10 +126,10 @@ export const api = {
       email: string
       company?: string
       phone?: string
-      desired_role?: 'project_manager' | 'subcontractor'
+      desired_role?: 'project_manager' | 'sub'
       message?: string
     }) => post<{ ok: true }>('/api/access-requests', body),
-    decide: (id: string, body: { action: 'approve' | 'reject'; role?: 'project_manager' | 'subcontractor'; note?: string | null }) =>
+    decide: (id: string, body: { action: 'approve' | 'reject'; role?: 'project_manager' | 'sub'; note?: string | null }) =>
       patch<{ ok: true; status: 'approved' | 'rejected' }>(`/api/access-requests/${id}`, body),
     remove: (id: string) =>
       del<{ ok: true }>(`/api/access-requests/${id}`),

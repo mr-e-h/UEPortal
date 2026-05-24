@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const body = await request.json() as { email: string; role: 'project_manager' | 'subcontractor' }
+  const body = await request.json() as { email: string; role: 'project_manager' | 'sub' }
   const email = String(body.email ?? '').trim().toLowerCase()
   const role = body.role
 

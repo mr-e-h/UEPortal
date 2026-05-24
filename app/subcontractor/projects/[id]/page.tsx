@@ -131,7 +131,7 @@ export default function SubcontractorProjectPage() {
 
   useEffect(() => {
     if (!me) return
-    if (me.role !== 'subcontractor' && me.role !== 'sub') { router.replace('/login'); return }
+    if (me.role !== 'sub') { router.replace('/login'); return }
     if (!me.subcontractor_id) { router.replace('/login'); return }
     const subId = me.subcontractor_id
 

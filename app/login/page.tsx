@@ -5,7 +5,7 @@ import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
 
 type LoginResponse =
-  | { id: string; role: 'company' | 'project_manager' | 'subcontractor' | 'main' | 'sub'; full_name: string; subcontractor_id: string | null }
+  | { id: string; role: 'company' | 'project_manager' | 'main' | 'sub'; full_name: string; subcontractor_id: string | null }
   | { error: string }
 
 // useSearchParams() forces a CSR bailout under static prerender (Next 14).
@@ -65,7 +65,7 @@ function LoginForm() {
     // path (open-redirect prevention) and matches the user's role tree.
     // company → /admin until the dedicated /company portal exists.
     const roleHome = (data.role === 'project_manager' || data.role === 'main' || data.role === 'company') ? '/admin'
-      : (data.role === 'subcontractor' || data.role === 'sub') ? '/subcontractor'
+      : data.role === 'sub' ? '/subcontractor'
       : '/subcontractor'
 
     const safeRedirect = requestedRedirect && requestedRedirect.startsWith('/')
@@ -153,7 +153,7 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
     email: '',
     company: '',
     phone: '',
-    desired_role: 'subcontractor' as 'project_manager' | 'subcontractor',
+    desired_role: 'sub' as 'project_manager' | 'sub',
     message: '',
   })
   const [submitting, setSubmitting] = useState(false)
@@ -253,10 +253,10 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
               <label className="block text-xs font-medium text-gray-700 mb-1">Ønsket rolle</label>
               <select
                 value={form.desired_role}
-                onChange={(e) => setForm((f) => ({ ...f, desired_role: e.target.value as 'project_manager' | 'subcontractor' }))}
+                onChange={(e) => setForm((f) => ({ ...f, desired_role: e.target.value as 'project_manager' | 'sub' }))}
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
               >
-                <option value="subcontractor">Underentreprenør</option>
+                <option value="sub">Underentreprenør</option>
                 <option value="project_manager">Prosjektleder</option>
               </select>
             </div>

@@ -65,7 +65,7 @@ export default function SubcontractorChangeOrdersPage() {
 
   useEffect(() => {
     if (!me) return
-    if (me.role !== 'subcontractor' && me.role !== 'sub') { router.replace('/login'); return }
+    if (me.role !== 'sub') { router.replace('/login'); return }
     if (!me.subcontractor_id) { router.replace('/login'); return }
     fetchAll(me.subcontractor_id)
   }, [me, router, fetchAll])

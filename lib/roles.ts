@@ -39,13 +39,6 @@ export const ROLES: RoleDefinition[] = [
     kind: 'sub',
     badgeClass: 'bg-amber-50 text-amber-700',
   },
-  {
-    value: 'subcontractor',
-    label: 'Underentreprenør',
-    shortLabel: 'UE',
-    kind: 'sub',
-    badgeClass: 'bg-amber-50 text-amber-700',
-  },
 ]
 
 const ROLE_BY_VALUE = new Map<UserRole, RoleDefinition>(ROLES.map((r) => [r.value, r]))

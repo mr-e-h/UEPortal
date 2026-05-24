@@ -27,7 +27,7 @@ export type SubcontractorLite = {
 export type InvitationLite = {
   id: string
   email: string
-  role: 'project_manager' | 'subcontractor'
+  role: 'project_manager' | 'sub'
   expires_at: string
   accepted_at: string | null
 }
@@ -57,7 +57,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
   const [showInvite, setShowInvite] = useState(false)
   const [inviteForm, setInviteForm] = useState({
     email: '',
-    role: 'subcontractor' as 'project_manager' | 'subcontractor',
+    role: 'sub' as 'project_manager' | 'sub',
   })
   const [inviteError, setInviteError] = useState<string | null>(null)
   const [inviteSuccess, setInviteSuccess] = useState<string | null>(null)
@@ -85,7 +85,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
       return
     }
     setInviteSuccess(`Invitasjon sendt til ${inviteForm.email}`)
-    setInviteForm({ email: '', role: 'subcontractor' })
+    setInviteForm({ email: '', role: 'sub' })
     loadInvitations()
   }
 
@@ -206,10 +206,10 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
               <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Rolle</label>
               <select
                 value={inviteForm.role}
-                onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value as 'project_manager' | 'subcontractor' }))}
+                onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value as 'project_manager' | 'sub' }))}
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               >
-                <option value="subcontractor">Underentreprenør</option>
+                <option value="sub">Underentreprenør</option>
                 <option value="project_manager">Prosjektleder</option>
               </select>
             </div>

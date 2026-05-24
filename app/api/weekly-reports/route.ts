@@ -15,7 +15,7 @@ export async function GET(request: NextRequest) {
   const year = searchParams.get('year')
   const weekNumber = searchParams.get('week_number')
   const withLines = searchParams.get('with_lines') === 'true'
-  const isSubRole = session.role === 'sub' || session.role === 'subcontractor'
+  const isSubRole = session.role === 'sub'
 
   const sb = getSupabaseAdmin()
   const query = sb.from('weekly_reports').select('*')
@@ -64,7 +64,7 @@ export async function POST(request: NextRequest) {
     week_number: number
   }
 
-  const isSubRole = session.role === 'sub' || session.role === 'subcontractor'
+  const isSubRole = session.role === 'sub'
   if (isSubRole && session.subcontractor_id !== body.subcontractor_id) {
     return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
   }

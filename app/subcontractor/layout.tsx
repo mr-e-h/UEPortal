@@ -42,7 +42,7 @@ export default function SubcontractorLayout({ children }: { children: React.Reac
   // them back to /login (their dashboard isn't here).
   useEffect(() => {
     if (loading) return
-    if (!me || (me.role !== 'subcontractor' && me.role !== 'sub')) {
+    if (!me || me.role !== 'sub') {
       router.replace('/login')
     }
   }, [loading, me, router])

@@ -1,9 +1,9 @@
-export type UserRole = 'company' | 'project_manager' | 'subcontractor' | 'main' | 'sub'
+export type UserRole = 'company' | 'project_manager' | 'main' | 'sub'
 
 export interface Invitation {
   id: string
   email: string
-  role: 'project_manager' | 'subcontractor'
+  role: 'project_manager' | 'sub'
   /**
    * SHA-256 hash of the invitation token. Raw tokens are only ever shown in
    * the acceptance URL — they are never stored.
@@ -34,7 +34,7 @@ export interface AccessRequest {
   company: string | null
   phone: string | null
   message: string | null
-  desired_role: 'project_manager' | 'subcontractor' | null
+  desired_role: 'project_manager' | 'sub' | null
   status: AccessRequestStatus
   created_at: string
   decided_at: string | null

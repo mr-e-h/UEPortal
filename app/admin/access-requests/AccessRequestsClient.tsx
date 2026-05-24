@@ -53,7 +53,7 @@ export default function AccessRequestsClient({ initialRequests, initialFilter = 
   async function handleApprove(req: AccessRequest) {
     setBusyId(req.id)
     setError(null)
-    const role = req.desired_role ?? 'subcontractor'
+    const role = req.desired_role ?? 'sub'
     const res = await fetch(`/api/access-requests/${req.id}`, {
       method: 'PATCH',
       headers: { 'Content-Type': 'application/json' },

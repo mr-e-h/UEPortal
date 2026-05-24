@@ -34,7 +34,7 @@ export async function POST(req: NextRequest) {
     company: string
     phone: string
     message: string
-    desired_role: 'project_manager' | 'subcontractor'
+    desired_role: 'project_manager' | 'sub'
   }>
 
   const full_name = String(body.full_name ?? '').trim().slice(0, MAX_LEN.full_name)
@@ -42,7 +42,7 @@ export async function POST(req: NextRequest) {
   const company = body.company ? String(body.company).trim().slice(0, MAX_LEN.company) : null
   const phone = body.phone ? String(body.phone).trim().slice(0, MAX_LEN.phone) : null
   const message = body.message ? String(body.message).trim().slice(0, MAX_LEN.message) : null
-  const desired_role = body.desired_role === 'project_manager' || body.desired_role === 'subcontractor'
+  const desired_role = body.desired_role === 'project_manager' || body.desired_role === 'sub'
     ? body.desired_role
     : null
 

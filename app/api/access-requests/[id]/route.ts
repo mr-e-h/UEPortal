@@ -26,7 +26,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
 
   const body = await req.json().catch(() => ({})) as Partial<{
     action: 'approve' | 'reject'
-    role: 'project_manager' | 'subcontractor'
+    role: 'project_manager' | 'sub'
     note: string
   }>
 
@@ -62,7 +62,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
 
   // ----- approve -----
-  const role = body.role === 'project_manager' ? 'project_manager' : (existing.desired_role ?? 'subcontractor')
+  const role = body.role === 'project_manager' ? 'project_manager' : (existing.desired_role ?? 'sub')
 
   // If the email already corresponds to an existing user, just mark approved
   // and do NOT issue an invitation token. Admin can hand the user a reset link

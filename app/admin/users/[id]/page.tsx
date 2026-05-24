@@ -27,7 +27,7 @@ export default function UserDetailPage() {
   // Editable fields
   const [fullName, setFullName] = useState('')
   const [email, setEmail] = useState('')
-  const [role, setRole] = useState<UserRole>('subcontractor')
+  const [role, setRole] = useState<UserRole>('sub')
   const [subcontractorId, setSubcontractorId] = useState<string>('')
   const [active, setActive] = useState(true)
 
