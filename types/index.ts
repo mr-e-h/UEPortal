@@ -136,6 +136,8 @@ export interface ChangeOrder {
   reviewed_at: string | null
   reviewed_by: string | null
   admin_comment: string | null
+  /** Insert time; DB default = now(). Set after migration `change_orders_created_at`. */
+  created_at: string
 }
 
 export interface ReportLine {

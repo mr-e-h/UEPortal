@@ -42,11 +42,7 @@ next-env.d.ts
 /data/uploads/
 /public/uploads/
 
-# runtime JSON state (the JSON-as-database files mutate during dev-server use).
-# Config tables that should stay tracked are whitelisted below.
+# Legacy JSON-as-database files. Supabase is the source of truth now
+# (lib/data.ts wraps reads as Postgres queries). Old files were kept in the
+# repo for schema reference but have drifted from prod — drop entirely.
 /data/*.json
-!/data/lump_sum_codes.json
-!/data/time_types.json
-!/data/products.json
-!/data/subcontractors.json
-!/data/forecast_periods.json
