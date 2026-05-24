@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
-import { readJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { setSession } from '@/lib/auth'
 import { rateLimit, clientIp } from '@/lib/rate-limit'
 import type { User } from '@/types'
@@ -24,8 +24,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'For mange forsøk, prøv igjen senere' }, { status: 429 })
   }
 
-  const users = await readJson<User>('users.json')
-  const user = users.find((u) => u.email.toLowerCase() === email.toLowerCase())
+  // Indexed lookup instead of full-table scan + in-memory filter.
+  const { data: user } = await getSupabaseAdmin()
+    .from('users')
+    .select('*')
+    .ilike('email', email.toLowerCase())
+    .maybeSingle<User>()
 
   // Always run bcrypt — equal time whether user exists or not. bcrypt-only
   // (no plaintext fallback); legacy accounts must use the forgot-password flow.

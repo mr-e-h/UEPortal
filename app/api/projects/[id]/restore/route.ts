@@ -1,16 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/api-guard'
-import type { Project } from '@/types'
 
 export async function POST(_request: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const projects = await readJson<Project>('projects.json')
-  const idx = projects.findIndex((p) => p.id === params.id)
-  if (idx === -1) return NextResponse.json({ error: 'Not found' }, { status: 404 })
-  projects[idx] = { ...projects[idx], deleted: false, deleted_at: null }
-  await writeJson('projects.json', projects)
+  const { error, count } = await getSupabaseAdmin()
+    .from('projects')
+    .update({ deleted: false, deleted_at: null }, { count: 'exact' })
+    .eq('id', params.id)
+  if (error) return NextResponse.json({ error: 'Gjenoppretting feilet' }, { status: 500 })
+  if (!count) return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })
   return NextResponse.json({ success: true })
 }

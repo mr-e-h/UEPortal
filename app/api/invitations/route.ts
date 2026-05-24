@@ -1,19 +1,23 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
+import { randomUUID } from 'crypto'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/api-guard'
 import { generateToken, hashToken } from '@/lib/tokens'
 import { sendEmail, buildAppUrl } from '@/lib/email'
 import { invitationEmail } from '@/lib/email-templates'
 import { roleLabel } from '@/lib/roles'
 import type { Invitation } from '@/types'
-import { randomUUID } from 'crypto'
 
 export async function GET() {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const invitations = await readJson<Invitation>('invitations.json')
-  return NextResponse.json(invitations)
+  const { data, error } = await getSupabaseAdmin()
+    .from('invitations')
+    .select('*')
+    .order('created_at', { ascending: false })
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  return NextResponse.json((data ?? []) as Invitation[])
 }
 
 export async function POST(request: NextRequest) {
@@ -27,17 +31,21 @@ export async function POST(request: NextRequest) {
   if (!email || !role) {
     return NextResponse.json({ error: 'Mangler e-post eller rolle' }, { status: 400 })
   }
+  if (role !== 'project_manager' && role !== 'sub') {
+    return NextResponse.json({ error: 'Ugyldig rolle' }, { status: 400 })
+  }
 
-  const invitations = await readJson<Invitation>('invitations.json')
-
-  // Only block on a *non-expired* pending invitation. Earlier this matched any
-  // un-accepted invite, so once one expired, admin could never re-invite.
-  const nowMs = Date.now()
-  const pending = invitations.find((i) =>
-    i.email === email
-    && i.accepted_at === null
-    && new Date(i.expires_at).getTime() > nowMs
-  )
+  const sb = getSupabaseAdmin()
+  // Block on a non-expired pending invitation for the same email.
+  const nowIso = new Date().toISOString()
+  const { data: pending } = await sb
+    .from('invitations')
+    .select('id')
+    .eq('email', email)
+    .is('accepted_at', null)
+    .gt('expires_at', nowIso)
+    .limit(1)
+    .maybeSingle()
   if (pending) {
     return NextResponse.json({ error: 'Det finnes allerede en aktiv invitasjon for denne e-posten' }, { status: 409 })
   }
@@ -45,7 +53,6 @@ export async function POST(request: NextRequest) {
   const now = new Date()
   const expires = new Date(now)
   expires.setDate(expires.getDate() + 7)
-
   const rawToken = generateToken()
 
   const invitation: Invitation = {
@@ -58,7 +65,8 @@ export async function POST(request: NextRequest) {
     accepted_at: null,
   }
 
-  await writeJson('invitations.json', [...invitations, invitation])
+  const { error } = await sb.from('invitations').insert(invitation)
+  if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
 
   const acceptUrl = buildAppUrl(`/accept-invite/${rawToken}`, request.url)
   try {
@@ -72,7 +80,7 @@ export async function POST(request: NextRequest) {
   }
 
   // Do not include the raw token in the response — it's only delivered via
-  // the email link. The admin lists invitations by id/email/expires, not token.
+  // the email link.
   return NextResponse.json({
     id: invitation.id,
     email: invitation.email,

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { randomUUID } from 'crypto'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { hashToken, safeCompareHash } from '@/lib/tokens'
 import { rateLimit, clientIp } from '@/lib/rate-limit'
 import type { User, Invitation } from '@/types'
@@ -37,38 +37,68 @@ export async function POST(request: NextRequest) {
   // a 409 on email-in-use would let an attacker enumerate registered emails
   // by trying any random token + a guessed email.
   const hashed = hashToken(token)
-  const invitations = await readJson<Invitation>('invitations.json')
-  const idx = invitations.findIndex((i) => safeCompareHash(i.token_hash, hashed))
-  if (idx === -1) return NextResponse.json({ error: 'Ugyldig eller utløpt invitasjon' }, { status: 400 })
-  const inv = invitations[idx]
+  const sb = getSupabaseAdmin()
+  const { data: inv } = await sb
+    .from('invitations')
+    .select('*')
+    .eq('token_hash', hashed)
+    .maybeSingle<Invitation>()
+
+  if (!inv || !safeCompareHash(inv.token_hash, hashed)) {
+    return NextResponse.json({ error: 'Ugyldig eller utløpt invitasjon' }, { status: 400 })
+  }
   if (inv.accepted_at) return NextResponse.json({ error: 'Ugyldig eller utløpt invitasjon' }, { status: 400 })
-  if (new Date(inv.expires_at) < new Date()) return NextResponse.json({ error: 'Ugyldig eller utløpt invitasjon' }, { status: 400 })
+  if (new Date(inv.expires_at) < new Date()) {
+    return NextResponse.json({ error: 'Ugyldig eller utløpt invitasjon' }, { status: 400 })
+  }
   if (inv.email.toLowerCase() !== email.toLowerCase()) {
     return NextResponse.json({ error: 'E-postadressen samsvarer ikke med invitasjonen' }, { status: 400 })
   }
 
-  const users = await readJson<User>('users.json')
-  if (users.find((u) => u.email.toLowerCase() === email.toLowerCase())) {
+  const lowered = email.toLowerCase()
+  const { data: existingUser } = await sb
+    .from('users')
+    .select('id')
+    .ilike('email', lowered)
+    .maybeSingle<{ id: string }>()
+  if (existingUser) {
     return NextResponse.json({ error: 'E-postadressen er allerede i bruk' }, { status: 409 })
   }
 
-  const role = inv.role
-  invitations[idx] = { ...inv, accepted_at: new Date().toISOString() }
-  await writeJson('invitations.json', invitations)
+  // Atomically claim the invitation — only the matching id+null-accepted_at
+  // can be flipped, so a concurrent registration loses the race cleanly.
+  const now = new Date().toISOString()
+  const { data: claimedInv, error: claimErr } = await sb
+    .from('invitations')
+    .update({ accepted_at: now })
+    .eq('id', inv.id)
+    .is('accepted_at', null)
+    .select()
+    .maybeSingle<Invitation>()
+  if (claimErr) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+  if (!claimedInv) {
+    return NextResponse.json({ error: 'Ugyldig eller utløpt invitasjon' }, { status: 409 })
+  }
 
   const hashedPassword = await bcrypt.hash(password, BCRYPT_COST)
 
   const newUser: User = {
     id: randomUUID(),
-    email: email.toLowerCase(),
+    email: lowered,
     password: hashedPassword,
-    role,
+    role: inv.role,
     full_name,
     subcontractor_id: null,
     active: true,
   }
 
-  await writeJson('users.json', [...users, newUser])
+  const { error: userErr } = await sb.from('users').insert(newUser)
+  if (userErr) {
+    // Best-effort rollback of invitation claim so a transient DB hiccup
+    // doesn't strand the user.
+    await sb.from('invitations').update({ accepted_at: null }).eq('id', inv.id)
+    return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+  }
 
-  return NextResponse.json({ ok: true, role })
+  return NextResponse.json({ ok: true, role: inv.role })
 }

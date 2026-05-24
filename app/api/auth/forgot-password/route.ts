@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { generateToken, hashToken } from '@/lib/tokens'
 import { sendEmail, buildAppUrl } from '@/lib/email'
 import { passwordResetEmail } from '@/lib/email-templates'
@@ -13,54 +13,54 @@ export async function POST(request: NextRequest) {
   const body = await request.json().catch(() => ({}))
   const email = String(body?.email ?? '').trim().toLowerCase()
 
-  // Always return 200 — do not reveal whether the email is registered.
-  // This prevents account enumeration via the forgot-password endpoint.
+  // Always return 200 — never reveal whether the email is registered.
   const response = NextResponse.json({ ok: true })
-
   if (!email) return response
 
   // Rate-limit reset requests. Per-email bounds prevent inbox spam; per-IP
-  // bounds prevent reset-flooding the system. Silently drop on overflow —
-  // never tell the client whether they're being throttled or whether the
-  // email exists.
+  // bounds prevent reset-flooding. Silently drop on overflow.
   const ip = clientIp(request)
   const byIp = await rateLimit({ key: `forgot:ip:${ip}`, limit: 10, windowMs: 60_000 })
   const byEmail = await rateLimit({ key: `forgot:email:${email}`, limit: 3, windowMs: 15 * 60_000 })
   if (!byIp.ok || !byEmail.ok) return response
 
   try {
-    const users = await readJson<User>('users.json')
-    const user = users.find((u) => u.email.toLowerCase() === email)
+    const sb = getSupabaseAdmin()
+    const { data: user } = await sb
+      .from('users')
+      .select('id, email, active')
+      .ilike('email', email)
+      .maybeSingle<Pick<User, 'id' | 'email' | 'active'>>()
     if (!user) return response
+    // Quietly skip deactivated accounts — same generic response prevents
+    // enumeration. Reset-password endpoint also enforces this.
+    if (user.active === false) return response
 
     const rawToken = generateToken()
     const now = new Date()
 
-    const resets = await readJson<PasswordReset>('password_resets.json')
+    // Invalidate any outstanding resets for this user — only the newest link
+    // should work. Targeted update by user_id where used_at is null.
+    await sb
+      .from('password_resets')
+      .update({ used_at: now.toISOString() })
+      .eq('user_id', user.id)
+      .is('used_at', null)
 
-    // Invalidate any earlier outstanding resets for this user — only the newest
-    // link should work, so accidentally clicking an old link fails clearly.
-    const cleaned = resets.map((r) =>
-      r.user_id === user.id && r.used_at === null
-        ? { ...r, used_at: now.toISOString() }
-        : r
-    )
-
-    cleaned.push({
+    const newReset: PasswordReset = {
       id: randomUUID(),
       user_id: user.id,
       token_hash: hashToken(rawToken),
       created_at: now.toISOString(),
       expires_at: new Date(now.getTime() + RESET_TTL_MS).toISOString(),
       used_at: null,
-    })
-    await writeJson('password_resets.json', cleaned)
+    }
+    await sb.from('password_resets').insert(newReset)
 
     const resetUrl = buildAppUrl(`/reset-password/${rawToken}`, request.url)
     await sendEmail({ to: user.email, content: passwordResetEmail({ resetUrl }) })
   } catch (err) {
-    // Log internally, but never let send failures leak to the client (would
-    // reveal account existence). The reset link is best-effort.
+    // Log internally; never let send failures leak (would reveal account existence).
     console.error('forgot-password error:', err)
   }
 
