@@ -2,6 +2,9 @@
 
 import { useState } from 'react'
 import Link from 'next/link'
+import Field from '@/components/ui/Field'
+import ErrorBox from '@/components/ui/ErrorBox'
+import Button from '@/components/ui/Button'
 
 export default function ForgotPasswordPage() {
   const [email, setEmail] = useState('')
@@ -33,17 +36,16 @@ export default function ForgotPasswordPage() {
 
         {done ? (
           <div className="mt-6 space-y-4">
-            <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-3">
+            <ErrorBox variant="success">
               Hvis e-postadressen er registrert, har vi sendt deg en lenke. Sjekk innboksen (og spam-mappen). Lenken er gyldig i 1 time.
-            </div>
+            </ErrorBox>
             <Link href="/login" className="block text-sm text-primary hover:underline">
               ← Tilbake til innlogging
             </Link>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">E-post</label>
+            <Field label="E-post">
               <input
                 type="email"
                 required
@@ -52,14 +54,10 @@ export default function ForgotPasswordPage() {
                 autoComplete="email"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               />
-            </div>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-            >
+            </Field>
+            <Button type="submit" disabled={submitting} className="w-full">
               {submitting ? 'Sender...' : 'Send tilbakestillingslenke'}
-            </button>
+            </Button>
             <Link href="/login" className="block text-sm text-[var(--color-text-muted)] hover:text-primary text-center">
               Tilbake til innlogging
             </Link>

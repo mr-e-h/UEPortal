@@ -3,6 +3,9 @@
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import Field from '@/components/ui/Field'
+import ErrorBox from '@/components/ui/ErrorBox'
+import Button from '@/components/ui/Button'
 
 type LoginResponse =
   | { id: string; role: 'company' | 'project_manager' | 'main' | 'sub'; full_name: string; subcontractor_id: string | null }
@@ -85,47 +88,33 @@ function LoginForm() {
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
-          {error && (
-            <div className="p-3 text-sm text-red-700 bg-red-50 rounded border border-red-200">
-              {error}
-            </div>
-          )}
+          {error && <ErrorBox>{error}</ErrorBox>}
 
-          <div>
-            <label htmlFor="email" className="block text-sm font-medium text-gray-700">
-              E-post
-            </label>
+          <Field label="E-post">
             <input
               id="email"
               type="email"
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
             />
-          </div>
+          </Field>
 
-          <div>
-            <label htmlFor="password" className="block text-sm font-medium text-gray-700">
-              Passord
-            </label>
+          <Field label="Passord">
             <input
               id="password"
               type="password"
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="mt-1 block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
             />
-          </div>
+          </Field>
 
-          <button
-            type="submit"
-            disabled={loading}
-            className="w-full flex justify-center py-2 px-4 border border-transparent rounded-md shadow-sm text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-offset-2 focus:ring-blue-500 disabled:opacity-50 disabled:cursor-not-allowed"
-          >
+          <Button type="submit" disabled={loading} className="w-full">
             {loading ? 'Logger inn...' : 'Logg inn'}
-          </button>
+          </Button>
 
           <div className="flex items-center justify-between text-sm">
             <Link href="/forgot-password" className="text-gray-600 hover:text-blue-600 hover:underline">
@@ -196,33 +185,25 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
 
         {done ? (
           <div className="space-y-4">
-            <div className="text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
+            <ErrorBox variant="success">
               Takk! Forespørselen er sendt. Du får e-post når en administrator har behandlet den.
-            </div>
-            <button
-              type="button"
-              onClick={onClose}
-              className="w-full py-2 px-4 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md"
-            >
+            </ErrorBox>
+            <Button type="button" onClick={onClose} className="w-full">
               Lukk
-            </button>
+            </Button>
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="space-y-3">
-            {error && (
-              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</div>
-            )}
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Fullt navn *</label>
+            {error && <ErrorBox>{error}</ErrorBox>}
+            <Field label="Fullt navn *">
               <input
                 required
                 value={form.full_name}
                 onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">E-post *</label>
+            </Field>
+            <Field label="E-post *">
               <input
                 required
                 type="email"
@@ -230,27 +211,24 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
               />
-            </div>
+            </Field>
             <div className="grid grid-cols-2 gap-3">
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Selskap</label>
+              <Field label="Selskap">
                 <input
                   value={form.company}
                   onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
                 />
-              </div>
-              <div>
-                <label className="block text-xs font-medium text-gray-700 mb-1">Telefon</label>
+              </Field>
+              <Field label="Telefon">
                 <input
                   value={form.phone}
                   onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
                   className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
                 />
-              </div>
+              </Field>
             </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Ønsket rolle</label>
+            <Field label="Ønsket rolle">
               <select
                 value={form.desired_role}
                 onChange={(e) => setForm((f) => ({ ...f, desired_role: e.target.value as 'project_manager' | 'sub' }))}
@@ -259,9 +237,8 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
                 <option value="sub">Underentreprenør</option>
                 <option value="project_manager">Prosjektleder</option>
               </select>
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-gray-700 mb-1">Melding</label>
+            </Field>
+            <Field label="Melding">
               <textarea
                 rows={3}
                 value={form.message}
@@ -269,22 +246,14 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
                 placeholder="Hvilke prosjekter, kontaktperson hos Netel, eller annen relevant info"
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900 resize-none"
               />
-            </div>
+            </Field>
             <div className="flex gap-2 pt-1">
-              <button
-                type="button"
-                onClick={onClose}
-                className="flex-1 py-2 px-4 text-sm font-medium text-gray-700 bg-gray-100 hover:bg-gray-200 rounded-md"
-              >
+              <Button type="button" variant="secondary" onClick={onClose} className="flex-1">
                 Avbryt
-              </button>
-              <button
-                type="submit"
-                disabled={submitting}
-                className="flex-1 py-2 px-4 text-sm font-medium text-white bg-blue-600 hover:bg-blue-700 rounded-md disabled:opacity-50"
-              >
+              </Button>
+              <Button type="submit" disabled={submitting} className="flex-1">
                 {submitting ? 'Sender...' : 'Send forespørsel'}
-              </button>
+              </Button>
             </div>
           </form>
         )}

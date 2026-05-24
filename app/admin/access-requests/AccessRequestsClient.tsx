@@ -5,6 +5,9 @@ import { useRouter } from 'next/navigation'
 import { Check, X, Trash2, Mail, Phone, Building2 } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import ErrorBox from '@/components/ui/ErrorBox'
+import StatusPill from '@/components/ui/StatusPill'
+import EmptyState from '@/components/ui/EmptyState'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { roleLabel } from '@/lib/roles'
 import type { AccessRequest, AccessRequestStatus } from '@/types'
@@ -129,15 +132,18 @@ export default function AccessRequestsClient({ initialRequests, initialFilter = 
         </div>
       </div>
 
-      {error && (
-        <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</div>
-      )}
+      {error && <ErrorBox>{error}</ErrorBox>}
 
       {loading ? (
         <div className="text-sm text-[var(--color-text-muted)]">Laster...</div>
       ) : requests.length === 0 ? (
-        <Card className="p-10 text-center text-sm text-[var(--color-text-muted)]">
-          {filter === 'pending' ? 'Ingen ventende forespørsler' : 'Ingen forespørsler'}
+        <Card>
+          <EmptyState
+            title={filter === 'pending' ? 'Ingen ventende forespørsler' : 'Ingen forespørsler'}
+            description={filter === 'pending'
+              ? 'Forespørsler dukker opp her når brukere ber om tilgang.'
+              : 'Bytt filter for å se andre statuser.'}
+          />
         </Card>
       ) : (
         <div className="space-y-3">
@@ -249,12 +255,7 @@ export default function AccessRequestsClient({ initialRequests, initialFilter = 
 }
 
 function StatusBadge({ status }: { status: AccessRequestStatus }) {
-  const cls =
-    status === 'pending' ? 'bg-amber-50 text-amber-700'
-    : status === 'approved' ? 'bg-green-50 text-green-700'
-    : 'bg-gray-100 text-gray-600'
+  const tone = status === 'pending' ? 'amber' : status === 'approved' ? 'green' : 'gray'
   const label = status === 'pending' ? 'Ventende' : status === 'approved' ? 'Godkjent' : 'Avslått'
-  return (
-    <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${cls}`}>{label}</span>
-  )
+  return <StatusPill tone={tone}>{label}</StatusPill>
 }

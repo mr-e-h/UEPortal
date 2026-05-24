@@ -6,6 +6,9 @@ import type { TimeType, Subcontractor, SubcontractorProductPrice } from '@/types
 import SortableTable from '@/components/SortableTable'
 import NumberInput from '@/components/NumberInput'
 import { fmtNOK as fmt } from '@/lib/format'
+import Field from '@/components/ui/Field'
+import StatusPill from '@/components/ui/StatusPill'
+import Button from '@/components/ui/Button'
 
 interface Props {
   initialTimeTypes: TimeType[]
@@ -124,9 +127,9 @@ export default function TimeTypesClient({
       label: 'Status',
       sortable: true,
       render: (row: TimeType) => (
-        <span className={`text-xs px-2 py-0.5 rounded ${row.active ? 'bg-green-100 text-green-700' : 'bg-gray-100 text-gray-500'}`}>
+        <StatusPill tone={row.active ? 'green' : 'gray'}>
           {row.active ? 'Aktiv' : 'Inaktiv'}
-        </span>
+        </StatusPill>
       ),
     },
     {
@@ -165,8 +168,7 @@ export default function TimeTypesClient({
       <section>
         <h2 className="text-lg font-semibold text-gray-900 mb-3">Interntyper</h2>
         <form onSubmit={addTimeType} className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-4 items-end mb-4">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Navn</label>
+          <Field label="Navn">
             <input
               required
               value={newType.name}
@@ -174,9 +176,8 @@ export default function TimeTypesClient({
               className="px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500 w-48"
               placeholder="F.eks. Prosjektleder"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Timekostnad (kr)</label>
+          </Field>
+          <Field label="Timekostnad (kr)">
             <NumberInput
               required
               value={newType.cost_per_hour}
@@ -184,10 +185,10 @@ export default function TimeTypesClient({
               className="px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500 w-28"
               placeholder="950"
             />
-          </div>
-          <button type="submit" disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+          </Field>
+          <Button type="submit" disabled={saving}>
             {saving ? 'Lagrer...' : '+ Legg til'}
-          </button>
+          </Button>
         </form>
         <div className="bg-white rounded-lg shadow">
           <SortableTable columns={ttColumns} data={timeTypes} emptyText="Ingen timetyper ennå" />
@@ -199,8 +200,7 @@ export default function TimeTypesClient({
         <h2 className="text-lg font-semibold text-gray-900 mb-1">UE-innleie timer</h2>
         <p className="text-sm text-gray-500 mb-3">Legg til timetype for innleid UE — navn og kostnad foreslås automatisk fra snittprisen.</p>
         <form onSubmit={addInnleieType} className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex flex-wrap gap-4 items-end">
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Underentreprenør</label>
+          <Field label="Underentreprenør">
             <select
               value={selectedSubId}
               onChange={(e) => selectSub(e.target.value)}
@@ -211,28 +211,26 @@ export default function TimeTypesClient({
                 <option key={s.id} value={s.id}>{s.company_name}</option>
               ))}
             </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Navn</label>
+          </Field>
+          <Field label="Navn">
             <input
               required
               value={innleieForm.name}
               onChange={(e) => setInnleieForm((p) => ({ ...p, name: e.target.value }))}
               className="px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500 w-48"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Timekostnad (kr)</label>
+          </Field>
+          <Field label="Timekostnad (kr)">
             <NumberInput
               required
               value={innleieForm.cost_per_hour}
               onChange={(raw) => setInnleieForm((p) => ({ ...p, cost_per_hour: raw }))}
               className="px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500 w-28"
             />
-          </div>
-          <button type="submit" disabled={savingInnleie || !selectedSubId} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
+          </Field>
+          <Button type="submit" disabled={savingInnleie || !selectedSubId}>
             {savingInnleie ? 'Lagrer...' : '+ Legg til'}
-          </button>
+          </Button>
         </form>
       </section>
     </main>

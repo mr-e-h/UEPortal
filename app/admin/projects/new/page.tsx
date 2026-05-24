@@ -4,6 +4,10 @@ import { useState, useRef, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { ParsedExcelResult } from '@/lib/excel'
+import Card from '@/components/ui/Card'
+import Field from '@/components/ui/Field'
+import ErrorBox from '@/components/ui/ErrorBox'
+import Button from '@/components/ui/Button'
 
 type Form = {
   name: string
@@ -121,7 +125,7 @@ export default function NewProjectPage() {
       </div>
 
       {/* Excel upload */}
-      <div className="bg-white rounded-lg shadow p-6 mb-6">
+      <Card className="p-6 mb-6">
         <p className="text-sm font-medium text-gray-700 mb-3">Last opp Excel-underlag fra kunde (valgfritt)</p>
         <div
           className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'}`}
@@ -157,112 +161,102 @@ export default function NewProjectPage() {
         />
 
         {excelSuccess && (
-          <div className="mt-3 flex items-center gap-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">
-            <span>✓</span>
-            <span>Hentet prosjektinfo fra Excel — kontroller og juster ved behov</span>
+          <div className="mt-3">
+            <ErrorBox variant="success">
+              <span className="mr-1">✓</span>
+              Hentet prosjektinfo fra Excel — kontroller og juster ved behov
+            </ErrorBox>
           </div>
         )}
         {excelError && (
           <p className="mt-2 text-sm text-red-600">{excelError}</p>
         )}
-      </div>
+      </Card>
 
       {/* Project form */}
-      <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 space-y-4">
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Prosjektnummer</label>
-          <input
-            type="text"
-            required
-            value={form.project_number}
-            onChange={(e) => set('project_number', e.target.value)}
-            className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Prosjektnavn</label>
-          <input
-            type="text"
-            required
-            value={form.name}
-            onChange={(e) => set('name', e.target.value)}
-            className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Ordrenummer</label>
-          <input
-            type="text"
-            value={form.order_number}
-            onChange={(e) => set('order_number', e.target.value)}
-            className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Kunde</label>
-          <input
-            type="text"
-            required
-            value={form.customer}
-            onChange={(e) => set('customer', e.target.value)}
-            className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-        <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Fylke</label>
-          <input
-            type="text"
-            value={form.county}
-            onChange={(e) => set('county', e.target.value)}
-            className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-          />
-        </div>
-        <div className="grid grid-cols-2 gap-4">
-          {([['start_date', 'Startdato'], ['end_date', 'Sluttdato']] as const).map(([key, label]) => (
-            <div key={key}>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
-              <input
-                type="date"
-                value={form[key]}
-                onChange={(e) => set(key, e.target.value)}
-                className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
-              />
-            </div>
-          ))}
-        </div>
-
-        {excelData && (
-          <label className="flex items-center gap-3 cursor-pointer">
+      <Card className="p-6">
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <Field label="Prosjektnummer">
             <input
-              type="checkbox"
-              checked={importLines}
-              onChange={(e) => setImportLines(e.target.checked)}
-              className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+              type="text"
+              required
+              value={form.project_number}
+              onChange={(e) => set('project_number', e.target.value)}
+              className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             />
-            <span className="text-sm text-gray-700">
-              Importer budsjettlinjer fra Excel-filen
-              <span className="text-gray-400 ml-1">({excelData.lines.length} linjer)</span>
-            </span>
-          </label>
-        )}
-
-        {submitError && (
-          <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
-            {submitError}
+          </Field>
+          <Field label="Prosjektnavn">
+            <input
+              type="text"
+              required
+              value={form.name}
+              onChange={(e) => set('name', e.target.value)}
+              className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+          </Field>
+          <Field label="Ordrenummer">
+            <input
+              type="text"
+              value={form.order_number}
+              onChange={(e) => set('order_number', e.target.value)}
+              className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+          </Field>
+          <Field label="Kunde">
+            <input
+              type="text"
+              required
+              value={form.customer}
+              onChange={(e) => set('customer', e.target.value)}
+              className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+          </Field>
+          <Field label="Fylke">
+            <input
+              type="text"
+              value={form.county}
+              onChange={(e) => set('county', e.target.value)}
+              className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-4">
+            {([['start_date', 'Startdato'], ['end_date', 'Sluttdato']] as const).map(([key, label]) => (
+              <Field key={key} label={label}>
+                <input
+                  type="date"
+                  value={form[key]}
+                  onChange={(e) => set(key, e.target.value)}
+                  className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                />
+              </Field>
+            ))}
           </div>
-        )}
 
-        <div className="flex gap-3 pt-2">
-          <button
-            type="submit"
-            disabled={loading}
-            className="px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? 'Oppretter...' : 'Opprett prosjekt'}
-          </button>
-          <Link href="/admin" className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">Avbryt</Link>
-        </div>
-      </form>
+          {excelData && (
+            <label className="flex items-center gap-3 cursor-pointer">
+              <input
+                type="checkbox"
+                checked={importLines}
+                onChange={(e) => setImportLines(e.target.checked)}
+                className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+              />
+              <span className="text-sm text-gray-700">
+                Importer budsjettlinjer fra Excel-filen
+                <span className="text-gray-400 ml-1">({excelData.lines.length} linjer)</span>
+              </span>
+            </label>
+          )}
+
+          {submitError && <ErrorBox>{submitError}</ErrorBox>}
+
+          <div className="flex gap-3 pt-2">
+            <Button type="submit" disabled={loading}>
+              {loading ? 'Oppretter...' : 'Opprett prosjekt'}
+            </Button>
+            <Button variant="ghost" href="/admin">Avbryt</Button>
+          </div>
+        </form>
+      </Card>
     </main>
   )
 }

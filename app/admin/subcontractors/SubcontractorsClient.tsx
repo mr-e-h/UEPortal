@@ -6,6 +6,10 @@ import Link from 'next/link'
 import { ChevronDown, ChevronRight, ChevronUp } from 'lucide-react'
 import type { Subcontractor, User } from '@/types'
 import { roleLabel } from '@/lib/roles'
+import Field from '@/components/ui/Field'
+import StatusPill from '@/components/ui/StatusPill'
+import EmptyState from '@/components/ui/EmptyState'
+import Button from '@/components/ui/Button'
 
 type SortKey = 'company_name' | 'contact_person' | 'county' | 'prices'
 type SortDir = 'asc' | 'desc'
@@ -128,8 +132,7 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
             { key: 'organization_number', label: 'Org.nr', required: false },
             { key: 'county', label: 'Fylke', required: false },
           ].map(({ key, label, required }) => (
-            <div key={key}>
-              <label className="block text-xs font-medium text-gray-700 mb-1">{label}</label>
+            <Field key={key} label={label}>
               <input
                 type="text"
                 required={required}
@@ -137,16 +140,12 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
                 onChange={(e) => set(key as keyof typeof form, e.target.value)}
                 className="block w-full px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               />
-            </div>
+            </Field>
           ))}
           <div className="col-span-full">
-            <button
-              type="submit"
-              disabled={saving}
-              className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-            >
+            <Button type="submit" disabled={saving}>
               {saving ? 'Lagrer...' : 'Lagre underentreprenør'}
-            </button>
+            </Button>
           </div>
         </form>
       )}
@@ -185,8 +184,11 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
           <tbody>
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={9} className="px-4 py-8 text-center text-sm text-gray-400">
-                  Ingen underentreprenører ennå
+                <td colSpan={9}>
+                  <EmptyState
+                    title="Ingen underentreprenører ennå"
+                    description="Trykk «Legg til UE» for å opprette den første."
+                  />
                 </td>
               </tr>
             ) : (
@@ -210,13 +212,13 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
                       <td className="px-4 py-3 text-gray-600">{s.county}</td>
                       <td className="px-4 py-3">
                         {s.active
-                          ? <span className="text-xs text-green-600 font-medium">Aktiv</span>
-                          : <span className="text-xs text-gray-400">Inaktiv</span>}
+                          ? <StatusPill tone="green">Aktiv</StatusPill>
+                          : <StatusPill tone="gray">Inaktiv</StatusPill>}
                       </td>
                       <td className="px-4 py-3">
                         {missingPrices > 0
-                          ? <span className="text-xs text-orange-500">{missingPrices} mangler</span>
-                          : <span className="text-xs text-green-600">Komplett</span>}
+                          ? <StatusPill tone="amber">{missingPrices} mangler</StatusPill>
+                          : <StatusPill tone="green">Komplett</StatusPill>}
                       </td>
                       <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
                         <Link

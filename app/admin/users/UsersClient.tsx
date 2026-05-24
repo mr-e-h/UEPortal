@@ -6,6 +6,10 @@ import { useRouter } from 'next/navigation'
 import { Pencil, Mail, X, Search, Download } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
+import Field from '@/components/ui/Field'
+import ErrorBox from '@/components/ui/ErrorBox'
+import StatusPill from '@/components/ui/StatusPill'
+import EmptyState from '@/components/ui/EmptyState'
 import { roleLabel } from '@/lib/roles'
 import { displayUsername, displayCompany } from '@/lib/usernames'
 import type { UserRole } from '@/types'
@@ -190,10 +194,9 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
             Mottakeren får e-post med lenke for å sette passord og opprette kontoen sin. Lenken er gyldig i 7 dager.
           </p>
           <form onSubmit={handleInvite} className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            {inviteError && <div className="sm:col-span-2 text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{inviteError}</div>}
-            {inviteSuccess && <div className="sm:col-span-2 text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-2">{inviteSuccess}</div>}
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">E-post</label>
+            {inviteError && <div className="sm:col-span-2"><ErrorBox>{inviteError}</ErrorBox></div>}
+            {inviteSuccess && <div className="sm:col-span-2"><ErrorBox variant="success">{inviteSuccess}</ErrorBox></div>}
+            <Field label="E-post">
               <input
                 required
                 type="email"
@@ -201,9 +204,8 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
                 onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Rolle</label>
+            </Field>
+            <Field label="Rolle">
               <select
                 value={inviteForm.role}
                 onChange={(e) => setInviteForm((f) => ({ ...f, role: e.target.value as 'project_manager' | 'sub' }))}
@@ -212,7 +214,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
                 <option value="sub">Underentreprenør</option>
                 <option value="project_manager">Prosjektleder</option>
               </select>
-            </div>
+            </Field>
             <div className="sm:col-span-2 flex justify-end gap-2">
               <Button variant="secondary" className="px-3 py-1.5 text-xs" onClick={() => setShowInvite(false)}>Lukk</Button>
               <Button type="submit" variant="primary" className="px-3 py-1.5 text-xs" disabled={inviting}>
@@ -297,29 +299,26 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
                     <td className="px-3 py-2.5 font-medium text-[var(--color-text-primary)]">{u.full_name}</td>
                     <td className="px-3 py-2.5 text-[var(--color-text-secondary)] font-mono text-xs">{u.username}</td>
                     <td className="px-3 py-2.5">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        u.role === 'main' || u.role === 'project_manager' || u.role === 'company'
-                          ? 'bg-blue-50 text-blue-700'
-                          : 'bg-amber-50 text-amber-700'
-                      }`}>
+                      <StatusPill tone={u.role === 'main' || u.role === 'project_manager' || u.role === 'company' ? 'blue' : 'amber'}>
                         {roleLabel(u.role)}
-                      </span>
+                      </StatusPill>
                     </td>
                     <td className="px-3 py-2.5 text-[var(--color-text-muted)] font-mono text-xs">{u.id.slice(0, 8)}</td>
                     <td className="px-3 py-2.5">
-                      <span className={`inline-flex items-center px-2 py-0.5 rounded text-xs font-medium ${
-                        u.active ? 'bg-green-50 text-green-700' : 'bg-gray-100 text-gray-600'
-                      }`}>
+                      <StatusPill tone={u.active ? 'green' : 'gray'}>
                         {u.active ? 'Aktiv' : 'Av'}
-                      </span>
+                      </StatusPill>
                     </td>
                     <td className="px-3 py-2.5 text-[var(--color-text-secondary)]">{u.company}</td>
                   </tr>
                 ))}
                 {sorted.length === 0 && (
                   <tr>
-                    <td colSpan={7} className="px-6 py-10 text-center text-sm text-[var(--color-text-muted)]">
-                      {search ? 'Ingen treff' : 'Ingen brukere'}
+                    <td colSpan={7}>
+                      <EmptyState
+                        title={search ? 'Ingen treff' : 'Ingen brukere'}
+                        description={search ? 'Juster søket eller fjern filteret.' : 'Inviter første bruker via knappen øverst.'}
+                      />
                     </td>
                   </tr>
                 )}

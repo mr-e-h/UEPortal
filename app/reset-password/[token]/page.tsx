@@ -3,6 +3,9 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import Field from '@/components/ui/Field'
+import ErrorBox from '@/components/ui/ErrorBox'
+import Button from '@/components/ui/Button'
 
 type Status = 'loading' | 'valid' | 'invalid' | 'success'
 
@@ -67,9 +70,9 @@ export default function ResetPasswordPage() {
 
         {status === 'invalid' && (
           <div className="mt-6 space-y-4">
-            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-3">
+            <ErrorBox>
               Lenken er ugyldig eller utløpt. Tilbakestillingslenker er gyldige i 1 time og kan kun brukes én gang.
-            </div>
+            </ErrorBox>
             <Link href="/forgot-password" className="block text-sm text-primary hover:underline">
               Be om ny lenke →
             </Link>
@@ -77,22 +80,17 @@ export default function ResetPasswordPage() {
         )}
 
         {status === 'success' && (
-          <div className="mt-6 text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-3">
-            Passord oppdatert. Sender deg til innlogging...
+          <div className="mt-6">
+            <ErrorBox variant="success">
+              Passord oppdatert. Sender deg til innlogging...
+            </ErrorBox>
           </div>
         )}
 
         {status === 'valid' && (
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
-            {error && (
-              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
-                {error}
-              </div>
-            )}
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-                Nytt passord (minst 8 tegn)
-              </label>
+            {error && <ErrorBox>{error}</ErrorBox>}
+            <Field label="Nytt passord (minst 8 tegn)">
               <input
                 type="password"
                 required
@@ -101,11 +99,8 @@ export default function ResetPasswordPage() {
                 autoComplete="new-password"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               />
-            </div>
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-                Bekreft passord
-              </label>
+            </Field>
+            <Field label="Bekreft passord">
               <input
                 type="password"
                 required
@@ -114,14 +109,10 @@ export default function ResetPasswordPage() {
                 autoComplete="new-password"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               />
-            </div>
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-            >
+            </Field>
+            <Button type="submit" disabled={submitting} className="w-full">
               {submitting ? 'Lagrer...' : 'Sett nytt passord'}
-            </button>
+            </Button>
           </form>
         )}
       </div>

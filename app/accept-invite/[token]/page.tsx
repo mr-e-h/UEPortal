@@ -4,6 +4,9 @@ import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { roleLabel } from '@/lib/roles'
+import Field from '@/components/ui/Field'
+import ErrorBox from '@/components/ui/ErrorBox'
+import Button from '@/components/ui/Button'
 
 type Status = 'loading' | 'valid' | 'invalid' | 'success'
 
@@ -98,9 +101,7 @@ export default function AcceptInvitePage() {
 
         {status === 'invalid' && (
           <div className="mt-6 space-y-4">
-            <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-3">
-              {errorMessage ?? 'Invitasjonen er ugyldig.'}
-            </div>
+            <ErrorBox>{errorMessage ?? 'Invitasjonen er ugyldig.'}</ErrorBox>
             <Link href="/login" className="block text-sm text-primary hover:underline">
               Til innlogging
             </Link>
@@ -108,8 +109,10 @@ export default function AcceptInvitePage() {
         )}
 
         {status === 'success' && (
-          <div className="mt-6 text-sm text-green-700 bg-green-50 border border-green-200 rounded px-3 py-3">
-            Konto opprettet. Sender deg til innlogging...
+          <div className="mt-6">
+            <ErrorBox variant="success">
+              Konto opprettet. Sender deg til innlogging...
+            </ErrorBox>
           </div>
         )}
 
@@ -119,24 +122,18 @@ export default function AcceptInvitePage() {
               Invitert som <strong>{roleLabel(invite.role)}</strong>
             </div>
 
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">E-post</label>
+            <Field label="E-post">
               <input
                 type="email"
                 value={invite.email}
                 readOnly
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-muted text-[var(--color-text-muted)]"
               />
-            </div>
+            </Field>
 
-            {formError && (
-              <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">
-                {formError}
-              </div>
-            )}
+            {formError && <ErrorBox>{formError}</ErrorBox>}
 
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Fullt navn</label>
+            <Field label="Fullt navn">
               <input
                 type="text"
                 required
@@ -145,12 +142,9 @@ export default function AcceptInvitePage() {
                 autoComplete="name"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               />
-            </div>
+            </Field>
 
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">
-                Passord (minst 8 tegn)
-              </label>
+            <Field label="Passord (minst 8 tegn)">
               <input
                 type="password"
                 required
@@ -159,10 +153,9 @@ export default function AcceptInvitePage() {
                 autoComplete="new-password"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               />
-            </div>
+            </Field>
 
-            <div>
-              <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Bekreft passord</label>
+            <Field label="Bekreft passord">
               <input
                 type="password"
                 required
@@ -171,15 +164,11 @@ export default function AcceptInvitePage() {
                 autoComplete="new-password"
                 className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               />
-            </div>
+            </Field>
 
-            <button
-              type="submit"
-              disabled={submitting}
-              className="w-full bg-primary hover:bg-primary-hover text-white px-4 py-2 rounded-lg text-sm font-medium disabled:opacity-50"
-            >
+            <Button type="submit" disabled={submitting} className="w-full">
               {submitting ? 'Oppretter...' : 'Opprett konto'}
-            </button>
+            </Button>
           </form>
         )}
       </div>
