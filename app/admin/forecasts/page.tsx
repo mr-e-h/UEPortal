@@ -1,31 +1,67 @@
-import { readJson } from '@/lib/data'
-import type { ForecastPeriod, ProjectForecast, Project, ProjectInvoice, ProjectBudgetLine } from '@/types'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSession } from '@/lib/auth'
+import { ADMIN_ROLES } from '@/lib/roles'
+import type { ForecastPeriod, ProjectForecast, Project, ProjectInvoice, ProjectBudgetLine } from '@/types'
 import Card from '@/components/ui/Card'
+import EmptyState from '@/components/ui/EmptyState'
 import { fmtNOK as fmt } from '@/lib/format'
 import { forecastPeriodStatus } from '@/lib/statuses'
+import CreatePeriodsButton from './CreatePeriodsButton'
 
+export const dynamic = 'force-dynamic'
 
 export default async function ForecastsOverviewPage() {
-  const year = new Date().getFullYear()
+  const me = await getSession()
+  if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
 
-  const [allPeriods, allProjects, rawForecasts, rawInvoices, rawBudgetLines] = await Promise.all([
-    readJson<ForecastPeriod>('forecast_periods.json'),
-    readJson<Project>('projects.json'),
-    readJson<ProjectForecast>('project_forecasts.json'),
-    readJson<ProjectInvoice>('project_invoices.json'),
-    readJson<ProjectBudgetLine>('project_budget_lines.json'),
+  const year = new Date().getFullYear()
+  const sb = getSupabaseAdmin()
+
+  const [periodsRes, projectsRes, forecastsRes, invoicesRes, budgetLinesRes] = await Promise.all([
+    sb.from('forecast_periods').select('*').eq('year', year),
+    sb.from('projects').select('*').eq('status', 'active').neq('deleted', true),
+    sb.from('project_forecasts').select('*'),
+    sb.from('project_invoices').select('project_id, amount'),
+    sb.from('project_budget_lines').select('project_id, budget_quantity, customer_price_snapshot'),
   ])
 
-  const periods = allPeriods.filter((p) => p.year === year)
-  const projects = allProjects.filter((p) => !p.deleted && p.status === 'active')
+  const periods = (periodsRes.data ?? []) as ForecastPeriod[]
+  const projects = (projectsRes.data ?? []) as Project[]
   const activeProjectIds = new Set(projects.map((p) => p.id))
-  const allForecasts = rawForecasts.filter((f) => activeProjectIds.has(f.project_id))
-  const invoices = rawInvoices.filter((i) => activeProjectIds.has(i.project_id))
-  const budgetLines = rawBudgetLines.filter((bl) => activeProjectIds.has(bl.project_id))
+  const allForecasts = ((forecastsRes.data ?? []) as ProjectForecast[])
+    .filter((f) => activeProjectIds.has(f.project_id))
+  const invoices = ((invoicesRes.data ?? []) as Pick<ProjectInvoice, 'project_id' | 'amount'>[])
+    .filter((i) => activeProjectIds.has(i.project_id))
+  const budgetLines = ((budgetLinesRes.data ?? []) as Pick<ProjectBudgetLine, 'project_id' | 'budget_quantity' | 'customer_price_snapshot'>[])
+    .filter((bl) => activeProjectIds.has(bl.project_id))
 
   const totalInvoiced = invoices.reduce((s, i) => s + i.amount, 0)
   const totalBudget = budgetLines.reduce((s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot, 0)
+
+  // No periods initialized yet for this year — show explicit create button.
+  // Previously this was lazy auto-create on GET (race + side-effect bug);
+  // now admin sees what they're doing and clicks once per year.
+  if (periods.length === 0) {
+    return (
+      <div className="p-6 space-y-6">
+        <div>
+          <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Prognoser {year}</h1>
+          <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
+            {projects.length} aktive prosjekter
+          </p>
+        </div>
+        <Card>
+          <EmptyState
+            title={`Ingen prognoseperioder for ${year} ennå`}
+            description="Periodene P1-P4 må opprettes før prognoser kan registreres."
+            action={<CreatePeriodsButton year={year} />}
+          />
+        </Card>
+      </div>
+    )
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -146,7 +182,6 @@ export default async function ForecastsOverviewPage() {
         </div>
       </Card>
 
-      {/* Projects without forecast in any period */}
       {(() => {
         const forecastedIds = new Set(allForecasts.map((f) => f.project_id))
         const unforcasted = projects.filter((p) => !forecastedIds.has(p.id))
