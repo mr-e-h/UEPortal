@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { uploadBudgetFile } from '@/lib/storage'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import { parseExcelBuffer } from '@/lib/excel'
 import { importExcelLines } from '@/lib/excel-import'
 import type { Project, ProjectBudgetLine, BudgetVersion, ChangeOrder } from '@/types'
@@ -15,6 +15,9 @@ export async function POST(
 ) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
+
+  const denied = await ensureProjectWritable(auth.user, params.id)
+  if (denied) return denied
 
   const formData = await request.formData()
   const file = formData.get('file') as File | null

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import type { ProjectForecast, ForecastStatus } from '@/types'
 
 const EDITABLE_FIELDS: (keyof ProjectForecast)[] = [
@@ -46,6 +46,18 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
 
   const body = await request.json() as Partial<ProjectForecast>
 
+  const sb = getSupabaseAdmin()
+  // PM gate via the forecast's project.
+  const { data: existing } = await sb
+    .from('project_forecasts')
+    .select('project_id')
+    .eq('id', params.id)
+    .maybeSingle<{ project_id: string }>()
+  if (existing) {
+    const denied = await ensureProjectWritable(auth.user, existing.project_id)
+    if (denied) return denied
+  }
+
   const updates: Partial<ProjectForecast> = { updated_at: new Date().toISOString() }
   for (const field of EDITABLE_FIELDS) {
     if (field in body) (updates as Record<string, unknown>)[field] = body[field]
@@ -54,7 +66,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     return NextResponse.json({ error: 'Ugyldig status' }, { status: 400 })
   }
 
-  const { data, error } = await getSupabaseAdmin()
+  const { data, error } = await sb
     .from('project_forecasts')
     .update(updates)
     .eq('id', params.id)

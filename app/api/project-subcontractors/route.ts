@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, getProjectScope } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { ProjectSubcontractor } from '@/types'
 
@@ -34,6 +34,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'project_id og subcontractor_id er påkrevd' }, { status: 400 })
   }
 
+  const denied = await ensureProjectWritable(auth.user, body.project_id)
+  if (denied) return denied
+
   const sb = getSupabaseAdmin()
   // Idempotent: return the existing link if already present.
   const { data: existing } = await sb
@@ -60,7 +63,19 @@ export async function DELETE(request: NextRequest) {
 
   const id = new URL(request.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id mangler' }, { status: 400 })
-  const { error } = await getSupabaseAdmin().from('project_subcontractors').delete().eq('id', id)
+
+  const sb = getSupabaseAdmin()
+  const { data: existing } = await sb
+    .from('project_subcontractors')
+    .select('project_id')
+    .eq('id', id)
+    .maybeSingle<{ project_id: string }>()
+  if (existing) {
+    const denied = await ensureProjectWritable(auth.user, existing.project_id)
+    if (denied) return denied
+  }
+
+  const { error } = await sb.from('project_subcontractors').delete().eq('id', id)
   if (error) return NextResponse.json({ error: 'Sletting feilet' }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

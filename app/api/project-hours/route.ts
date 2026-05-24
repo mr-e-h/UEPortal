@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, getProjectScope } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import type { ProjectHourBudget } from '@/types'
 
 export async function GET(request: NextRequest) {
@@ -38,6 +38,9 @@ export async function POST(request: NextRequest) {
   if (!Number.isFinite(hours) || hours < 0) {
     return NextResponse.json({ error: 'Timer må være et ikke-negativt tall' }, { status: 400 })
   }
+
+  const denied = await ensureProjectWritable(auth.user, body.project_id)
+  if (denied) return denied
 
   const newBudget: ProjectHourBudget = {
     id: randomUUID(), // was String(Date.now()) — collision-safe now

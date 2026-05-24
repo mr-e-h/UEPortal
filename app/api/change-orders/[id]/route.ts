@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
-import { isAdmin, isSub } from '@/lib/api-guard'
+import { isAdmin, isSub, ensureProjectWritable } from '@/lib/api-guard'
 import type { ChangeOrder, Product, SubcontractorProductPrice, ProjectBudgetLine } from '@/types'
 
 export async function PUT(
@@ -38,6 +38,12 @@ export async function PUT(
 
     if (order.status !== 'draft') {
       return NextResponse.json({ error: 'Kan kun redigere kladder' }, { status: 409 })
+    }
+
+    // PM write-side gate (admin path only — UE was already filtered above).
+    if (isAdmin(session)) {
+      const denied = await ensureProjectWritable(session, order.project_id)
+      if (denied) return denied
     }
 
     const newProductId = body.product_id ?? order.product_id

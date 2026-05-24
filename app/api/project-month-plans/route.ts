@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, getProjectScope } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import type { ProjectMonthPlan } from '@/types'
 
 export async function GET(request: NextRequest) {
@@ -39,6 +39,9 @@ export async function POST(request: NextRequest) {
   if (!body.project_id) {
     return NextResponse.json({ error: 'project_id mangler' }, { status: 400 })
   }
+
+  const denied = await ensureProjectWritable(auth.user, body.project_id)
+  if (denied) return denied
 
   const now = new Date().toISOString()
   const newRows: ProjectMonthPlan[] = body.rows.map((r) => ({

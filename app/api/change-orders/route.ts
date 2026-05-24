@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getDeletedProjectIds } from '@/lib/data'
 import { getSession } from '@/lib/auth'
-import { isSub, getProjectScope } from '@/lib/api-guard'
+import { isSub, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import type { ChangeOrder, Product, SubcontractorProductPrice, ProjectBudgetLine } from '@/types'
 
 function stripForUE<T extends ChangeOrder>(o: T) {
@@ -76,6 +76,12 @@ export async function POST(request: NextRequest) {
     const qty = Number(body.requested_quantity)
     if (!Number.isFinite(qty) || qty <= 0) {
       return NextResponse.json({ error: 'Mengde må være et positivt tall' }, { status: 400 })
+    }
+
+    // PM write-side gate. UE writes are already scoped via subcontractor_id check above.
+    if (!userIsSub) {
+      const denied = await ensureProjectWritable(session, body.project_id)
+      if (denied) return denied
     }
 
     const sb = getSupabaseAdmin()

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, getProjectScope } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { ProjectInternalCostEntry } from '@/types'
 
@@ -48,6 +48,9 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Ugyldig måned' }, { status: 400 })
   }
 
+  const denied = await ensureProjectWritable(auth.user, body.project_id)
+  if (denied) return denied
+
   const entry: ProjectInternalCostEntry = {
     id: randomUUID(),
     project_id: body.project_id,
@@ -66,7 +69,20 @@ export async function DELETE(request: NextRequest) {
 
   const id = new URL(request.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id mangler' }, { status: 400 })
-  const { error } = await getSupabaseAdmin().from('project_internal_costs').delete().eq('id', id)
+
+  // PM gate via the row's project. main/company pass straight through.
+  const sb = getSupabaseAdmin()
+  const { data: existing } = await sb
+    .from('project_internal_costs')
+    .select('project_id')
+    .eq('id', id)
+    .maybeSingle<{ project_id: string }>()
+  if (existing) {
+    const denied = await ensureProjectWritable(auth.user, existing.project_id)
+    if (denied) return denied
+  }
+
+  const { error } = await sb.from('project_internal_costs').delete().eq('id', id)
   if (error) return NextResponse.json({ error: 'Sletting feilet' }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

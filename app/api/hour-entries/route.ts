@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, getProjectScope } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { HourEntry, TimeType } from '@/types'
 
@@ -33,6 +33,9 @@ export async function POST(request: NextRequest) {
     date: string
     comment?: string
   }
+
+  const denied = await ensureProjectWritable(auth.user, body.project_id)
+  if (denied) return denied
 
   // Snapshot the hourly cost at write time so historical entries stay
   // accurate even after the time type's rate changes.

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, getProjectScope } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { ProjectInvoice } from '@/types'
 
@@ -37,6 +37,9 @@ export async function POST(request: NextRequest) {
   if (!Number.isFinite(amount)) {
     return NextResponse.json({ error: 'Ugyldig beløp' }, { status: 400 })
   }
+
+  const denied = await ensureProjectWritable(auth.user, body.project_id)
+  if (denied) return denied
 
   const newInvoice: ProjectInvoice = {
     id: randomUUID(),

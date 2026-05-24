@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
-import type { WeeklyReportLine, WeeklyReportStatus } from '@/types'
+import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
+import type { WeeklyReport, WeeklyReportLine, WeeklyReportStatus } from '@/types'
 
 /**
  * Per-line approve/reject. After updating the line, we re-derive the parent
@@ -19,9 +19,23 @@ export async function POST(
   if (!auth.ok) return auth.response
 
   const body = await request.json() as { status: 'approved' | 'rejected' }
+  if (body.status !== 'approved' && body.status !== 'rejected') {
+    return NextResponse.json({ error: 'Ugyldig status' }, { status: 400 })
+  }
   const actor = auth.user.full_name
   const now = new Date().toISOString()
   const sb = getSupabaseAdmin()
+
+  // PM gate via the parent report's project.
+  const { data: report } = await sb
+    .from('weekly_reports')
+    .select('project_id')
+    .eq('id', params.id)
+    .maybeSingle<Pick<WeeklyReport, 'project_id'>>()
+  if (report) {
+    const denied = await ensureProjectWritable(auth.user, report.project_id)
+    if (denied) return denied
+  }
 
   const { data: updatedLine, error: lineErr } = await sb
     .from('weekly_report_lines')

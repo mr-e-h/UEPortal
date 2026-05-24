@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getDeletedProjectIds } from '@/lib/data'
-import { requireAdmin, getProjectScope } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import type { ProjectForecast, ProjectForecastMonth } from '@/types'
 
 export async function GET(request: NextRequest) {
@@ -55,6 +55,9 @@ export async function POST(request: NextRequest) {
   if (!body.project_id || !body.forecast_period_id) {
     return NextResponse.json({ error: 'project_id og forecast_period_id er påkrevd' }, { status: 400 })
   }
+
+  const denied = await ensureProjectWritable(auth.user, body.project_id)
+  if (denied) return denied
 
   const now = new Date().toISOString()
   const newForecast: ProjectForecast = {

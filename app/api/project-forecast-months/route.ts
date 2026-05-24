@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import type { ProjectForecastMonth } from '@/types'
 
 export async function GET(request: NextRequest) {
@@ -35,6 +35,18 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'forecast_id mangler' }, { status: 400 })
   }
 
+  // PM gate via the parent forecast's project.
+  const sb = getSupabaseAdmin()
+  const { data: parent } = await sb
+    .from('project_forecasts')
+    .select('project_id')
+    .eq('id', body.forecast_id)
+    .maybeSingle<{ project_id: string }>()
+  if (parent) {
+    const denied = await ensureProjectWritable(auth.user, parent.project_id)
+    if (denied) return denied
+  }
+
   const newMonths: ProjectForecastMonth[] = body.months.map((m) => ({
     id: randomUUID(),
     project_forecast_id: body.forecast_id,
@@ -48,7 +60,6 @@ export async function POST(request: NextRequest) {
     comment: m.comment ?? '',
   }))
 
-  const sb = getSupabaseAdmin()
   const { error: delErr } = await sb
     .from('project_forecast_months')
     .delete()

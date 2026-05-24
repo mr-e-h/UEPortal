@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { WeeklyReport, ActivityEntry } from '@/types'
 
@@ -42,14 +42,18 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const actor = auth.user.full_name
   const now = new Date().toISOString()
 
-  // Make sure the report exists before doing any line work.
+  // Make sure the report exists before doing any line work — also pull
+  // project_id for the PM gate.
   const { data: report, error: readErr } = await sb
     .from('weekly_reports')
-    .select('id')
+    .select('id, project_id')
     .eq('id', params.id)
-    .maybeSingle<Pick<WeeklyReport, 'id'>>()
+    .maybeSingle<Pick<WeeklyReport, 'id' | 'project_id'>>()
   if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 })
   if (!report) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const denied = await ensureProjectWritable(auth.user, report.project_id)
+  if (denied) return denied
 
   if (body.action === 'revert') {
     // Reset every line for this report back to pending in one update.

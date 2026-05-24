@@ -1,10 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 
 export async function POST(_request: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
+
+  const denied = await ensureProjectWritable(auth.user, params.id)
+  if (denied) return denied
 
   const { error, count } = await getSupabaseAdmin()
     .from('projects')

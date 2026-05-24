@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, getProjectScope } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 
 export type ForecastExtra = {
   id: string
@@ -48,6 +48,9 @@ export async function POST(request: NextRequest) {
   if (!body.project_id) {
     return NextResponse.json({ error: 'project_id mangler' }, { status: 400 })
   }
+
+  const denied = await ensureProjectWritable(auth.user, body.project_id)
+  if (denied) return denied
 
   const newRows: ForecastExtra[] = body.rows.map((r) => ({ ...r, id: randomUUID() }))
 

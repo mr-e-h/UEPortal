@@ -65,3 +65,26 @@ export async function getProjectScope(user: User): Promise<Set<string> | null> {
     .eq('user_id', user.id)
   return new Set((data ?? []).map((r: { project_id: string }) => r.project_id))
 }
+
+/**
+ * Write-side gate. Used by POST/PUT/DELETE handlers to refuse mutations
+ * against projects a project_manager isn't assigned to.
+ *
+ *   const denied = await ensureProjectWritable(auth.user, body.project_id)
+ *   if (denied) return denied
+ *
+ * Returns a 403 NextResponse when the user is a PM not assigned to the
+ * project, otherwise null. main / company always pass.
+ */
+export async function ensureProjectWritable(
+  user: User,
+  projectId: string,
+): Promise<NextResponse | null> {
+  const scope = await getProjectScope(user)
+  if (!scope) return null
+  if (scope.has(projectId)) return null
+  return NextResponse.json(
+    { error: 'Du er ikke tildelt dette prosjektet' },
+    { status: 403 },
+  )
+}

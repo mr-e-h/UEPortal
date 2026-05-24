@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAuth, requireAdmin, isSub, getProjectScope } from '@/lib/api-guard'
+import { requireAuth, requireAdmin, isSub, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import { DEFAULT_MILESTONE_COLOR } from '@/lib/milestone-colors'
 import type { GanttMilestone, ProjectSubcontractor } from '@/types'
 
@@ -56,6 +56,10 @@ export async function POST(req: NextRequest) {
   if (!body?.project_id || !body?.title || !body?.start_date || !body?.end_date) {
     return NextResponse.json({ error: 'Mangler påkrevde felter' }, { status: 400 })
   }
+
+  const denied = await ensureProjectWritable(auth.user, body.project_id)
+  if (denied) return denied
+
   const newItem: GanttMilestone = {
     id: randomUUID(),
     project_id: body.project_id,
@@ -77,12 +81,24 @@ export async function PUT(req: NextRequest) {
   const body = await req.json() as Partial<GanttMilestone> & { id: string }
   if (!body.id) return NextResponse.json({ error: 'id mangler' }, { status: 400 })
 
+  // PM gate via the milestone's project.
+  const sb = getSupabaseAdmin()
+  const { data: existing } = await sb
+    .from('milestones')
+    .select('project_id')
+    .eq('id', body.id)
+    .maybeSingle<{ project_id: string }>()
+  if (existing) {
+    const denied = await ensureProjectWritable(auth.user, existing.project_id)
+    if (denied) return denied
+  }
+
   const updates: Partial<GanttMilestone> = {}
   for (const field of EDITABLE_FIELDS) {
     if (field in body) (updates as Record<string, unknown>)[field] = body[field]
   }
 
-  const { data, error } = await getSupabaseAdmin()
+  const { data, error } = await sb
     .from('milestones')
     .update(updates)
     .eq('id', body.id)
@@ -112,7 +128,19 @@ export async function DELETE(req: NextRequest) {
   if (!auth.ok) return auth.response
   const id = new URL(req.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'id mangler' }, { status: 400 })
-  const { error } = await getSupabaseAdmin().from('milestones').delete().eq('id', id)
+
+  const sb = getSupabaseAdmin()
+  const { data: existing } = await sb
+    .from('milestones')
+    .select('project_id')
+    .eq('id', id)
+    .maybeSingle<{ project_id: string }>()
+  if (existing) {
+    const denied = await ensureProjectWritable(auth.user, existing.project_id)
+    if (denied) return denied
+  }
+
+  const { error } = await sb.from('milestones').delete().eq('id', id)
   if (error) return NextResponse.json({ error: 'Sletting feilet' }, { status: 500 })
   return NextResponse.json({ ok: true })
 }

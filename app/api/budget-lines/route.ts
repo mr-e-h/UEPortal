@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getDeletedProjectIds } from '@/lib/data'
-import { requireAuth, requireAdmin, isSub, getProjectScope } from '@/lib/api-guard'
+import { requireAuth, requireAdmin, isSub, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { ProjectBudgetLine, Product, SubcontractorProductPrice, ProjectSubcontractor } from '@/types'
 
@@ -66,6 +66,10 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Mengde må være et ikke-negativt tall' }, { status: 400 })
   }
 
+  // PM write-side gate.
+  const denied = await ensureProjectWritable(auth.user, body.project_id)
+  if (denied) return denied
+
   const sb = getSupabaseAdmin()
   const { data: product } = await sb
     .from('products')
@@ -108,6 +112,10 @@ export async function PUT(request: NextRequest) {
     .maybeSingle<ProjectBudgetLine>()
   if (readErr) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
   if (!line) return NextResponse.json({ error: 'Linje ikke funnet' }, { status: 404 })
+
+  // PM write-side gate based on the existing line's project.
+  const denied = await ensureProjectWritable(auth.user, line.project_id)
+  if (denied) return denied
 
   const updates: Partial<ProjectBudgetLine> = {}
 

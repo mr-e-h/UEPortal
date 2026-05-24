@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { ChangeOrder, ProjectBudgetLine, ActivityEntry } from '@/types'
 
@@ -51,6 +51,9 @@ export async function POST(
     .maybeSingle<ChangeOrder>()
   if (readErr) return NextResponse.json({ error: readErr.message }, { status: 500 })
   if (!order) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+  const denied = await ensureProjectWritable(auth.user, order.project_id)
+  if (denied) return denied
 
   const actor = auth.user.full_name
   const now = new Date().toISOString()

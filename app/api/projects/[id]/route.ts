@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import type { Project } from '@/types'
 
 /**
@@ -16,6 +16,9 @@ const EDITABLE_FIELDS: (keyof Project)[] = [
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
+
+  const denied = await ensureProjectWritable(auth.user, params.id)
+  if (denied) return denied
 
   const body = await request.json() as Partial<Project>
 
@@ -44,6 +47,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 export async function DELETE(_request: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
+
+  const denied = await ensureProjectWritable(auth.user, params.id)
+  if (denied) return denied
 
   // Soft delete via dedicated columns — concurrent-safe update by id.
   const { error } = await getSupabaseAdmin()
