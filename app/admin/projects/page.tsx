@@ -2,6 +2,7 @@ import { redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { ADMIN_ROLES } from '@/lib/roles'
+import { getProjectScope } from '@/lib/api-guard'
 import type { Project, ProjectBudgetLine, ProjectSubcontractor } from '@/types'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
@@ -14,13 +15,18 @@ export default async function ProjectsPage() {
   if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
 
   const sb = getSupabaseAdmin()
+  // PM scope: project_manager users only see their assigned projects.
+  // main / company see all (returns null).
+  const scope = await getProjectScope(me)
+
   const [projRes, blRes, psRes] = await Promise.all([
     sb.from('projects').select('*').neq('deleted', true),
     sb.from('project_budget_lines').select('project_id'),
     sb.from('project_subcontractors').select('project_id'),
   ])
 
-  const projects = (projRes.data ?? []) as Project[]
+  let projects = (projRes.data ?? []) as Project[]
+  if (scope) projects = projects.filter((p) => scope.has(p.id))
   const budgetLines = (blRes.data ?? []) as Pick<ProjectBudgetLine, 'project_id'>[]
   const projectSubs = (psRes.data ?? []) as Pick<ProjectSubcontractor, 'project_id'>[]
 

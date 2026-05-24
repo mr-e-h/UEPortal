@@ -103,6 +103,19 @@ export interface ProjectSubcontractor {
   subcontractor_id: string
 }
 
+/**
+ * project_manager → project assignment. main/company users see all projects;
+ * project_manager users see only the projects in this table. See
+ * lib/api-guard.getProjectScope.
+ */
+export interface ProjectManagerAssignment {
+  id: string
+  project_id: string
+  user_id: string
+  assigned_at: string
+  assigned_by: string | null
+}
+
 export interface ProjectBudgetLine {
   id: string
   project_id: string

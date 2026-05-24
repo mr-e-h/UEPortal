@@ -1,5 +1,6 @@
 import { NextResponse } from 'next/server'
 import { getSession } from './auth'
+import { getSupabaseAdmin } from './supabase'
 import { ADMIN_ROLES, SUB_ROLES } from './roles'
 import type { User } from '@/types'
 
@@ -42,4 +43,25 @@ export function isAdmin(user: User): boolean {
 
 export function isSub(user: User): boolean {
   return SUB_ROLES.includes(user.role)
+}
+
+/**
+ * Project-scope resolver. Returns:
+ *   - `null` when the user sees everything (main / company / sub via
+ *     project_subcontractors / non-admin non-PM roles)
+ *   - `Set<string>` of allowed project_ids when the user is project_manager
+ *     (scoped via the project_managers table)
+ *
+ * Callers should treat `null` as "no filter" and the set as a whitelist:
+ *
+ *   const scope = await getProjectScope(user)
+ *   if (scope) query.in('project_id', Array.from(scope))
+ */
+export async function getProjectScope(user: User): Promise<Set<string> | null> {
+  if (user.role !== 'project_manager') return null
+  const { data } = await getSupabaseAdmin()
+    .from('project_managers')
+    .select('project_id')
+    .eq('user_id', user.id)
+  return new Set((data ?? []).map((r: { project_id: string }) => r.project_id))
 }

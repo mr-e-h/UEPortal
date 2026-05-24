@@ -1,26 +1,39 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
-import type { Project, ProjectBudgetLine, BudgetVersion } from '@/types'
+import { randomUUID } from 'crypto'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import type { Project, ProjectBudgetLine, BudgetVersion, ProjectSubcontractor } from '@/types'
 import { importExcelLines } from '@/lib/excel-import'
 import type { ParsedExcelLine } from '@/lib/excel'
 import { getSession } from '@/lib/auth'
-import { requireAdmin } from '@/lib/api-guard'
-import { randomUUID } from 'crypto'
+import { requireAdmin, getProjectScope } from '@/lib/api-guard'
 
 export async function GET() {
   const session = await getSession()
   if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+
+  const sb = getSupabaseAdmin()
   const isSubRole = session.role === 'sub'
-  let projects = (await readJson<Project>('projects.json')).filter((p) => !p.deleted)
+
+  const { data, error } = await sb.from('projects').select('*').neq('deleted', true)
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  let projects = (data ?? []) as Project[]
 
   if (isSubRole) {
     if (!session.subcontractor_id) return NextResponse.json([])
-    const projectSubs = await readJson<{ id: string; project_id: string; subcontractor_id: string }>('project_subcontractors.json')
+    const { data: psData } = await sb
+      .from('project_subcontractors')
+      .select('project_id')
+      .eq('subcontractor_id', session.subcontractor_id)
     const allowedIds = new Set(
-      projectSubs.filter((ps) => ps.subcontractor_id === session.subcontractor_id).map((ps) => ps.project_id)
+      ((psData ?? []) as Pick<ProjectSubcontractor, 'project_id'>[]).map((ps) => ps.project_id),
     )
-    projects = projects.filter((p) => allowedIds.has(p.id))
+    return NextResponse.json(projects.filter((p) => allowedIds.has(p.id)))
   }
+
+  // project_manager → only their assigned projects (Q1).
+  // main / company / other admins see everything.
+  const scope = await getProjectScope(session)
+  if (scope) projects = projects.filter((p) => scope.has(p.id))
 
   return NextResponse.json(projects)
 }
@@ -36,16 +49,27 @@ export async function POST(request: NextRequest) {
 
   const { import_excel, excel_data, ...projectData } = body
 
-  const projects = await readJson<Project>('projects.json')
   const newProject: Project = {
     ...projectData,
-    id: String(Date.now()),
+    id: randomUUID(),
     status: projectData.status ?? 'active',
     end_date: projectData.end_date ?? null,
     deleted: false,
     deleted_at: null,
   }
-  await writeJson('projects.json', [...projects, newProject])
+  const sb = getSupabaseAdmin()
+  const { error: insErr } = await sb.from('projects').insert(newProject)
+  if (insErr) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+
+  // PM who creates a project should automatically own it — otherwise they
+  // can't see it after refresh. main/company need no such row (they see all).
+  if (auth.user.role === 'project_manager') {
+    await sb.from('project_managers').insert({
+      project_id: newProject.id,
+      user_id: auth.user.id,
+      assigned_by: auth.user.id,
+    })
+  }
 
   let imported = 0
   let new_products = 0
@@ -55,24 +79,26 @@ export async function POST(request: NextRequest) {
     imported = result.imported
     new_products = result.new_products
 
-    // Record version 0 after the initial import
-    const budgetLines = (await readJson<ProjectBudgetLine>('project_budget_lines.json')).filter(
-      (bl) => bl.project_id === newProject.id && (!bl.source || bl.source === 'manual')
-    )
+    // Snapshot a baseline version-0 row.
+    const { data: blData } = await sb
+      .from('project_budget_lines')
+      .select('budget_quantity, customer_price_snapshot, subcontractor_cost_price_snapshot, source')
+      .eq('project_id', newProject.id)
+    const budgetLines = ((blData ?? []) as ProjectBudgetLine[])
+      .filter((bl) => !bl.source || bl.source === 'manual')
     const totalSalesValue = budgetLines.reduce((s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot, 0)
     const totalCostValue = budgetLines.reduce((s, bl) => s + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0)
-    const session = await getSession()
-    const versions = await readJson<BudgetVersion>('budget_versions.json')
-    versions.push({
+
+    const versionRow: BudgetVersion = {
       id: randomUUID(),
       project_id: newProject.id,
       version: 0,
       total_sales_value: totalSalesValue,
       total_cost_value: totalCostValue,
-      uploaded_by: session?.full_name ?? 'Ukjent',
+      uploaded_by: auth.user.full_name ?? 'Ukjent',
       uploaded_at: new Date().toISOString(),
-    })
-    await writeJson('budget_versions.json', versions)
+    }
+    await sb.from('budget_versions').insert(versionRow)
   }
 
   return NextResponse.json({ ...newProject, imported, new_products }, { status: 201 })

@@ -4,6 +4,7 @@ import { useMemo, useState, type RefObject } from 'react'
 import { Download } from 'lucide-react'
 import { fmtNOK as fmt } from '@/lib/format'
 import GanttSection from './GanttSection'
+import ProjectManagersCard from './ProjectManagersCard'
 import type {
   Project,
   ProjectBudgetLine,
@@ -433,6 +434,12 @@ export default function OverviewSection({
           </div>
         </section>
       )}
+
+      {/* Prosjektledere */}
+      <section>
+        <h2 className="text-lg font-semibold text-gray-900 mb-3">Prosjektledere</h2>
+        <ProjectManagersCard projectId={projectId} />
+      </section>
 
       {/* Underentreprenører */}
       <section>

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getDeletedProjectIds } from '@/lib/data'
-import { requireAuth, requireAdmin, isSub } from '@/lib/api-guard'
+import { requireAuth, requireAdmin, isSub, getProjectScope } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { ProjectBudgetLine, Product, SubcontractorProductPrice, ProjectSubcontractor } from '@/types'
 
@@ -43,6 +43,10 @@ export async function GET(request: NextRequest) {
     // Strip customer_price_snapshot — UE must never see Netel's selling price.
     return NextResponse.json(lines.map((l) => ({ ...l, customer_price_snapshot: 0 })))
   }
+
+  // PM scope: filter to assigned projects only. main/company unaffected.
+  const scope = await getProjectScope(auth.user)
+  if (scope) lines = lines.filter((l) => scope.has(l.project_id))
 
   return NextResponse.json(lines)
 }

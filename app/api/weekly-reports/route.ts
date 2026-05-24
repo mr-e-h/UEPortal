@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getDeletedProjectIds } from '@/lib/data'
 import { getSession } from '@/lib/auth'
+import { getProjectScope } from '@/lib/api-guard'
 import type { WeeklyReport, WeeklyReportLine } from '@/types'
 
 export async function GET(request: NextRequest) {
@@ -34,6 +35,13 @@ export async function GET(request: NextRequest) {
 
   const deletedProjectIds = await getDeletedProjectIds()
   reports = reports.filter((r) => !deletedProjectIds.has(r.project_id))
+
+  // PM scope: only see reports for assigned projects.
+  // UE-role already filtered by subcontractor_id above.
+  if (!isSubRole) {
+    const scope = await getProjectScope(session)
+    if (scope) reports = reports.filter((r) => scope.has(r.project_id))
+  }
 
   if (withLines) {
     const reportIds = reports.map((r) => r.id)
