@@ -7,7 +7,11 @@ import { env, isProd } from './env'
  */
 export async function sendEmail(opts: { to: string; content: EmailContent }): Promise<void> {
   const { to, content } = opts
-  const from = env.EMAIL_FROM ?? 'Netel UE Portal <onboarding@resend.dev>'
+  // Production should always set EMAIL_FROM explicitly (e.g. "MinUE <noreply@minue.no>")
+  // after the Resend domain is verified. The fallback only works for dev/test
+  // because onboarding@resend.dev is Resend's shared sandbox sender — limited
+  // to the API key's own owner address and not suitable for real users.
+  const from = env.EMAIL_FROM ?? 'MinUE <noreply@minue.no>'
 
   if (!env.RESEND_API_KEY) {
     if (isProd) {

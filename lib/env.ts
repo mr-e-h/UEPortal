@@ -38,7 +38,12 @@ export const env = {
   APP_BASE_URL: optional('APP_BASE_URL'),
   /** Resend API key for outbound mail. When null, mail is logged to console (dev only). */
   RESEND_API_KEY: optional('RESEND_API_KEY'),
-  /** Verified FROM address for Resend. */
+  /**
+   * Verified FROM address for Resend. Format: "Display Name <user@domain>".
+   * In prod, set this to "MinUE <noreply@minue.no>" once the minue.no domain
+   * is verified in Resend. See EMAIL_SETUP.md for the full DNS + Resend
+   * verification flow.
+   */
   EMAIL_FROM: optional('EMAIL_FROM'),
   /** Standard Node env. */
   NODE_ENV: (process.env.NODE_ENV ?? 'development') as 'development' | 'production' | 'test',
