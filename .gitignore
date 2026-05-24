@@ -46,3 +46,5 @@ next-env.d.ts
 # (lib/data.ts wraps reads as Postgres queries). Old files were kept in the
 # repo for schema reference but have drifted from prod — drop entirely.
 /data/*.json
+
+.vercel

@@ -8,8 +8,8 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "Entrepreneur Portal",
-  description: "Subcontractor reporting system",
+  title: "MinUE",
+  description: "Underentreprenør-rapportering",
 };
 
 export default function RootLayout({

@@ -20,7 +20,7 @@ function baseHtml(title: string, body: string): string {
     <h1 style="font-size: 18px; font-weight: 600; margin: 0 0 16px;">${escapeHtml(title)}</h1>
     ${body}
     <p style="font-size: 12px; color: #94A3B8; margin-top: 32px; border-top: 1px solid #E5E7EB; padding-top: 16px;">
-      Netel UE Portal &middot; Denne e-posten ble sendt automatisk &mdash; ikke svar på den.
+      MinUE &middot; Denne e-posten ble sendt automatisk &mdash; ikke svar på den.
     </p>
   </div>
 </body>
@@ -33,7 +33,7 @@ export function invitationEmail(opts: {
   invitedBy?: string
 }): EmailContent {
   const { acceptUrl, role, invitedBy } = opts
-  const text = `Du har blitt invitert til Netel UE Portal${invitedBy ? ` av ${invitedBy}` : ''}.
+  const text = `Du har blitt invitert til MinUE${invitedBy ? ` av ${invitedBy}` : ''}.
 
 Rolle: ${role}
 
@@ -44,7 +44,7 @@ ${acceptUrl}
 Hvis du ikke forventet denne invitasjonen kan du ignorere e-posten.`
 
   const html = baseHtml(
-    'Velkommen til Netel UE Portal',
+    'Velkommen til MinUE',
     `<p style="font-size: 14px; line-height: 1.5;">Du har blitt invitert${invitedBy ? ` av <strong>${escapeHtml(invitedBy)}</strong>` : ''}.</p>
     <p style="font-size: 14px; line-height: 1.5;">Rolle: <strong>${escapeHtml(role)}</strong></p>
     <p style="font-size: 14px; line-height: 1.5;">Trykk på knappen under for å sette passord og opprette kontoen din. Lenken er gyldig i 7 dager.</p>
@@ -54,12 +54,12 @@ Hvis du ikke forventet denne invitasjonen kan du ignorere e-posten.`
     <p style="font-size: 12px; color: #64748B; word-break: break-all;">Eller kopier denne lenken: ${escapeHtml(acceptUrl)}</p>`
   )
 
-  return { subject: 'Du har fått en invitasjon til Netel UE Portal', text, html }
+  return { subject: 'Du har fått en invitasjon til MinUE', text, html }
 }
 
 export function passwordResetEmail(opts: { resetUrl: string }): EmailContent {
   const { resetUrl } = opts
-  const text = `Det er bedt om å tilbakestille passordet til kontoen din i Netel UE Portal.
+  const text = `Det er bedt om å tilbakestille passordet til kontoen din i MinUE.
 
 Trykk på lenken under for å velge nytt passord. Lenken er gyldig i 1 time og kan brukes én gang.
 
@@ -78,5 +78,5 @@ Hvis du ikke ba om dette, kan du ignorere e-posten. Passordet ditt forblir uendr
     <p style="font-size: 13px; color: #64748B; margin-top: 24px;">Hvis du ikke ba om dette, kan du ignorere e-posten. Passordet ditt forblir uendret.</p>`
   )
 
-  return { subject: 'Tilbakestill passord — Netel UE Portal', text, html }
+  return { subject: 'Tilbakestill passord — MinUE', text, html }
 }
