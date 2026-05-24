@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson, getDeletedProjectIds } from '@/lib/data'
-import { requireAdmin } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getDeletedProjectIds } from '@/lib/data'
+import { requireAdmin, getProjectScope } from '@/lib/api-guard'
 import type { ProjectForecast, ProjectForecastMonth } from '@/types'
 
 export async function GET(request: NextRequest) {
@@ -13,16 +14,34 @@ export async function GET(request: NextRequest) {
   const projectId = searchParams.get('project_id')
   const withMonths = searchParams.get('with_months') === 'true'
 
+  const sb = getSupabaseAdmin()
+  const query = sb.from('project_forecasts').select('*')
+  if (periodId) query.eq('forecast_period_id', periodId)
+  if (projectId) query.eq('project_id', projectId)
+
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  let forecasts = (data ?? []) as ProjectForecast[]
+
   const deletedProjectIds = await getDeletedProjectIds()
-  let forecasts = (await readJson<ProjectForecast>('project_forecasts.json')).filter((f) => !deletedProjectIds.has(f.project_id))
-  if (periodId) forecasts = forecasts.filter((f) => f.forecast_period_id === periodId)
-  if (projectId) forecasts = forecasts.filter((f) => f.project_id === projectId)
+  forecasts = forecasts.filter((f) => !deletedProjectIds.has(f.project_id))
+
+  const scope = await getProjectScope(auth.user)
+  if (scope) forecasts = forecasts.filter((f) => scope.has(f.project_id))
 
   if (withMonths) {
-    const allMonths = await readJson<ProjectForecastMonth>('project_forecast_months.json')
-    return NextResponse.json(
-      forecasts.map((f) => ({ ...f, months: allMonths.filter((m) => m.project_forecast_id === f.id) }))
-    )
+    const ids = forecasts.map((f) => f.id)
+    const { data: monthsData } = ids.length > 0
+      ? await sb.from('project_forecast_months').select('*').in('project_forecast_id', ids)
+      : { data: [] as ProjectForecastMonth[] }
+    const months = (monthsData ?? []) as ProjectForecastMonth[]
+    const byForecast = new Map<string, ProjectForecastMonth[]>()
+    for (const m of months) {
+      const arr = byForecast.get(m.project_forecast_id) ?? []
+      arr.push(m)
+      byForecast.set(m.project_forecast_id, arr)
+    }
+    return NextResponse.json(forecasts.map((f) => ({ ...f, months: byForecast.get(f.id) ?? [] })))
   }
 
   return NextResponse.json(forecasts)
@@ -33,7 +52,10 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as Omit<ProjectForecast, 'id' | 'created_at' | 'updated_at'>
-  const forecasts = await readJson<ProjectForecast>('project_forecasts.json')
+  if (!body.project_id || !body.forecast_period_id) {
+    return NextResponse.json({ error: 'project_id og forecast_period_id er påkrevd' }, { status: 400 })
+  }
+
   const now = new Date().toISOString()
   const newForecast: ProjectForecast = {
     id: randomUUID(),
@@ -58,6 +80,7 @@ export async function POST(request: NextRequest) {
     created_at: now,
     updated_at: now,
   }
-  await writeJson('project_forecasts.json', [...forecasts, newForecast])
+  const { error } = await getSupabaseAdmin().from('project_forecasts').insert(newForecast)
+  if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
   return NextResponse.json(newForecast, { status: 201 })
 }

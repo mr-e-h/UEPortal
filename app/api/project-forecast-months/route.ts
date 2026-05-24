@@ -1,29 +1,40 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
-import { requireAdmin } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { requireAdmin } from '@/lib/api-guard'
 import type { ProjectForecastMonth } from '@/types'
 
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const { searchParams } = new URL(request.url)
-  const forecastId = searchParams.get('forecast_id')
-  let months = await readJson<ProjectForecastMonth>('project_forecast_months.json')
-  if (forecastId) months = months.filter((m) => m.project_forecast_id === forecastId)
-  return NextResponse.json(months)
+  const forecastId = new URL(request.url).searchParams.get('forecast_id')
+  const sb = getSupabaseAdmin()
+  const query = sb.from('project_forecast_months').select('*')
+  if (forecastId) query.eq('project_forecast_id', forecastId)
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  return NextResponse.json((data ?? []) as ProjectForecastMonth[])
 }
 
+/**
+ * Replace-all upsert for a single forecast: scoped delete + insert means
+ * two admins editing different forecasts never collide. Same forecast +
+ * concurrent saves still last-write-wins (acceptable — single editor at
+ * a time in the UI).
+ */
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const body = await request.json() as { forecast_id: string; months: Omit<ProjectForecastMonth, 'id' | 'project_forecast_id'>[] }
-  const all = await readJson<ProjectForecastMonth>('project_forecast_months.json')
+  const body = await request.json() as {
+    forecast_id: string
+    months: Omit<ProjectForecastMonth, 'id' | 'project_forecast_id'>[]
+  }
+  if (!body.forecast_id) {
+    return NextResponse.json({ error: 'forecast_id mangler' }, { status: 400 })
+  }
 
-  // Replace all months for this forecast (upsert)
-  const kept = all.filter((m) => m.project_forecast_id !== body.forecast_id)
   const newMonths: ProjectForecastMonth[] = body.months.map((m) => ({
     id: randomUUID(),
     project_forecast_id: body.forecast_id,
@@ -37,6 +48,17 @@ export async function POST(request: NextRequest) {
     comment: m.comment ?? '',
   }))
 
-  await writeJson('project_forecast_months.json', [...kept, ...newMonths])
+  const sb = getSupabaseAdmin()
+  const { error: delErr } = await sb
+    .from('project_forecast_months')
+    .delete()
+    .eq('project_forecast_id', body.forecast_id)
+  if (delErr) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+
+  if (newMonths.length > 0) {
+    const { error: insErr } = await sb.from('project_forecast_months').insert(newMonths)
+    if (insErr) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+  }
+
   return NextResponse.json(newMonths, { status: 201 })
 }
