@@ -8,18 +8,36 @@ export default function TrashPage() {
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [restoring, setRestoring] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
 
   const load = useCallback(async () => {
-    const data = await fetch('/api/projects/trash').then((r) => r.json()) as Project[]
-    setProjects(data.sort((a, b) => (b.deleted_at ?? '').localeCompare(a.deleted_at ?? '')))
-    setLoading(false)
+    try {
+      const res = await fetch('/api/projects/trash')
+      if (!res.ok) {
+        setError('Kunne ikke laste papirkurven')
+        setLoading(false)
+        return
+      }
+      const data = await res.json() as Project[]
+      setProjects(data.sort((a, b) => (b.deleted_at ?? '').localeCompare(a.deleted_at ?? '')))
+      setError(null)
+    } catch {
+      setError('Nettverksfeil')
+    } finally {
+      setLoading(false)
+    }
   }, [])
 
   useEffect(() => { load() }, [load])
 
   async function restore(id: string) {
     setRestoring(id)
-    await fetch(`/api/projects/${id}/restore`, { method: 'POST' })
+    setError(null)
+    const res = await fetch(`/api/projects/${id}/restore`, { method: 'POST' })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({} as { error?: string }))
+      setError(d.error ?? 'Gjenoppretting feilet')
+    }
     await load()
     setRestoring(null)
   }
@@ -30,6 +48,10 @@ export default function TrashPage() {
         <Link href="/admin" className="text-gray-400 hover:text-gray-600 text-sm">← Admin</Link>
         <h1 className="text-xl font-bold text-gray-900">Papirkurv</h1>
       </div>
+
+      {error && (
+        <div className="text-sm text-red-700 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</div>
+      )}
 
       {loading ? (
         <div className="flex items-center justify-center h-32 text-gray-500">Laster...</div>

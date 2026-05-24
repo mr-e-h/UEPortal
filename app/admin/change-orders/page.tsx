@@ -1,21 +1,39 @@
-import { readJson } from '@/lib/data'
-import type { ChangeOrder, Project, Subcontractor, Product } from '@/types'
 import Link from 'next/link'
+import { redirect } from 'next/navigation'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSession } from '@/lib/auth'
+import { ADMIN_ROLES } from '@/lib/roles'
+import { getProjectScope } from '@/lib/api-guard'
+import type { ChangeOrder, Project, Subcontractor, Product } from '@/types'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import { fmtNOK as fmt } from '@/lib/format'
 
+export const dynamic = 'force-dynamic'
+
 export default async function ChangeOrdersPage() {
-  const [projects, allOrders, subcontractors, products] = await Promise.all([
-    readJson<Project>('projects.json'),
-    readJson<ChangeOrder>('change_orders.json'),
-    readJson<Subcontractor>('subcontractors.json'),
-    readJson<Product>('products.json'),
+  const me = await getSession()
+  if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
+
+  const sb = getSupabaseAdmin()
+  const [projRes, ordersRes, subsRes, prodsRes] = await Promise.all([
+    sb.from('projects').select('*').neq('deleted', true),
+    sb.from('change_orders').select('*').neq('status', 'draft'),
+    sb.from('subcontractors').select('*'),
+    sb.from('products').select('*'),
   ])
 
-  const activeProjectIds = new Set(projects.filter((p) => !p.deleted).map((p) => p.id))
-  const orders = allOrders
-    .filter((o) => o.status !== 'draft' && activeProjectIds.has(o.project_id))
+  const projects = (projRes.data ?? []) as Project[]
+  const subcontractors = (subsRes.data ?? []) as Subcontractor[]
+  const products = (prodsRes.data ?? []) as Product[]
+  let orders = (ordersRes.data ?? []) as ChangeOrder[]
+
+  const scope = await getProjectScope(me)
+  if (scope) orders = orders.filter((o) => scope.has(o.project_id))
+
+  const activeProjectIds = new Set(projects.map((p) => p.id))
+  orders = orders
+    .filter((o) => activeProjectIds.has(o.project_id))
     .sort((a, b) => (b.submitted_at ?? '').localeCompare(a.submitted_at ?? ''))
 
   const projMap = new Map(projects.map((p) => [p.id, p]))

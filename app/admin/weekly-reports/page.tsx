@@ -1,20 +1,38 @@
-import { readJson } from '@/lib/data'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSession } from '@/lib/auth'
+import { ADMIN_ROLES } from '@/lib/roles'
+import { getProjectScope } from '@/lib/api-guard'
 import type { WeeklyReport, Project, Subcontractor } from '@/types'
 import { formatWeekLabel } from '@/lib/utils/weeks'
-import Link from 'next/link'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 
+export const dynamic = 'force-dynamic'
+
 export default async function WeeklyReportsPage() {
-  const [projects, allReports, subcontractors] = await Promise.all([
-    readJson<Project>('projects.json'),
-    readJson<WeeklyReport>('weekly_reports.json'),
-    readJson<Subcontractor>('subcontractors.json'),
+  const me = await getSession()
+  if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
+
+  const sb = getSupabaseAdmin()
+  const [projRes, repRes, subsRes] = await Promise.all([
+    sb.from('projects').select('*').neq('deleted', true),
+    sb.from('weekly_reports').select('*').neq('status', 'draft'),
+    sb.from('subcontractors').select('*'),
   ])
 
-  const activeProjectIds = new Set(projects.filter((p) => !p.deleted).map((p) => p.id))
-  const reports = allReports
-    .filter((r) => r.status !== 'draft' && activeProjectIds.has(r.project_id))
+  const projects = (projRes.data ?? []) as Project[]
+  const subcontractors = (subsRes.data ?? []) as Subcontractor[]
+  let reports = (repRes.data ?? []) as WeeklyReport[]
+
+  // PM scope.
+  const scope = await getProjectScope(me)
+  if (scope) reports = reports.filter((r) => scope.has(r.project_id))
+
+  const activeProjectIds = new Set(projects.map((p) => p.id))
+  reports = reports
+    .filter((r) => activeProjectIds.has(r.project_id))
     .sort((a, b) => (b.submitted_at ?? '').localeCompare(a.submitted_at ?? ''))
 
   const projMap = new Map(projects.map((p) => [p.id, p]))
