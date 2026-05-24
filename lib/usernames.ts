@@ -5,9 +5,9 @@ type UserDisplayInput = Pick<User, 'role' | 'full_name'>
 type SubDisplayInput = Pick<Subcontractor, 'company_name'>
 
 /**
- * Display username derived from full name + company. Mirrors the convention in
- * the legacy Netel system: `<COMPANY>.<First>.<Last>` (no diacritics, no spaces).
- *   Netel admin:        NETEL.Agnete.Arnesveen
+ * Display username derived from full name + company. Mirrors the convention used
+ * for the in-house admin/PM team: `<COMPANY>.<First>.<Last>` (no diacritics, no spaces).
+ *   Admin:              MINUE.Agnete.Arnesveen
  *   UE for "Foo AS":    FOO.Per.Hansen
  */
 export function displayUsername(user: UserDisplayInput, sub?: SubDisplayInput | null): string {
@@ -15,17 +15,17 @@ export function displayUsername(user: UserDisplayInput, sub?: SubDisplayInput | 
   const first = sanitize(parts[0] ?? '')
   const last = sanitize(parts.slice(1).join('.') || '')
   const company = ADMIN_ROLES.includes(user.role)
-    ? 'NETEL'
+    ? 'MINUE'
     : sanitize((sub?.company_name ?? '').split(/\s+/)[0] || 'UE')
   return [company, first, last].filter(Boolean).join('.')
 }
 
 /**
- * Display company name: "Netel AS" for admin roles, the subcontractor's
+ * Display company name: "MinUE" for admin roles, the subcontractor's
  * registered company_name for UE roles.
  */
 export function displayCompany(user: Pick<User, 'role'>, sub?: SubDisplayInput | null): string {
-  if (ADMIN_ROLES.includes(user.role)) return 'Netel AS'
+  if (ADMIN_ROLES.includes(user.role)) return 'MinUE'
   return sub?.company_name ?? '–'
 }
 

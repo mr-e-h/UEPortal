@@ -40,7 +40,7 @@ export async function GET(request: NextRequest) {
         && allowedProjectIds.has(l.project_id)
         && (l.line_type === 'subcontractor_work' || l.line_type == null),
     )
-    // Strip customer_price_snapshot — UE must never see Netel's selling price.
+    // Strip customer_price_snapshot — UE must never see MinUE's selling price.
     return NextResponse.json(lines.map((l) => ({ ...l, customer_price_snapshot: 0 })))
   }
 

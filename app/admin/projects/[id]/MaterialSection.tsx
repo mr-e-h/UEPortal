@@ -69,7 +69,7 @@ export default function MaterialSection({
         budget_quantity: bl.budget_quantity,
         customer_price_snapshot: bl.customer_price_snapshot,
         sales_value: salesValue,
-        assigned_name: isIntern ? 'Intern / Netel' : (assignedSub?.company_name ?? ''),
+        assigned_name: isIntern ? 'Intern / MinUE' : (assignedSub?.company_name ?? ''),
         subcontractor_cost_price_snapshot: bl.subcontractor_cost_price_snapshot,
         cost_value: costValue,
         profit: salesValue - costValue,

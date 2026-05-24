@@ -21,7 +21,7 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
   const products = (data ?? []) as Product[]
 
-  // UE never sees customer_price (Netel's selling price).
+  // UE never sees customer_price (MinUE's selling price).
   if (isSub(auth.user)) {
     return NextResponse.json(products.map((p) => ({ ...p, customer_price: 0 })))
   }

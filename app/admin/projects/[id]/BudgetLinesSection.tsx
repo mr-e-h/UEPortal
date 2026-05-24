@@ -115,7 +115,7 @@ export default function BudgetLinesSection({
       customer_price_snapshot: bl.customer_price_snapshot,
       sales_value: salesValue,
       assigned_subcontractor_id: bl.assigned_subcontractor_id,
-      assigned_name: isIntern ? 'Intern / Netel' : (assignedSub?.company_name ?? ''),
+      assigned_name: isIntern ? 'Intern / MinUE' : (assignedSub?.company_name ?? ''),
       subcontractor_cost_price_snapshot: bl.subcontractor_cost_price_snapshot,
       cost_value: costValue,
       profit: salesValue - costValue,
@@ -325,7 +325,7 @@ export default function BudgetLinesSection({
               className="text-sm border border-gray-300 rounded px-2 py-1"
             >
               <option value="">— Velg underentreprenør —</option>
-              <option value="__intern__">Intern / Netel</option>
+              <option value="__intern__">Intern / MinUE</option>
               {projectSubDetails.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
             </select>
             <button

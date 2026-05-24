@@ -58,7 +58,7 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
     <div className="min-h-screen flex bg-[var(--color-bg-page)]">
       <aside className="w-64 flex-none bg-card border-r border-border flex flex-col">
         <div className="h-16 flex items-center px-6 border-b border-border flex-none">
-          <span className="text-lg font-bold text-primary tracking-tight">Netel</span>
+          <span className="text-lg font-bold text-primary tracking-tight">MinUE</span>
           <span className="text-lg font-light text-[var(--color-text-secondary)] ml-1">Portal</span>
         </div>
 

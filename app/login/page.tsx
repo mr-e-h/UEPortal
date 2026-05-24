@@ -243,7 +243,7 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
                 rows={3}
                 value={form.message}
                 onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
-                placeholder="Hvilke prosjekter, kontaktperson hos Netel, eller annen relevant info"
+                placeholder="Hvilke prosjekter, kontaktperson hos MinUE, eller annen relevant info"
                 className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900 resize-none"
               />
             </Field>

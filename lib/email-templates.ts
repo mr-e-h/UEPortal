@@ -16,7 +16,7 @@ function baseHtml(title: string, body: string): string {
   <title>${escapeHtml(title)}</title>
 </head>
 <body style="font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; max-width: 560px; margin: 32px auto; padding: 0 16px; color: #0F172A;">
-  <div style="border-top: 4px solid #E30613; padding-top: 24px;">
+  <div style="border-top: 4px solid #0EA5E9; padding-top: 24px;">
     <h1 style="font-size: 18px; font-weight: 600; margin: 0 0 16px;">${escapeHtml(title)}</h1>
     ${body}
     <p style="font-size: 12px; color: #94A3B8; margin-top: 32px; border-top: 1px solid #E5E7EB; padding-top: 16px;">
@@ -49,7 +49,7 @@ Hvis du ikke forventet denne invitasjonen kan du ignorere e-posten.`
     <p style="font-size: 14px; line-height: 1.5;">Rolle: <strong>${escapeHtml(role)}</strong></p>
     <p style="font-size: 14px; line-height: 1.5;">Trykk på knappen under for å sette passord og opprette kontoen din. Lenken er gyldig i 7 dager.</p>
     <p style="margin: 24px 0;">
-      <a href="${escapeHtml(acceptUrl)}" style="display: inline-block; background: #E30613; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Aksepter invitasjon</a>
+      <a href="${escapeHtml(acceptUrl)}" style="display: inline-block; background: #0EA5E9; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Aksepter invitasjon</a>
     </p>
     <p style="font-size: 12px; color: #64748B; word-break: break-all;">Eller kopier denne lenken: ${escapeHtml(acceptUrl)}</p>`
   )
@@ -72,7 +72,7 @@ Hvis du ikke ba om dette, kan du ignorere e-posten. Passordet ditt forblir uendr
     `<p style="font-size: 14px; line-height: 1.5;">Det er bedt om å tilbakestille passordet til kontoen din.</p>
     <p style="font-size: 14px; line-height: 1.5;">Trykk på knappen under for å velge nytt passord. Lenken er gyldig i <strong>1 time</strong>.</p>
     <p style="margin: 24px 0;">
-      <a href="${escapeHtml(resetUrl)}" style="display: inline-block; background: #E30613; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Velg nytt passord</a>
+      <a href="${escapeHtml(resetUrl)}" style="display: inline-block; background: #0EA5E9; color: white; padding: 10px 20px; border-radius: 8px; text-decoration: none; font-weight: 500; font-size: 14px;">Velg nytt passord</a>
     </p>
     <p style="font-size: 12px; color: #64748B; word-break: break-all;">Eller kopier denne lenken: ${escapeHtml(resetUrl)}</p>
     <p style="font-size: 13px; color: #64748B; margin-top: 24px;">Hvis du ikke ba om dette, kan du ignorere e-posten. Passordet ditt forblir uendret.</p>`

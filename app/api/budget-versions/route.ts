@@ -16,7 +16,7 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
   let versions = (data ?? []) as BudgetVersion[]
 
-  // UE: limit to linked projects AND strip Netel's customer-side totals.
+  // UE: limit to linked projects AND strip MinUE's customer-side totals.
   if (isSub(auth.user)) {
     const subId = auth.user.subcontractor_id
     if (!subId) return NextResponse.json([])

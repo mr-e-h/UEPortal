@@ -357,7 +357,7 @@ export default function OverviewSection({
               <div className="bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
                 <div className="p-4">
                   <div className="flex items-center justify-between mb-3">
-                    <span className="font-semibold text-gray-900 text-sm">Intern / Netel</span>
+                    <span className="font-semibold text-gray-900 text-sm">Intern / MinUE</span>
                     <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-medium">Intern</span>
                   </div>
                   <div className="mb-2">
