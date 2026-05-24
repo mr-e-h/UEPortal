@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { ProjectSubcontractor } from '@/types'
 
@@ -17,7 +17,12 @@ export async function GET(request: NextRequest) {
   if (subcontractorId) query.eq('subcontractor_id', subcontractorId)
   const { data, error } = await query
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-  return NextResponse.json((data ?? []) as ProjectSubcontractor[])
+  let links = (data ?? []) as ProjectSubcontractor[]
+
+  const scope = await getProjectScope(auth.user)
+  if (scope) links = links.filter((l) => scope.has(l.project_id))
+
+  return NextResponse.json(links)
 }
 
 export async function POST(request: NextRequest) {

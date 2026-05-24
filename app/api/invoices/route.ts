@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { ProjectInvoice } from '@/types'
 
@@ -14,7 +14,12 @@ export async function GET(request: NextRequest) {
   if (projectId) query.eq('project_id', projectId)
   const { data, error } = await query
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-  return NextResponse.json((data ?? []) as ProjectInvoice[])
+  let invoices = (data ?? []) as ProjectInvoice[]
+
+  const scope = await getProjectScope(auth.user)
+  if (scope) invoices = invoices.filter((i) => scope.has(i.project_id))
+
+  return NextResponse.json(invoices)
 }
 
 export async function POST(request: NextRequest) {

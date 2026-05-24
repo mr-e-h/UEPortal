@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAuth, requireAdmin, isSub } from '@/lib/api-guard'
+import { requireAuth, requireAdmin, isSub, getProjectScope } from '@/lib/api-guard'
 import { DEFAULT_MILESTONE_COLOR } from '@/lib/milestone-colors'
 import type { GanttMilestone, ProjectSubcontractor } from '@/types'
 
@@ -39,7 +39,12 @@ export async function GET(req: NextRequest) {
       (m) => allowedProjectIds.has(m.project_id)
         && (m.subcontractor_id == null || m.subcontractor_id === subId),
     )
+    return NextResponse.json(milestones)
   }
+
+  // PM scope: only see milestones for assigned projects.
+  const scope = await getProjectScope(auth.user)
+  if (scope) milestones = milestones.filter((m) => scope.has(m.project_id))
 
   return NextResponse.json(milestones)
 }

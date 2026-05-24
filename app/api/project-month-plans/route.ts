@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope } from '@/lib/api-guard'
 import type { ProjectMonthPlan } from '@/types'
 
 export async function GET(request: NextRequest) {
@@ -13,7 +13,13 @@ export async function GET(request: NextRequest) {
   if (projectId) query.eq('project_id', projectId)
   const { data, error } = await query
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-  return NextResponse.json((data ?? []) as ProjectMonthPlan[])
+  let plans = (data ?? []) as ProjectMonthPlan[]
+
+  // PM scope.
+  const scope = await getProjectScope(auth.user)
+  if (scope) plans = plans.filter((p) => scope.has(p.project_id))
+
+  return NextResponse.json(plans)
 }
 
 /**

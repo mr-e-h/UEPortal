@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { HourEntry, TimeType } from '@/types'
 
@@ -13,8 +13,13 @@ export async function GET(request: NextRequest) {
   const query = sb.from('hour_entries').select('*')
   if (projectId) query.eq('project_id', projectId)
   const { data, error } = await query
-  if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json((data ?? []) as HourEntry[])
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  let entries = (data ?? []) as HourEntry[]
+
+  const scope = await getProjectScope(auth.user)
+  if (scope) entries = entries.filter((e) => scope.has(e.project_id))
+
+  return NextResponse.json(entries)
 }
 
 export async function POST(request: NextRequest) {

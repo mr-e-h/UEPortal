@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAuth, isSub } from '@/lib/api-guard'
+import { requireAuth, isSub, getProjectScope } from '@/lib/api-guard'
 import type { BudgetVersion, ProjectSubcontractor } from '@/types'
 
 export async function GET(req: NextRequest) {
@@ -30,7 +30,12 @@ export async function GET(req: NextRequest) {
     versions = versions
       .filter((v) => allowedProjectIds.has(v.project_id))
       .map((v) => ({ ...v, total_sales_value: 0 }))
+    return NextResponse.json(versions)
   }
+
+  // PM scope.
+  const scope = await getProjectScope(auth.user)
+  if (scope) versions = versions.filter((v) => scope.has(v.project_id))
 
   return NextResponse.json(versions)
 }
