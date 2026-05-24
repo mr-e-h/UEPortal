@@ -40,7 +40,7 @@ export const env = {
   RESEND_API_KEY: optional('RESEND_API_KEY'),
   /**
    * Verified FROM address for Resend. Format: "Display Name <user@domain>".
-   * In prod, set this to "MinUE <noreply@minue.no>" once the minue.no domain
+   * In prod, set this to "MinUE <noreply@minue.app>" once the minue.app domain
    * is verified in Resend. See EMAIL_SETUP.md for the full DNS + Resend
    * verification flow.
    */
