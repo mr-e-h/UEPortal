@@ -1,5 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { isAdmin, isSub } from '@/lib/api-guard'
 import { MAX_ATTACHMENT_BYTES, ALLOWED_ATTACHMENT_MIMES } from '@/lib/upload-config'
@@ -10,11 +10,14 @@ async function loadOwnedOrder(id: string) {
   const session = await getSession()
   if (!session) return { error: NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 }) }
 
-  const orders = await readJson<ChangeOrder>('change_orders.json')
-  const idx = orders.findIndex((o) => o.id === id)
-  if (idx === -1) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) }
+  const { data: order, error } = await getSupabaseAdmin()
+    .from('change_orders')
+    .select('*')
+    .eq('id', id)
+    .maybeSingle<ChangeOrder>()
+  if (error) return { error: NextResponse.json({ error: 'Henting feilet' }, { status: 500 }) }
+  if (!order) return { error: NextResponse.json({ error: 'Not found' }, { status: 404 }) }
 
-  const order = orders[idx]
   if (isSub(session)) {
     if (order.subcontractor_id !== session.subcontractor_id) {
       return { error: NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 }) }
@@ -22,7 +25,7 @@ async function loadOwnedOrder(id: string) {
   } else if (!isAdmin(session)) {
     return { error: NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 }) }
   }
-  return { session, orders, idx, order }
+  return { session, order }
 }
 
 export async function POST(
@@ -31,7 +34,6 @@ export async function POST(
 ) {
   const owned = await loadOwnedOrder(params.id)
   if (owned.error) return owned.error
-  const { orders, idx } = owned
 
   const { filename, data, mimeType } = await request.json() as {
     filename: string
@@ -49,8 +51,7 @@ export async function POST(
     return NextResponse.json({ error: 'Fil for stor (maks 10 MB)' }, { status: 413 })
   }
 
-  // Object key in Supabase Storage. Includes the EM id so we can authorize
-  // GET by looking up the EM and checking ownership.
+  // Object key in Storage. EM id prefix authorizes GETs via ownership lookup.
   const sanitized = filename.replace(/[^a-zA-Z0-9._-]/g, '_')
   const objectPath = `${params.id}/${sanitized}`
 
@@ -61,10 +62,11 @@ export async function POST(
     return NextResponse.json({ error: 'Kunne ikke lagre vedlegg' }, { status: 500 })
   }
 
-  // Store the object path in the DB, NOT a signed URL — URLs expire and we
-  // need a stable reference. The GET endpoint below mints a fresh signed URL.
-  orders[idx] = { ...orders[idx], attachment_url: objectPath }
-  await writeJson('change_orders.json', orders)
+  // Store the object path — URLs expire, paths don't. GET mints a signed URL.
+  await getSupabaseAdmin()
+    .from('change_orders')
+    .update({ attachment_url: objectPath })
+    .eq('id', params.id)
 
   return NextResponse.json({ attachment_url: objectPath })
 }

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson, writeJson } from '@/lib/data'
-import { requireAdmin } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { requireAdmin, getProjectScope } from '@/lib/api-guard'
 
 export type ForecastExtra = {
   id: string
@@ -19,13 +19,24 @@ export async function GET(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const { searchParams } = new URL(request.url)
-  const projectId = searchParams.get('project_id')
-  let rows = await readJson<ForecastExtra>('project_forecast_extras.json')
-  if (projectId) rows = rows.filter((r) => r.project_id === projectId)
+  const projectId = new URL(request.url).searchParams.get('project_id')
+  const sb = getSupabaseAdmin()
+  const query = sb.from('project_forecast_extras').select('*')
+  if (projectId) query.eq('project_id', projectId)
+  const { data, error } = await query
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  let rows = (data ?? []) as ForecastExtra[]
+
+  const scope = await getProjectScope(auth.user)
+  if (scope) rows = rows.filter((r) => scope.has(r.project_id))
+
   return NextResponse.json(rows)
 }
 
+/**
+ * Replace-all upsert for a project. Scoped delete + insert is concurrent-safe
+ * across different projects; same-project concurrent saves still last-write-wins.
+ */
 export async function POST(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
@@ -34,13 +45,23 @@ export async function POST(request: NextRequest) {
     project_id: string
     rows: Omit<ForecastExtra, 'id'>[]
   }
+  if (!body.project_id) {
+    return NextResponse.json({ error: 'project_id mangler' }, { status: 400 })
+  }
 
-  const all = await readJson<ForecastExtra>('project_forecast_extras.json')
-  const kept = all.filter((r) => r.project_id !== body.project_id)
-  const newRows: ForecastExtra[] = body.rows.map((r) => ({
-    ...r,
-    id: randomUUID(),
-  }))
-  await writeJson('project_forecast_extras.json', [...kept, ...newRows])
+  const newRows: ForecastExtra[] = body.rows.map((r) => ({ ...r, id: randomUUID() }))
+
+  const sb = getSupabaseAdmin()
+  const { error: delErr } = await sb
+    .from('project_forecast_extras')
+    .delete()
+    .eq('project_id', body.project_id)
+  if (delErr) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+
+  if (newRows.length > 0) {
+    const { error: insErr } = await sb.from('project_forecast_extras').insert(newRows)
+    if (insErr) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+  }
+
   return NextResponse.json(newRows, { status: 200 })
 }
