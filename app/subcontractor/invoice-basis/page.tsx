@@ -5,6 +5,11 @@ import { Download, RefreshCw, Plus, Trash2 } from 'lucide-react'
 import type { Project } from '@/types'
 import { fmtNOK as fmt, fmtNumber } from '@/lib/format'
 import { useMe } from '@/lib/useMe'
+import Field from '@/components/ui/Field'
+import Card from '@/components/ui/Card'
+import StatusPill from '@/components/ui/StatusPill'
+import EmptyState from '@/components/ui/EmptyState'
+import Button from '@/components/ui/Button'
 
 const fmtQty = (n: number) => fmtNumber(n, 2)
 
@@ -166,9 +171,8 @@ export default function UEInvoiceBasisPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-card rounded-lg border border-border p-4 flex flex-wrap gap-4 items-end">
-        <div>
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Prosjekt</label>
+      <Card className="p-4 flex flex-wrap gap-4 items-end">
+        <Field label="Prosjekt">
           <select
             value={projectFilter}
             onChange={(e) => setProjectFilter(e.target.value)}
@@ -177,25 +181,23 @@ export default function UEInvoiceBasisPage() {
             <option value="all">Alle prosjekter</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Fra dato</label>
+        </Field>
+        <Field label="Fra dato">
           <input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
             className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-primary bg-card text-[var(--color-text-primary)]"
           />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Til dato</label>
+        </Field>
+        <Field label="Til dato">
           <input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
             className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-primary bg-card text-[var(--color-text-primary)]"
           />
-        </div>
+        </Field>
         <button
           onClick={() => { fetchBasis(); fetchInvoices() }}
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-muted text-[var(--color-text-primary)]"
@@ -203,39 +205,38 @@ export default function UEInvoiceBasisPage() {
           <RefreshCw size={13} />
           Oppdater
         </button>
-      </div>
+      </Card>
 
       {/* Financial summary */}
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-card rounded-lg border border-border p-4">
+          <Card className="p-4">
             <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Linjer</p>
             <p className="text-2xl font-bold text-[var(--color-text-primary)] mt-1">{summary.line_count}</p>
-          </div>
-          <div className="bg-card rounded-lg border border-border p-4">
+          </Card>
+          <Card className="p-4">
             <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Godkjent total</p>
             <p className="text-2xl font-bold text-[var(--color-text-primary)] mt-1">{fmt(totalApproved)}</p>
-          </div>
-          <div className="bg-card rounded-lg border border-border p-4">
+          </Card>
+          <Card className="p-4">
             <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Fakturert</p>
             <p className="text-2xl font-bold text-blue-600 mt-1">{fmt(totalInvoiced)}</p>
             <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{invoices.length} faktura{invoices.length !== 1 ? 'er' : ''}</p>
-          </div>
-          <div className={`bg-card rounded-lg border p-4 ${totalRemaining < 0 ? 'border-red-200 bg-red-50' : 'border-border'}`}>
+          </Card>
+          <Card className={`p-4 ${totalRemaining < 0 ? 'border-red-200 bg-red-50' : ''}`}>
             <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Gjenstår å fakturere</p>
             <p className={`text-2xl font-bold mt-1 ${totalRemaining < 0 ? 'text-red-600' : totalRemaining === 0 ? 'text-green-600' : 'text-[var(--color-text-primary)]'}`}>
               {fmt(totalRemaining)}
             </p>
-          </div>
+          </Card>
         </div>
       )}
 
       {/* Register invoice */}
-      <div className="bg-card rounded-lg border border-border p-5 space-y-4">
+      <Card className="p-5 space-y-4">
         <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Registrer faktura</h2>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Beløp (NOK)</label>
+          <Field label="Beløp (NOK)">
             <input
               type="number"
               min="0"
@@ -245,18 +246,16 @@ export default function UEInvoiceBasisPage() {
               onChange={(e) => setInvoiceAmount(e.target.value)}
               className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-primary bg-white text-[var(--color-text-primary)]"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Fakturadato</label>
+          </Field>
+          <Field label="Fakturadato">
             <input
               type="date"
               value={invoiceDate}
               onChange={(e) => setInvoiceDate(e.target.value)}
               className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-primary bg-white text-[var(--color-text-primary)]"
             />
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Prosjekt</label>
+          </Field>
+          <Field label="Prosjekt">
             <select
               value={invoiceProjectId}
               onChange={(e) => setInvoiceProjectId(e.target.value)}
@@ -265,9 +264,8 @@ export default function UEInvoiceBasisPage() {
               <option value="all">Alle prosjekter</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
-          </div>
-          <div>
-            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Notat (valgfritt)</label>
+          </Field>
+          <Field label="Notat (valgfritt)">
             <input
               type="text"
               placeholder="Fakturanr. eller merknad"
@@ -275,17 +273,17 @@ export default function UEInvoiceBasisPage() {
               onChange={(e) => setInvoiceNote(e.target.value)}
               className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-primary bg-white text-[var(--color-text-primary)]"
             />
-          </div>
+          </Field>
         </div>
-        <button
+        <Button
           onClick={registerInvoice}
           disabled={savingInvoice || !invoiceAmount || Number(invoiceAmount) <= 0}
-          className="flex items-center gap-1.5 px-4 py-2 bg-primary text-white text-sm font-medium rounded-lg hover:bg-primary-hover disabled:opacity-40 disabled:cursor-not-allowed"
+          className="inline-flex items-center gap-1.5"
         >
           <Plus size={14} />
           {savingInvoice ? 'Lagrer...' : 'Registrer faktura'}
-        </button>
-      </div>
+        </Button>
+      </Card>
 
       {/* Invoice history */}
       {invoices.length > 0 && (
@@ -360,8 +358,11 @@ export default function UEInvoiceBasisPage() {
               </tr>
             ) : lines.length === 0 ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-[var(--color-text-muted)]">
-                  Ingen godkjente linjer for valgt filter
+                <td colSpan={7}>
+                  <EmptyState
+                    title="Ingen godkjente linjer"
+                    description="Endre filteret over for å se andre perioder eller prosjekter."
+                  />
                 </td>
               </tr>
             ) : (
@@ -376,11 +377,9 @@ export default function UEInvoiceBasisPage() {
                   <td className="px-4 py-2.5 text-right font-medium text-[var(--color-text-primary)]">{fmt(l.cost_total)}</td>
                   <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{l.date}</td>
                   <td className="px-4 py-2.5">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      l.source === 'report' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
-                    }`}>
+                    <StatusPill tone={l.source === 'report' ? 'blue' : 'primary'}>
                       {l.source === 'report' ? 'Rapport' : 'EM'}
-                    </span>
+                    </StatusPill>
                   </td>
                 </tr>
               ))

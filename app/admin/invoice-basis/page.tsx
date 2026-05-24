@@ -4,6 +4,10 @@ import { useEffect, useState, useCallback } from 'react'
 import { Download, RefreshCw } from 'lucide-react'
 import type { Project, Subcontractor } from '@/types'
 import { fmtNOK as fmt, fmtNumber } from '@/lib/format'
+import Field from '@/components/ui/Field'
+import Card from '@/components/ui/Card'
+import StatusPill from '@/components/ui/StatusPill'
+import EmptyState from '@/components/ui/EmptyState'
 
 const fmtQty = (n: number) => fmtNumber(n, 2)
 
@@ -111,9 +115,8 @@ export default function InvoiceBasisPage() {
       </div>
 
       {/* Filters */}
-      <div className="bg-white rounded-lg border border-gray-200 p-4 flex flex-wrap gap-4 items-end">
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Type</label>
+      <Card className="p-4 flex flex-wrap gap-4 items-end">
+        <Field label="Type">
           <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
             {(['ue', 'customer'] as const).map((t) => (
               <button
@@ -125,9 +128,8 @@ export default function InvoiceBasisPage() {
               </button>
             ))}
           </div>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Prosjekt</label>
+        </Field>
+        <Field label="Prosjekt">
           <select
             value={projectFilter}
             onChange={(e) => setProjectFilter(e.target.value)}
@@ -136,9 +138,8 @@ export default function InvoiceBasisPage() {
             <option value="all">Alle prosjekter</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
           </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Underentreprenør</label>
+        </Field>
+        <Field label="Underentreprenør">
           <select
             value={subFilter}
             onChange={(e) => setSubFilter(e.target.value)}
@@ -147,25 +148,23 @@ export default function InvoiceBasisPage() {
             <option value="all">Alle UE</option>
             {subcontractors.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
           </select>
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Fra dato</label>
+        </Field>
+        <Field label="Fra dato">
           <input
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
           />
-        </div>
-        <div>
-          <label className="block text-xs font-medium text-gray-600 mb-1">Til dato</label>
+        </Field>
+        <Field label="Til dato">
           <input
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
             className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
           />
-        </div>
+        </Field>
         <button
           onClick={fetchBasis}
           className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
@@ -173,37 +172,37 @@ export default function InvoiceBasisPage() {
           <RefreshCw size={13} />
           Oppdater
         </button>
-      </div>
+      </Card>
 
       {/* Summary cards */}
       {summary && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          <Card className="p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide">Linjer</p>
             <p className="text-2xl font-bold text-gray-900 mt-1">{summary.line_count}</p>
-          </div>
-          <div className="bg-white rounded-lg border border-gray-200 p-4">
+          </Card>
+          <Card className="p-4">
             <p className="text-xs text-gray-500 uppercase tracking-wide">
               {typeFilter === 'ue' ? 'Total kostnad' : 'Total salgsverdi'}
             </p>
             <p className="text-2xl font-bold text-gray-900 mt-1">
               {fmt(typeFilter === 'ue' ? summary.total_cost : summary.total_sales_value)}
             </p>
-          </div>
+          </Card>
           {typeFilter === 'customer' && (
             <>
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
+              <Card className="p-4">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Fortjeneste</p>
                 <p className={`text-2xl font-bold mt-1 ${summary.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
                   {fmt(summary.profit)}
                 </p>
-              </div>
-              <div className="bg-white rounded-lg border border-gray-200 p-4">
+              </Card>
+              <Card className="p-4">
                 <p className="text-xs text-gray-500 uppercase tracking-wide">Margin</p>
                 <p className={`text-2xl font-bold mt-1 ${Number(summary.margin) >= 10 ? 'text-green-700' : 'text-orange-500'}`}>
                   {summary.margin}%
                 </p>
-              </div>
+              </Card>
             </>
           )}
         </div>
@@ -235,8 +234,11 @@ export default function InvoiceBasisPage() {
               </tr>
             ) : lines.length === 0 ? (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-gray-400">
-                  Ingen godkjente linjer for valgt filter
+                <td colSpan={8}>
+                  <EmptyState
+                    title="Ingen godkjente linjer"
+                    description="Juster filtrene over, eller vent på at flere rapporter blir godkjent."
+                  />
                 </td>
               </tr>
             ) : (
@@ -258,11 +260,9 @@ export default function InvoiceBasisPage() {
                   </td>
                   <td className="px-4 py-2.5 text-gray-500">{l.date}</td>
                   <td className="px-4 py-2.5">
-                    <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                      l.source === 'report' ? 'bg-blue-50 text-blue-700' : 'bg-purple-50 text-purple-700'
-                    }`}>
+                    <StatusPill tone={l.source === 'report' ? 'blue' : 'primary'}>
                       {l.source === 'report' ? 'Rapport' : 'EM'}
-                    </span>
+                    </StatusPill>
                   </td>
                 </tr>
               ))

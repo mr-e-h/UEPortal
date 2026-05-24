@@ -10,6 +10,10 @@ import { fmtNOK as fmt } from '@/lib/format'
 import { weeklyReportStatus, weeklyReportLineStatus } from '@/lib/statuses'
 import { activityActionLabel } from '@/lib/activity-actions'
 import { useMe } from '@/lib/useMe'
+import Field from '@/components/ui/Field'
+import Card from '@/components/ui/Card'
+import Button from '@/components/ui/Button'
+import EmptyState from '@/components/ui/EmptyState'
 
 type EnrichedLine = WeeklyReportLine & {
   product_name: string
@@ -167,25 +171,24 @@ export default function AdminWeeklyReportPage() {
 
       {/* Summary cards */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="bg-white rounded-lg shadow p-4">
+        <Card className="p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Linjer</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{report.lines.length}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
+        </Card>
+        <Card className="p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Total kostnad</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalCost)}</p>
-        </div>
-        <div className="bg-white rounded-lg shadow p-4">
+        </Card>
+        <Card className="p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Total salgsverdi</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalSales)}</p>
-        </div>
+        </Card>
       </div>
 
       {/* Bulk actions */}
       {report.status === 'submitted' && (
         <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex flex-wrap gap-4 items-end">
-          <div className="flex-1 min-w-48">
-            <label className="block text-xs font-medium text-gray-700 mb-1">Kommentar (valgfri)</label>
+          <Field label="Kommentar (valgfri)" className="flex-1 min-w-48">
             <input
               type="text"
               value={bulkComment}
@@ -193,7 +196,7 @@ export default function AdminWeeklyReportPage() {
               placeholder="Melding til underentreprenør..."
               className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-blue-500"
             />
-          </div>
+          </Field>
           <button
             onClick={() => bulkReview('approve_all')}
             disabled={saving}
@@ -254,7 +257,7 @@ export default function AdminWeeklyReportPage() {
       </div>
 
       {/* Activity log + comments */}
-      <section className="bg-white rounded-lg shadow p-6 space-y-4">
+      <Card className="p-6 space-y-4">
         <h2 className="text-sm font-semibold text-gray-900">Handlingslogg</h2>
         {activity.length === 0 ? (
           <p className="text-sm text-gray-400">Ingen handlinger ennå</p>
@@ -287,15 +290,11 @@ export default function AdminWeeklyReportPage() {
             placeholder="Skriv en kommentar..."
             className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-blue-500"
           />
-          <button
-            type="submit"
-            disabled={!newComment.trim()}
-            className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50"
-          >
+          <Button type="submit" disabled={!newComment.trim()}>
             Send
-          </button>
+          </Button>
         </form>
-      </section>
+      </Card>
 
       {/* Other submissions this week */}
       {siblings.length > 0 && (

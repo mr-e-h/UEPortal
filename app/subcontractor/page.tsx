@@ -7,6 +7,8 @@ import type { ChangeOrder, GanttMilestone } from '@/types'
 import type { BadgeStatus } from '@/components/ui/Badge'
 import Badge from '@/components/ui/Badge'
 import Card from '@/components/ui/Card'
+import StatusPill from '@/components/ui/StatusPill'
+import EmptyState from '@/components/ui/EmptyState'
 import SortableTable from '@/components/SortableTable'
 import type { Column } from '@/components/SortableTable'
 import { fmtNOK as fmt } from '@/lib/format'
@@ -256,7 +258,10 @@ export default function SubcontractorPage() {
           <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Mine prosjekter</h2>
         </div>
         {projects.length === 0 ? (
-          <div className="p-6 text-center text-[var(--color-text-muted)] text-sm">Ingen prosjekter tildelt ennå</div>
+          <EmptyState
+            title="Ingen prosjekter tildelt ennå"
+            description="Du blir lagt til på prosjekter av en administrator."
+          />
         ) : (
           <SortableTable
             columns={columns}
@@ -302,13 +307,9 @@ export default function SubcontractorPage() {
                         <div className="text-[10px] text-green-600">{daysLeft}d igjen</div>
                       )}
                     </div>
-                    <span className={`text-[10px] px-2 py-0.5 rounded-full font-medium flex-none ${
-                      isActive ? 'bg-green-100 text-green-700' :
-                      isPast ? 'bg-gray-100 text-gray-500' :
-                      'bg-blue-100 text-blue-700'
-                    }`}>
+                    <StatusPill tone={isActive ? 'green' : isPast ? 'gray' : 'blue'}>
                       {isActive ? 'Pågår' : isPast ? 'Fullført' : 'Kommende'}
-                    </span>
+                    </StatusPill>
                   </div>
                 )
               })}
