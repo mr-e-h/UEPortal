@@ -291,20 +291,20 @@ export default function SubcontractorPage() {
             {userName ? `Hei, ${userName.split(' ')[0]}` : 'Oversikt'}
           </h1>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-3">
           <button
             type="button"
             onClick={() => setPicker('weekly-report')}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors shadow-sm"
+            className="inline-flex items-center gap-2 px-5 py-3 text-base font-semibold bg-primary text-white rounded-xl hover:bg-primary-hover transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
           >
-            <Send size={14} /> Send ukesrapport
+            <Send size={18} strokeWidth={2.25} /> Send ukesrapport
           </button>
           <button
             type="button"
             onClick={() => setPicker('new-em')}
-            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-card border border-border text-[var(--color-text-primary)] rounded-lg hover:bg-muted transition-colors"
+            className="inline-flex items-center gap-2 px-5 py-3 text-base font-semibold bg-amber-500 text-white rounded-xl hover:bg-amber-600 transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0"
           >
-            <Plus size={14} /> Endringsmelding
+            <Plus size={18} strokeWidth={2.5} /> Endringsmelding
           </button>
         </div>
       </div>
