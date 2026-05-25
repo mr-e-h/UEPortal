@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession, clearAllSessionsForUser } from '@/lib/auth'
 import { requireAdmin } from '@/lib/api-guard'
+import { SUPER_ADMIN_EMAIL } from '@/lib/view-as'
 import type { User } from '@/types'
 
 const BCRYPT_COST = 12
@@ -77,13 +78,38 @@ export async function DELETE(request: NextRequest) {
   if (!id) return NextResponse.json({ error: 'Mangler id' }, { status: 400 })
   if (id === session.id) return NextResponse.json({ error: 'Kan ikke slette egen bruker' }, { status: 400 })
 
-  // Drop sessions first so an inflight request can't keep going.
+  // Look the target up first so we can apply guards (and give a clean 404
+  // message before doing anything destructive).
+  const sb = getSupabaseAdmin()
+  const { data: target } = await sb
+    .from('users')
+    .select('id, email, role')
+    .eq('id', id)
+    .maybeSingle<Pick<User, 'id' | 'email' | 'role'>>()
+  if (!target) return NextResponse.json({ error: 'Bruker ikke funnet' }, { status: 404 })
+
+  // Guardrail: the hardcoded super-admin email cannot be deleted via the UI.
+  // If they're ever locked out we'd rather see a clear error here than have
+  // the only account with view-as access gone.
+  if (target.email === SUPER_ADMIN_EMAIL) {
+    return NextResponse.json({ error: 'Super-admin-kontoen kan ikke slettes' }, { status: 400 })
+  }
+
+  // Drop sessions first so an inflight request can't keep going on a stale id.
   await clearAllSessionsForUser(id)
-  const { error, count } = await getSupabaseAdmin()
+
+  // Clean up rows that reference this user_id but DON'T cascade automatically:
+  //   - project_managers: PM assignments held by this user
+  //   - access_requests rows where this user was the reviewer
+  // (Audit-log activity rows store the actor's NAME as text, not user_id, so
+  //  they keep their historical accuracy automatically.)
+  await sb.from('project_managers').delete().eq('user_id', id)
+
+  const { error, count } = await sb
     .from('users')
     .delete({ count: 'exact' })
     .eq('id', id)
   if (error) return NextResponse.json({ error: 'Sletting feilet' }, { status: 500 })
   if (!count) return NextResponse.json({ error: 'Bruker ikke funnet' }, { status: 404 })
-  return NextResponse.json({ ok: true })
+  return NextResponse.json({ ok: true, deleted: { id: target.id, email: target.email } })
 }

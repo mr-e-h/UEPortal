@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession, clearAllSessionsForUser } from '@/lib/auth'
+import { SUPER_ADMIN_EMAIL } from '@/lib/view-as'
 import type { User } from '@/types'
 
 const BCRYPT_COST = 12
@@ -57,6 +58,28 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
   }
   if (params.id === session.id && updates.active === false) {
     return NextResponse.json({ error: 'Kan ikke deaktivere egen bruker' }, { status: 400 })
+  }
+
+  // Super-admin protections: the account that uniquely holds view-as access
+  // must not be demoted or deactivated by anyone (including another `main`).
+  // Email change is OK if explicit — but only by the super-admin themselves.
+  if (updates.role || updates.active === false || updates.email) {
+    const { data: target } = await getSupabaseAdmin()
+      .from('users')
+      .select('email')
+      .eq('id', params.id)
+      .maybeSingle<{ email: string }>()
+    if (target?.email === SUPER_ADMIN_EMAIL) {
+      if (updates.role && updates.role !== 'main') {
+        return NextResponse.json({ error: 'Super-admin må beholde rollen main' }, { status: 400 })
+      }
+      if (updates.active === false) {
+        return NextResponse.json({ error: 'Super-admin kan ikke deaktiveres' }, { status: 400 })
+      }
+      if (updates.email && params.id !== session.id) {
+        return NextResponse.json({ error: 'Bare super-admin selv kan endre denne e-posten' }, { status: 400 })
+      }
+    }
   }
 
   const { data, error } = await getSupabaseAdmin()

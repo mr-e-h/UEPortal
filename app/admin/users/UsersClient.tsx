@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Pencil, Mail, X, Search, Download } from 'lucide-react'
+import { Pencil, Mail, X, Search, Download, Trash2 } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Field from '@/components/ui/Field'
@@ -12,7 +12,11 @@ import StatusPill from '@/components/ui/StatusPill'
 import EmptyState from '@/components/ui/EmptyState'
 import { roleLabel } from '@/lib/roles'
 import { displayUsername, displayCompany } from '@/lib/usernames'
+import { useMe } from '@/lib/useMe'
+import ConfirmDialog from '@/components/ConfirmDialog'
 import type { UserRole } from '@/types'
+
+const SUPER_ADMIN_EMAIL = 'mhelsing94@gmail.com'
 
 export type SafeUser = {
   id: string
@@ -47,11 +51,16 @@ interface Props {
 
 export default function UsersClient({ initialUsers, subcontractors, initialInvitations }: Props) {
   const router = useRouter()
+  const { me } = useMe()
 
   // Data ships with the server-rendered HTML; no loading state on first paint.
-  // We only re-fetch invitations after creating a new one.
-  const [users] = useState<SafeUser[]>(initialUsers)
+  // We re-fetch invitations after creating a new one, and optimistically
+  // remove rows from `users` after a delete (then router.refresh() to keep
+  // server-rendered sibling badges in sync).
+  const [users, setUsers] = useState<SafeUser[]>(initialUsers)
   const [invitations, setInvitations] = useState<InvitationLite[]>(initialInvitations)
+  const [confirmDelete, setConfirmDelete] = useState<{ kind: 'one'; user: SafeUser } | { kind: 'bulk'; ids: string[] } | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -103,6 +112,41 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
     setInviteSuccess(`Invitasjon sendt til ${inviteForm.email}`)
     setInviteForm({ email: '', role: 'sub' })
     loadInvitations()
+  }
+
+  function canDelete(u: SafeUser): boolean {
+    if (u.email === SUPER_ADMIN_EMAIL) return false
+    if (me && u.id === me.real_id) return false
+    return true
+  }
+
+  async function performDelete(ids: string[]): Promise<void> {
+    if (deleting || ids.length === 0) return
+    setDeleting(true)
+    // Sequential delete — keeps server load steady and lets us bail on the
+    // first failure with a sensible error.
+    const failures: string[] = []
+    for (const id of ids) {
+      const res = await fetch(`/api/users?id=${encodeURIComponent(id)}`, { method: 'DELETE' })
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}))
+        const target = users.find((u) => u.id === id)
+        failures.push(`${target?.full_name ?? id}: ${data.error ?? 'feilet'}`)
+      }
+    }
+    setDeleting(false)
+    setConfirmDelete(null)
+    const deletedIds = new Set(ids.filter((id) => !failures.some((f) => f.startsWith(users.find((u) => u.id === id)?.full_name ?? id))))
+    if (deletedIds.size > 0) {
+      setUsers((prev) => prev.filter((u) => !deletedIds.has(u.id)))
+      setSelected((prev) => {
+        const next = new Set(prev)
+        for (const id of deletedIds) next.delete(id)
+        return next
+      })
+      router.refresh()
+    }
+    if (failures.length > 0) alert('Noen ble ikke slettet:\n' + failures.join('\n'))
   }
 
   const subMap = useMemo(() => new Map(subcontractors.map((s) => [s.id, s])), [subcontractors])
@@ -253,6 +297,22 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
             <span>{sorted.length} {sorted.length === 1 ? 'bruker' : 'brukere'}</span>
             {selected.size > 0 && <span className="text-primary">· {selected.size} valgt</span>}
           </div>
+          {selected.size > 0 && (() => {
+            const deletable = Array.from(selected)
+              .map((id) => users.find((u) => u.id === id))
+              .filter((u): u is SafeUser => !!u && canDelete(u))
+              .map((u) => u.id)
+            return (
+              <button
+                onClick={() => setConfirmDelete({ kind: 'bulk', ids: deletable })}
+                disabled={deletable.length === 0}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                title={deletable.length === 0 ? 'Ingen av de valgte kan slettes (super-admin / deg selv)' : undefined}
+              >
+                <Trash2 size={13} /> Slett {deletable.length} valgte
+              </button>
+            )
+          })()}
           <button
             onClick={exportCsv}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-muted hover:bg-gray-200 text-[var(--color-text-primary)] rounded-lg font-medium"
@@ -306,6 +366,16 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
                         >
                           <Pencil size={13} />
                         </Link>
+                        {canDelete(u) && (
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDelete({ kind: 'one', user: u })}
+                            className="text-[var(--color-text-muted)] hover:text-red-600"
+                            title="Slett bruker"
+                          >
+                            <Trash2 size={13} />
+                          </button>
+                        )}
                       </div>
                     </td>
                     <td className="px-3 py-2.5 font-medium text-[var(--color-text-primary)]">{u.full_name}</td>
@@ -381,6 +451,25 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
             </table>
           </div>
         </Card>
+      )}
+
+      {confirmDelete?.kind === 'one' && (
+        <ConfirmDialog
+          title="Slett bruker?"
+          message={`${confirmDelete.user.full_name} (${confirmDelete.user.email}) slettes permanent. Alle sesjoner avsluttes og PM-tildelinger fjernes. Kan ikke angres.`}
+          confirmLabel={deleting ? 'Sletter...' : 'Slett'}
+          onConfirm={() => performDelete([confirmDelete.user.id])}
+          onCancel={() => setConfirmDelete(null)}
+        />
+      )}
+      {confirmDelete?.kind === 'bulk' && (
+        <ConfirmDialog
+          title={`Slett ${confirmDelete.ids.length} brukere?`}
+          message="Alle valgte brukere slettes permanent. Sesjoner avsluttes og PM-tildelinger fjernes. Super-admin og din egen bruker er utelatt fra utvalget. Kan ikke angres."
+          confirmLabel={deleting ? 'Sletter...' : 'Slett alle'}
+          onConfirm={() => performDelete(confirmDelete.ids)}
+          onCancel={() => setConfirmDelete(null)}
+        />
       )}
     </div>
   )
