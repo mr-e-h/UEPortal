@@ -141,7 +141,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
       setUsers((prev) => prev.filter((u) => !deletedIds.has(u.id)))
       setSelected((prev) => {
         const next = new Set(prev)
-        for (const id of deletedIds) next.delete(id)
+        deletedIds.forEach((id) => next.delete(id))
         return next
       })
       router.refresh()
