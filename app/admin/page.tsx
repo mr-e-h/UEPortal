@@ -1,4 +1,8 @@
+import { redirect } from 'next/navigation'
 import { readJson } from '@/lib/data'
+import { getSession } from '@/lib/auth'
+import { getProjectScope } from '@/lib/api-guard'
+import { ADMIN_ROLES } from '@/lib/roles'
 import type {
   Project,
   ProjectBudgetLine,
@@ -27,6 +31,9 @@ function weekList(count: number, currentWeek: number, thisYear: number): { week:
 }
 
 export default async function AdminDashboard() {
+  const me = await getSession()
+  if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
+
   // Fire all reads in parallel. Sequential awaits added ~800ms (7×~110ms RTT
   // to Supabase EU); Promise.all collapses that to one roundtrip's worth.
   const [
@@ -37,6 +44,7 @@ export default async function AdminDashboard() {
     allChangeOrders,
     allHourEntries,
     subcontractors,
+    scope,
   ] = await Promise.all([
     readJson<Project>('projects.json'),
     readJson<ProjectBudgetLine>('project_budget_lines.json'),
@@ -45,9 +53,16 @@ export default async function AdminDashboard() {
     readJson<ChangeOrder>('change_orders.json'),
     readJson<HourEntry>('hour_entries.json'),
     readJson<Subcontractor>('subcontractors.json'),
+    getProjectScope(me),
   ])
 
-  const projects = allProjects.filter((p) => !p.deleted)
+  // PM scope: project_manager dashboards see only the projects they're
+  // assigned to. main / company see everything (scope is null). Every
+  // downstream KPI/chart/table derives from `projects`, so filtering here
+  // covers the entire dashboard in one place.
+  const projects = allProjects
+    .filter((p) => !p.deleted)
+    .filter((p) => !scope || scope.has(p.id))
   const activeProjectIds = new Set(projects.map((p) => p.id))
   const budgetLines = allBudgetLines.filter((bl) => activeProjectIds.has(bl.project_id))
   const weeklyReports = allWeeklyReports.filter((r) => activeProjectIds.has(r.project_id))

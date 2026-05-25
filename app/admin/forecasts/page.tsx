@@ -3,6 +3,7 @@ import { redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { ADMIN_ROLES } from '@/lib/roles'
+import { getProjectScope } from '@/lib/api-guard'
 import type { ForecastPeriod, ProjectForecast, Project, ProjectInvoice, ProjectBudgetLine } from '@/types'
 import Card from '@/components/ui/Card'
 import EmptyState from '@/components/ui/EmptyState'
@@ -28,7 +29,13 @@ export default async function ForecastsOverviewPage() {
   ])
 
   const periods = (periodsRes.data ?? []) as ForecastPeriod[]
-  const projects = (projectsRes.data ?? []) as Project[]
+  // PM scope: project_manager users only see their own assigned projects, so
+  // every aggregate (sums, "missing forecasts", per-period totals) reflects
+  // their portfolio only — never another PM's economy. main / company /
+  // company-admin pass through (scope is null) and see everything.
+  const scope = await getProjectScope(me)
+  let projects = (projectsRes.data ?? []) as Project[]
+  if (scope) projects = projects.filter((p) => scope.has(p.id))
   const activeProjectIds = new Set(projects.map((p) => p.id))
   const allForecasts = ((forecastsRes.data ?? []) as ProjectForecast[])
     .filter((f) => activeProjectIds.has(f.project_id))
