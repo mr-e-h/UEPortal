@@ -86,25 +86,6 @@ function LoginForm() {
     >
       {/* White wash to soften the photo so the login card stays the focal point */}
       <div className="absolute inset-0 bg-white/25" aria-hidden="true" />
-
-      {/* Grid-paper patches scattered around, same brand blue */}
-      <svg
-        className="absolute inset-0 w-full h-full pointer-events-none"
-        viewBox="0 0 1600 900"
-        preserveAspectRatio="xMidYMid slice"
-        aria-hidden="true"
-      >
-        <defs>
-          <pattern id="gridPaper" width="22" height="22" patternUnits="userSpaceOnUse">
-            <path d="M 22 0 L 0 0 0 22" fill="none" stroke="#2563EB" strokeWidth="1" strokeOpacity="0.4" />
-          </pattern>
-        </defs>
-        <rect x="60" y="90" width="190" height="140" fill="url(#gridPaper)" opacity="0.55" />
-        <rect x="1320" y="140" width="220" height="160" fill="url(#gridPaper)" opacity="0.5" />
-        <rect x="80" y="630" width="200" height="150" fill="url(#gridPaper)" opacity="0.45" />
-        <rect x="1100" y="680" width="200" height="140" fill="url(#gridPaper)" opacity="0.55" />
-        <rect x="780" y="40" width="150" height="100" fill="url(#gridPaper)" opacity="0.4" />
-      </svg>
       <div className="max-w-md w-full space-y-8 p-8 bg-white/95 backdrop-blur-sm rounded-lg shadow-xl relative z-10">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Logg inn</h1>
