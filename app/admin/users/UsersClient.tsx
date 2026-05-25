@@ -74,7 +74,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
 
   async function revokeInvitation(id: string, email: string) {
     if (!confirm(`Trekke tilbake invitasjonen til ${email}? Den eksisterende lenken slutter å fungere umiddelbart.`)) return
-    const res = await fetch(`/api/invitations/${id}`, { method: 'DELETE' })
+    const res = await fetch(`/api/admin/invitations/${id}`, { method: 'DELETE' })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       alert(data.error ?? 'Kunne ikke trekke tilbake invitasjonen')

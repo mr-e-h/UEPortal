@@ -5,6 +5,10 @@ import { requireAdmin } from '@/lib/api-guard'
 /**
  * Revoke (delete) a pending invitation by id. Admin-only.
  *
+ * Mounted under /api/admin/invitations to avoid a Next.js route conflict
+ * with /api/invitations/[token] (Next requires consistent slug names at
+ * the same path depth — `[id]` and `[token]` can't coexist).
+ *
  * Hard-deletes the row so the token cannot be used even if the recipient still
  * has the email link cached. Accepted invitations can also be deleted (cleans
  * up history), but the resulting user account is not touched.
