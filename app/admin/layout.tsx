@@ -18,6 +18,8 @@ import {
   BarChart2,
   Receipt,
   UserPlus,
+  Menu,
+  X,
 } from 'lucide-react'
 
 const sections = [
@@ -80,6 +82,19 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const { me, loading, clear } = useMe()
   const [search, setSearch] = useState('')
   const [pendingAccessRequests, setPendingAccessRequests] = useState(0)
+  const [mobileNavOpen, setMobileNavOpen] = useState(false)
+
+  // Close mobile drawer on every navigation — otherwise it stays open over
+  // the new page and the user has to dismiss it manually.
+  useEffect(() => { setMobileNavOpen(false) }, [pathname])
+
+  // Esc closes drawer.
+  useEffect(() => {
+    if (!mobileNavOpen) return
+    function onKey(e: KeyboardEvent) { if (e.key === 'Escape') setMobileNavOpen(false) }
+    window.addEventListener('keydown', onKey)
+    return () => window.removeEventListener('keydown', onKey)
+  }, [mobileNavOpen])
 
   // Role gate. The middleware already requires the session cookie; this
   // catches the case where a logged-in non-admin user tries to load /admin/*.
@@ -135,27 +150,32 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     return <div className="min-h-screen flex items-center justify-center text-gray-500">Laster...</div>
   }
 
-  return (
-    <div className="min-h-screen bg-[var(--color-bg-page)] flex justify-center">
-      <div className="w-full max-w-[1600px] flex min-h-screen">
-      {/* Sidebar */}
-      <aside className="w-64 flex-none bg-card border-r border-border flex flex-col">
-        <div className="h-16 flex items-center px-6 border-b border-border flex-none">
+  // Nav body shared by desktop sidebar AND mobile drawer.
+  const isUserAdmin = USER_ADMIN_ROLES.includes(me.role)
+  const navContent = (
+    <>
+      <div className="h-16 flex items-center px-6 border-b border-border flex-none justify-between">
+        <div>
           <span className="text-lg font-bold text-primary tracking-tight">MinUE</span>
           <span className="text-lg font-light text-[var(--color-text-secondary)] ml-1">Portal</span>
         </div>
+        <button
+          type="button"
+          onClick={() => setMobileNavOpen(false)}
+          className="md:hidden p-1 -mr-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]"
+          aria-label="Lukk meny"
+        >
+          <X size={18} />
+        </button>
+      </div>
 
-        <nav className="flex-1 overflow-y-auto py-4">
-          {sections.map((section) => {
-            // Drop admin-only links for non-user-admin roles (PM). If a section
-            // would end up empty, drop the section heading too so we don't
-            // render lonely labels.
-            const isUserAdmin = USER_ADMIN_ROLES.includes(me.role)
-            const visibleLinks = section.links.filter((link) =>
-              !('userAdminOnly' in link && link.userAdminOnly) || isUserAdmin,
-            )
-            if (visibleLinks.length === 0) return null
-            return (
+      <nav className="flex-1 overflow-y-auto py-4">
+        {sections.map((section) => {
+          const visibleLinks = section.links.filter((link) =>
+            !('userAdminOnly' in link && link.userAdminOnly) || isUserAdmin,
+          )
+          if (visibleLinks.length === 0) return null
+          return (
             <div key={section.label} className="mb-4">
               <p className="px-5 mb-1 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest">
                 {section.label}
@@ -187,11 +207,44 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 )
               })}
             </div>
-            )
-          })}
-        </nav>
+          )
+        })}
+      </nav>
+    </>
+  )
 
+  return (
+    <div className="min-h-screen bg-[var(--color-bg-page)] flex justify-center">
+      <div className="w-full max-w-[1600px] flex min-h-screen">
+      {/* Desktop sidebar — hidden under md breakpoint. */}
+      <aside className="hidden md:flex w-64 flex-none bg-card border-r border-border flex-col">
+        {navContent}
       </aside>
+
+      {/* Mobile drawer + backdrop. */}
+      {mobileNavOpen && (
+        <>
+          <div
+            className="md:hidden fixed inset-0 bg-black/40 z-40"
+            onClick={() => setMobileNavOpen(false)}
+            aria-hidden="true"
+          />
+          <aside className="md:hidden fixed inset-y-0 left-0 w-72 z-50 bg-card border-r border-border flex flex-col shadow-xl">
+            {navContent}
+          </aside>
+        </>
+      )}
+
+      {/* Floating hamburger — bottom-left on mobile only. Sits ABOVE most
+          floating UI but BELOW the drawer overlay. */}
+      <button
+        type="button"
+        onClick={() => setMobileNavOpen(true)}
+        className="md:hidden fixed bottom-4 left-4 z-30 bg-card border border-border rounded-full p-3 shadow-lg text-[var(--color-text-primary)] hover:bg-muted"
+        aria-label="Åpne meny"
+      >
+        <Menu size={20} />
+      </button>
 
       {/* Main area */}
       <div className="flex-1 min-w-0 flex flex-col">
@@ -210,7 +263,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 value={search}
                 onChange={(e) => setSearch(e.target.value)}
                 placeholder="Søk i prosjekter, UE, rapporter..."
-                className="w-72 px-3 py-1.5 text-sm bg-muted border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
+                className="w-full max-w-[18rem] px-3 py-1.5 text-sm bg-muted border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-[var(--color-text-primary)] placeholder:text-[var(--color-text-muted)]"
               />
             </form>
           </div>
