@@ -86,27 +86,35 @@ function LoginForm() {
     >
       {/* White wash to soften the photo so the login card stays the focal point */}
       <div className="absolute inset-0 bg-white/60" aria-hidden="true" />
-      {/* Decorative rising trend line — pure decoration, not interactive */}
+
+      {/* Grid-paper patches scattered around, same brand blue */}
       <svg
-        className="absolute inset-x-0 bottom-0 w-full h-64 pointer-events-none"
+        className="absolute inset-0 w-full h-full pointer-events-none"
+        viewBox="0 0 1600 900"
+        preserveAspectRatio="xMidYMid slice"
+        aria-hidden="true"
+      >
+        <defs>
+          <pattern id="gridPaper" width="22" height="22" patternUnits="userSpaceOnUse">
+            <path d="M 22 0 L 0 0 0 22" fill="none" stroke="#2563EB" strokeWidth="1" strokeOpacity="0.4" />
+          </pattern>
+        </defs>
+        <rect x="60" y="90" width="190" height="140" fill="url(#gridPaper)" opacity="0.55" />
+        <rect x="1320" y="140" width="220" height="160" fill="url(#gridPaper)" opacity="0.5" />
+        <rect x="80" y="630" width="200" height="150" fill="url(#gridPaper)" opacity="0.45" />
+        <rect x="1100" y="680" width="200" height="140" fill="url(#gridPaper)" opacity="0.55" />
+        <rect x="780" y="40" width="150" height="100" fill="url(#gridPaper)" opacity="0.4" />
+      </svg>
+
+      {/* Rising zigzag trend line — terminates near the top-right corner */}
+      <svg
+        className="absolute inset-x-0 bottom-0 w-full h-96 pointer-events-none"
         viewBox="0 0 1200 240"
         preserveAspectRatio="none"
         aria-hidden="true"
       >
-        <defs>
-          <linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1">
-            <stop offset="0%" stopColor="#2563EB" stopOpacity="0.25" />
-            <stop offset="100%" stopColor="#2563EB" stopOpacity="0" />
-          </linearGradient>
-        </defs>
-        {/* Soft fill under the zigzag */}
         <path
-          d="M0,215 L100,225 L180,200 L260,215 L340,185 L420,205 L500,170 L580,190 L660,150 L740,170 L820,125 L900,150 L980,100 L1060,125 L1140,70 L1200,90 L1200,240 L0,240 Z"
-          fill="url(#trendFill)"
-        />
-        {/* Main jagged trend line — straight segments with peaks and dips, rising overall */}
-        <path
-          d="M0,215 L100,225 L180,200 L260,215 L340,185 L420,205 L500,170 L580,190 L660,150 L740,170 L820,125 L900,150 L980,100 L1060,125 L1140,70 L1200,90"
+          d="M0,225 L100,235 L180,210 L260,225 L340,185 L420,205 L500,165 L580,185 L660,135 L740,155 L820,100 L900,125 L980,70 L1060,90 L1140,25 L1200,10"
           stroke="#2563EB"
           strokeWidth="3"
           fill="none"
