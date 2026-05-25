@@ -1,14 +1,40 @@
-import { readJson } from '@/lib/data'
+import { redirect } from 'next/navigation'
+import Link from 'next/link'
+import { getSupabaseAdmin } from '@/lib/supabase'
+import { getSession } from '@/lib/auth'
+import { getProjectScope } from '@/lib/api-guard'
+import { ADMIN_ROLES } from '@/lib/roles'
 import type { Project, WeeklyReport, ChangeOrder, Subcontractor } from '@/types'
 import { formatWeekLabel } from '@/lib/utils/weeks'
-import Link from 'next/link'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 
-export default async function SearchPage({ searchParams }: { searchParams: { q?: string } }) {
-  const q = (searchParams.q ?? '').toLowerCase().trim()
+export const dynamic = 'force-dynamic'
 
-  if (!q) {
+const RESULT_LIMIT = 25
+
+function escapeForIlike(s: string): string {
+  // PostgREST ilike uses % wildcards and treats backslash as escape — strip
+  // wildcards from user input so a query like "100%" doesn't act like a
+  // catch-all.
+  return s.replace(/[%_\\]/g, (m) => `\\${m}`)
+}
+
+/**
+ * Global search across projects / subs / weekly reports / change orders.
+ *
+ * Rewritten to use Postgres `ilike` against indexable columns instead of
+ * pulling whole tables into Node and filtering with `.includes()`. PM-scope
+ * is enforced server-side so a PM never sees rows for projects outside
+ * their portfolio.
+ */
+export default async function SearchPage({ searchParams }: { searchParams: { q?: string } }) {
+  const me = await getSession()
+  if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
+
+  const rawQ = (searchParams.q ?? '').trim()
+
+  if (!rawQ) {
     return (
       <div className="p-6">
         <h1 className="text-lg font-semibold text-[var(--color-text-primary)] mb-2">Søk</h1>
@@ -17,42 +43,91 @@ export default async function SearchPage({ searchParams }: { searchParams: { q?:
     )
   }
 
-  const [allProjects, allSubs, allWeekly, allCOs] = await Promise.all([
-    readJson<Project>('projects.json'),
-    readJson<Subcontractor>('subcontractors.json'),
-    readJson<WeeklyReport>('weekly_reports.json'),
-    readJson<ChangeOrder>('change_orders.json'),
+  const q = escapeForIlike(rawQ)
+  const like = `%${q}%`
+  const sb = getSupabaseAdmin()
+  const scope = await getProjectScope(me)
+
+  // Projects — 3 columns OR-matched via PostgREST `.or()` syntax.
+  let projectQ = sb
+    .from('projects')
+    .select('id, name, project_number, customer, status, deleted')
+    .neq('deleted', true)
+    .or(`name.ilike.${like},project_number.ilike.${like},customer.ilike.${like}`)
+    .limit(RESULT_LIMIT)
+  if (scope) projectQ = projectQ.in('id', Array.from(scope))
+  const { data: projData } = await projectQ
+  const projects = (projData ?? []) as Project[]
+
+  // Subcontractors — global (PMs share the UE catalog).
+  const { data: subData } = await sb
+    .from('subcontractors')
+    .select('id, company_name, contact_person, email')
+    .or(`company_name.ilike.${like},contact_person.ilike.${like},email.ilike.${like}`)
+    .limit(RESULT_LIMIT)
+  const subcontractors = (subData ?? []) as Subcontractor[]
+
+  // Weekly reports — match via project name lookup. We need scoped project
+  // ids first so the SQL can stay one query.
+  let scopedProjectIds: string[] | null = null
+  if (scope) {
+    scopedProjectIds = Array.from(scope)
+  } else {
+    // Need a small id list of name-matching projects for the FK join below.
+    // For non-PM roles this is everything matching the search.
+    const { data: nameHits } = await sb
+      .from('projects')
+      .select('id')
+      .or(`name.ilike.${like},project_number.ilike.${like}`)
+      .neq('deleted', true)
+    scopedProjectIds = (nameHits ?? []).map((p) => p.id as string)
+  }
+
+  // Use the matched projects as the join key for reports/COs since searching
+  // weekly_reports text-fields directly isn't very useful (the descriptive
+  // text lives on the parent project).
+  let weeklyReports: WeeklyReport[] = []
+  let changeOrders: ChangeOrder[] = []
+  if (scopedProjectIds.length > 0) {
+    const [wrRes, coRes] = await Promise.all([
+      sb.from('weekly_reports')
+        .select('*')
+        .in('project_id', scopedProjectIds)
+        .neq('status', 'draft')
+        .order('submitted_at', { ascending: false })
+        .limit(RESULT_LIMIT),
+      sb.from('change_orders')
+        .select('*')
+        .in('project_id', scopedProjectIds)
+        .neq('status', 'draft')
+        .order('submitted_at', { ascending: false })
+        .limit(RESULT_LIMIT),
+    ])
+    weeklyReports = (wrRes.data ?? []) as WeeklyReport[]
+    changeOrders = (coRes.data ?? []) as ChangeOrder[]
+  }
+
+  // Project + sub maps for label rendering — only what we need.
+  const projectIdsForLabels = new Set([
+    ...projects.map((p) => p.id),
+    ...weeklyReports.map((r) => r.project_id),
+    ...changeOrders.map((co) => co.project_id),
   ])
-
-  const projects = allProjects.filter((p) => !p.deleted && (
-    p.name.toLowerCase().includes(q) ||
-    p.project_number?.toLowerCase().includes(q) ||
-    p.customer?.toLowerCase().includes(q)
-  ))
-
-  const subcontractors = allSubs.filter((s) =>
-    s.company_name.toLowerCase().includes(q) ||
-    s.contact_person?.toLowerCase().includes(q) ||
-    s.email?.toLowerCase().includes(q)
-  )
-
-  const subMap = new Map(allSubs.map((s) => [s.id, s]))
-  const projMap = new Map(allProjects.filter((p) => !p.deleted).map((p) => [p.id, p]))
-
-  const weeklyReports = allWeekly
-    .filter((r) => r.status !== 'draft' && (
-      projMap.get(r.project_id)?.name.toLowerCase().includes(q) ||
-      subMap.get(r.subcontractor_id)?.company_name.toLowerCase().includes(q) ||
-      formatWeekLabel(r.year, r.week_number).toLowerCase().includes(q)
-    ))
-    .slice(0, 10)
-
-  const changeOrders = allCOs
-    .filter((o) => o.status !== 'draft' && (
-      projMap.get(o.project_id)?.name.toLowerCase().includes(q) ||
-      subMap.get(o.subcontractor_id)?.company_name.toLowerCase().includes(q)
-    ))
-    .slice(0, 10)
+  const subIdsForLabels = new Set([
+    ...subcontractors.map((s) => s.id),
+    ...weeklyReports.map((r) => r.subcontractor_id),
+    ...changeOrders.map((co) => co.subcontractor_id),
+  ])
+  const [projLabelRes, subLabelRes] = await Promise.all([
+    projectIdsForLabels.size > 0
+      ? sb.from('projects').select('id, name, project_number, customer, status').in('id', Array.from(projectIdsForLabels))
+      : Promise.resolve({ data: [] as Project[] }),
+    subIdsForLabels.size > 0
+      ? sb.from('subcontractors').select('id, company_name').in('id', Array.from(subIdsForLabels))
+      : Promise.resolve({ data: [] as Subcontractor[] }),
+  ])
+  const projMap = new Map(((projLabelRes.data ?? []) as Project[]).map((p) => [p.id, p]))
+  const subMap = new Map(((subLabelRes.data ?? []) as Subcontractor[]).map((s) => [s.id, s]))
 
   const total = projects.length + subcontractors.length + weeklyReports.length + changeOrders.length
 
@@ -60,7 +135,7 @@ export default async function SearchPage({ searchParams }: { searchParams: { q?:
     <div className="p-6 space-y-6">
       <div>
         <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">
-          Søkeresultater for &ldquo;{searchParams.q}&rdquo;
+          Søkeresultater for &ldquo;{rawQ}&rdquo;
         </h1>
         <p className="text-sm text-[var(--color-text-muted)] mt-0.5">{total} treff</p>
       </div>
@@ -158,7 +233,7 @@ export default async function SearchPage({ searchParams }: { searchParams: { q?:
 
       {total === 0 && (
         <div className="py-16 text-center text-sm text-[var(--color-text-muted)]">
-          Ingen treff for &ldquo;{searchParams.q}&rdquo;
+          Ingen treff for &ldquo;{rawQ}&rdquo;
         </div>
       )}
     </div>

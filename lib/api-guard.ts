@@ -1,4 +1,5 @@
 import { NextResponse } from 'next/server'
+import { cache } from 'react'
 import { getSession } from './auth'
 import { getSupabaseAdmin } from './supabase'
 import { ADMIN_ROLES, SUB_ROLES } from './roles'
@@ -84,14 +85,14 @@ export function isSub(user: User): boolean {
  *   const scope = await getProjectScope(user)
  *   if (scope) query.in('project_id', Array.from(scope))
  */
-export async function getProjectScope(user: User): Promise<Set<string> | null> {
+export const getProjectScope = cache(async (user: User): Promise<Set<string> | null> => {
   if (user.role !== 'project_manager') return null
   const { data } = await getSupabaseAdmin()
     .from('project_managers')
     .select('project_id')
     .eq('user_id', user.id)
   return new Set((data ?? []).map((r: { project_id: string }) => r.project_id))
-}
+})
 
 /**
  * Write-side gate. Used by POST/PUT/DELETE handlers to refuse mutations

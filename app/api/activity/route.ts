@@ -13,12 +13,21 @@ export async function GET(request: NextRequest) {
   const entityType = searchParams.get('entity_type')
 
   // Filter at the DB layer so we don't load the entire activity log.
-  let q = getSupabaseAdmin().from('activity_log').select('*').order('created_at', { ascending: true })
+  // Bounded LIMIT: the UI only shows recent entries; an unbounded scan
+  // would grow forever as the audit log accumulates.
+  const limit = Math.min(parseInt(searchParams.get('limit') ?? '200', 10) || 200, 500)
+  let q = getSupabaseAdmin()
+    .from('activity_log')
+    .select('*')
+    .order('created_at', { ascending: false })
+    .limit(limit)
   if (entityId) q = q.eq('entity_id', entityId)
   if (entityType) q = q.eq('entity_type', entityType)
   const { data, error } = await q
   if (error) return NextResponse.json({ error: error.message }, { status: 500 })
-  return NextResponse.json(data ?? [])
+  // Callers expected oldest-first historically; sort the windowed result.
+  const rows = (data ?? []) as ActivityEntry[]
+  return NextResponse.json(rows.slice().reverse())
 }
 
 export async function POST(request: NextRequest) {

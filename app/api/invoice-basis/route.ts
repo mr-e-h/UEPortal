@@ -39,6 +39,9 @@ export async function GET(request: NextRequest) {
   const blMap = new Map(budgetLines.map((bl) => [bl.id, bl]))
   const subMap = new Map(subcontractors.map((s) => [s.id, s]))
   const productMap = new Map(products.map((p) => [p.id, p]))
+  // weeklyReportMap saves an O(reports) scan per approved line — the inner
+  // .find() call was the hottest part of this endpoint at scale.
+  const wrMap = new Map(weeklyReports.map((r) => [r.id, r]))
 
   // PM scope: a project_manager only sees fakturagrunnlag for their own
   // assigned projects. main / company / company-admin see everything
@@ -119,7 +122,7 @@ export async function GET(request: NextRequest) {
   for (const line of approvedLines) {
     const bl = blMap.get(line.project_budget_line_id)
     if (!bl) continue
-    const report = weeklyReports.find((r) => r.id === line.weekly_report_id)
+    const report = wrMap.get(line.weekly_report_id)
     if (!report) continue
     const proj = projectMap.get(bl.project_id)
     if (!proj) continue

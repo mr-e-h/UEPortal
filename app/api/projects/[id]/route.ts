@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
+import { requireAdmin, ensureProjectWritable, getProjectScope } from '@/lib/api-guard'
 import type { Project } from '@/types'
 
 /**
@@ -12,6 +12,35 @@ const EDITABLE_FIELDS: (keyof Project)[] = [
   'name', 'project_number', 'order_number', 'customer', 'county',
   'status', 'start_date', 'end_date',
 ]
+
+/**
+ * Fetch one project by id. Used by the admin project detail page so it
+ * doesn't have to download the full /api/projects list just to .find()
+ * one row — which would scale with total project count instead of being
+ * a constant lookup.
+ */
+export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
+  const { data, error } = await getSupabaseAdmin()
+    .from('projects')
+    .select('*')
+    .eq('id', params.id)
+    .neq('deleted', true)
+    .maybeSingle<Project>()
+  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+  if (!data) return NextResponse.json({ error: 'Prosjekt ikke funnet' }, { status: 404 })
+
+  // PM-scope gate: 404 instead of 403 so URL-tampering doesn't reveal
+  // which ids exist outside the PM's portfolio.
+  const scope = await getProjectScope(auth.user)
+  if (scope && !scope.has(data.id)) {
+    return NextResponse.json({ error: 'Prosjekt ikke funnet' }, { status: 404 })
+  }
+
+  return NextResponse.json(data)
+}
 
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdmin()

@@ -31,16 +31,21 @@ export async function GET(request: NextRequest) {
   const from = searchParams.get('from')
   const to = searchParams.get('to')
 
-  const projects = await readJson<Project>('projects.json')
-  const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
-  const weeklyReports = await readJson<WeeklyReport>('weekly_reports.json')
-  const weeklyReportLines = await readJson<WeeklyReportLine>('weekly_report_lines.json')
-  const changeOrders = await readJson<ChangeOrder>('change_orders.json')
-  const products = await readJson<Product>('products.json')
+  // Parallel reads — was 6 sequential awaits.
+  const [projects, budgetLines, weeklyReports, weeklyReportLines, changeOrders, products] = await Promise.all([
+    readJson<Project>('projects.json'),
+    readJson<ProjectBudgetLine>('project_budget_lines.json'),
+    readJson<WeeklyReport>('weekly_reports.json'),
+    readJson<WeeklyReportLine>('weekly_report_lines.json'),
+    readJson<ChangeOrder>('change_orders.json'),
+    readJson<Product>('products.json'),
+  ])
 
   const projectMap = new Map(projects.map((p) => [p.id, p]))
   const blMap = new Map(budgetLines.map((bl) => [bl.id, bl]))
   const productMap = new Map(products.map((p) => [p.id, p]))
+  // O(1) lookup instead of .find() inside the line loop below.
+  const wrMap = new Map(weeklyReports.map((r) => [r.id, r]))
 
   // Approved weekly reports for this UE
   let approvedReports = weeklyReports.filter(
@@ -99,7 +104,7 @@ export async function GET(request: NextRequest) {
   for (const line of approvedLines) {
     const bl = blMap.get(line.project_budget_line_id)
     if (!bl) continue
-    const report = weeklyReports.find((r) => r.id === line.weekly_report_id)
+    const report = wrMap.get(line.weekly_report_id)
     if (!report) continue
     const proj = projectMap.get(bl.project_id)
     if (!proj || proj.deleted) continue

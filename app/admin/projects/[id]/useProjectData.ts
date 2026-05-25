@@ -59,7 +59,10 @@ export function useProjectData(id: string) {
 
   const fetchAll = useCallback(async () => {
     const responses = await Promise.all([
-      fetch('/api/projects'),
+      // Targeted single-project lookup — previously we fetched the whole
+      // /api/projects list and ran .find(p.id) in JS, which scaled with
+      // total project count instead of being O(1).
+      fetch(`/api/projects/${id}`),
       fetch('/api/products'),
       fetch(`/api/budget-lines?project_id=${id}`),
       fetch(`/api/report-lines?project_id=${id}`),
@@ -79,11 +82,13 @@ export function useProjectData(id: string) {
       return
     }
 
-    const [allProj, prods, bls, rls, pSubs, subs, cos, ics, wrls, sps, ms, bv, mp] = await Promise.all(
+    const [proj, prods, bls, rls, pSubs, subs, cos, ics, wrls, sps, ms, bv, mp] = await Promise.all(
       responses.map((r) => r.json())
     )
 
-    setProject(safeArr<Project>(allProj).find((p) => p.id === id) ?? null)
+    // /api/projects/[id] returns the row directly (or { error }) — guard
+    // against the error shape so a 404 doesn't crash setProject().
+    setProject(proj && typeof proj === 'object' && 'id' in proj ? proj as Project : null)
     setAllProducts(safeArr(prods))
     setBudgetLines(safeArr(bls))
     setReportLines(safeArr(rls))
