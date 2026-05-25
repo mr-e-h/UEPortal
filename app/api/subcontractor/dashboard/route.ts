@@ -178,9 +178,36 @@ export async function GET(request: NextRequest) {
       }
     })
 
+  // Per-project pending counts — power the "antall ubehandlede" badges in
+  // the Mine prosjekter table on the dashboard.
+  const pendingCOByProject = new Map<string, number>()
+  for (const co of allChangeOrders) {
+    if (co.status !== 'pending') continue
+    pendingCOByProject.set(co.project_id, (pendingCOByProject.get(co.project_id) ?? 0) + 1)
+  }
+  const pendingWRByProject = new Map<string, number>()
+  for (const r of myReports) {
+    if (r.status !== 'submitted') continue
+    pendingWRByProject.set(r.project_id, (pendingWRByProject.get(r.project_id) ?? 0) + 1)
+  }
+
+  // Compact assigned-project list for the project-picker modal: every project
+  // the UE is linked to, with name + number + active flag + pending counts.
+  // Saves the picker an extra round-trip to /api/subcontractor/projects.
+  const myProjectsLite = projects
+    .filter((p) => projectIds.has(p.id))
+    .map((p) => ({
+      id: p.id,
+      name: p.name,
+      project_number: p.project_number,
+      pending_em_count: pendingCOByProject.get(p.id) ?? 0,
+      pending_weekly_count: pendingWRByProject.get(p.id) ?? 0,
+    }))
+
   return NextResponse.json({
     kpi: { ordreverdi, fakturert, fakturerbart, gjenstaaende },
     pendingChangeOrders,
     pendingWeeklyReports,
+    projects: myProjectsLite,
   })
 }

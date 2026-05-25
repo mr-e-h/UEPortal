@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
-import { useRouter, useParams } from 'next/navigation'
+import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Plus, TrendingUp, CheckCircle, Clock, BarChart3, ChevronDown } from 'lucide-react'
 import type { WeeklyReport, WeeklyReportLine, ChangeOrder, GanttMilestone } from '@/types'
 import { getCurrentWeek, formatWeekLabel } from '@/lib/utils/weeks'
@@ -65,6 +65,7 @@ type BudgetLineOption = Pick<BudgetLineWithProduct, 'product_id' | 'product_name
 export default function SubcontractorProjectPage() {
   const router = useRouter()
   const { id } = useParams<{ id: string }>()
+  const searchParams = useSearchParams()
   const { me } = useMe()
   const subcontractorId = me?.subcontractor_id ?? ''
   const [project, setProject] = useState<ProjectWithLines | null>(null)
@@ -84,6 +85,17 @@ export default function SubcontractorProjectPage() {
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [expandedData, setExpandedData] = useState<EnrichedReport | null>(null)
   const [showEMModal, setShowEMModal] = useState(false)
+
+  // Dashboard quick action: when the picker sends us here with ?action=new-em,
+  // auto-open the EM modal. Strip the param afterwards so a page refresh
+  // doesn't pop it back open.
+  useEffect(() => {
+    if (searchParams.get('action') !== 'new-em') return
+    setShowEMModal(true)
+    const url = new URL(window.location.href)
+    url.searchParams.delete('action')
+    window.history.replaceState({}, '', url.toString())
+  }, [searchParams])
   const [editingDraft, setEditingDraft] = useState<UEChangeOrder | null>(null)
   const [changeOrders, setChangeOrders] = useState<UEChangeOrder[]>([])
   const [milestones, setMilestones] = useState<GanttMilestone[]>([])

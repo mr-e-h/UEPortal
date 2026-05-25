@@ -3,7 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Wallet, Clock, FileText, CheckCircle2 } from 'lucide-react'
+import { Wallet, Clock, FileText, CheckCircle2, Send, Plus } from 'lucide-react'
+import ProjectPickerModal from '@/components/subcontractor/ProjectPickerModal'
 import type { ChangeOrder, GanttMilestone } from '@/types'
 import type { BadgeStatus } from '@/components/ui/Badge'
 import Badge from '@/components/ui/Badge'
@@ -41,6 +42,14 @@ type ProjectWithLines = {
 
 type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'>
 
+interface PickerProjectLite {
+  id: string
+  name: string
+  project_number: string
+  pending_em_count: number
+  pending_weekly_count: number
+}
+
 interface DashboardPayload {
   kpi: {
     ordreverdi: number
@@ -71,12 +80,14 @@ interface DashboardPayload {
     total_cost: number
     submitted_at: string | null
   }>
+  projects: PickerProjectLite[]
 }
 
 const EMPTY_DASHBOARD: DashboardPayload = {
   kpi: { ordreverdi: 0, fakturert: 0, fakturerbart: 0, gjenstaaende: 0 },
   pendingChangeOrders: [],
   pendingWeeklyReports: [],
+  projects: [],
 }
 
 type ProjectRow = {
@@ -90,6 +101,9 @@ type ProjectRow = {
   line_count: number
   contact: { full_name: string; email: string } | null
   contact_label: string
+  pending_em_count: number
+  pending_weekly_count: number
+  pending_total: number
 }
 
 export default function SubcontractorPage() {
@@ -99,6 +113,7 @@ export default function SubcontractorPage() {
   const [milestones, setMilestones] = useState<(GanttMilestone & { project_name?: string })[]>([])
   const [dashboard, setDashboard] = useState<DashboardPayload>(EMPTY_DASHBOARD)
   const [loading, setLoading] = useState(true)
+  const [picker, setPicker] = useState<'new-em' | 'weekly-report' | null>(null)
   const { me } = useMe()
   const userName = me?.full_name ?? ''
 
@@ -152,9 +167,15 @@ export default function SubcontractorPage() {
       return acc
     }, {})
 
+  // Index dashboard.projects by id so we can look up pending counts per row.
+  const pendingByProject = new Map(dashboard.projects.map((p) => [p.id, p]))
+
   const projectRows: ProjectRow[] = projects.map((p) => {
     const pm = p.project_managers?.[0] ?? null
     const extra = p.project_managers && p.project_managers.length > 1 ? ` (+${p.project_managers.length - 1})` : ''
+    const pending = pendingByProject.get(p.id)
+    const emCount = pending?.pending_em_count ?? 0
+    const wrCount = pending?.pending_weekly_count ?? 0
     return {
       id: p.id,
       name: p.name,
@@ -166,6 +187,9 @@ export default function SubcontractorPage() {
       line_count: p.budget_lines.length,
       contact: pm,
       contact_label: pm ? `${pm.full_name}${extra}` : '–',
+      pending_em_count: emCount,
+      pending_weekly_count: wrCount,
+      pending_total: emCount + wrCount,
     }
   })
 
@@ -194,6 +218,26 @@ export default function SubcontractorPage() {
           {row.approved_em_value > 0 ? fmt(row.approved_em_value) : '–'}
         </span>
       ),
+    },
+    {
+      key: 'pending_total',
+      label: 'Ubehandlet',
+      sortable: true,
+      getValue: (row) => row.pending_total,
+      render: (row) => row.pending_total > 0 ? (
+        <div className="flex items-center gap-1">
+          {row.pending_em_count > 0 && (
+            <span className="inline-flex items-center gap-1 text-[10px] bg-amber-100 text-amber-700 px-1.5 py-0.5 rounded-full font-medium" title={`${row.pending_em_count} ventende EM`}>
+              <FileText size={9} /> {row.pending_em_count}
+            </span>
+          )}
+          {row.pending_weekly_count > 0 && (
+            <span className="inline-flex items-center gap-1 text-[10px] bg-blue-100 text-blue-700 px-1.5 py-0.5 rounded-full font-medium" title={`${row.pending_weekly_count} ventende ukerapport`}>
+              <Clock size={9} /> {row.pending_weekly_count}
+            </span>
+          )}
+        </div>
+      ) : <span className="text-[var(--color-text-muted)]">–</span>,
     },
     {
       key: 'contact_label',
@@ -239,12 +283,30 @@ export default function SubcontractorPage() {
 
   return (
     <div className="p-6 space-y-6">
-      {/* Greeting */}
-      <div>
-        <p className="text-xs text-[var(--color-text-muted)] capitalize">{today}</p>
-        <h1 className="text-xl font-bold text-[var(--color-text-primary)] mt-0.5">
-          {userName ? `Hei, ${userName.split(' ')[0]}` : 'Oversikt'}
-        </h1>
+      {/* Greeting + primary quick actions */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <p className="text-xs text-[var(--color-text-muted)] capitalize">{today}</p>
+          <h1 className="text-xl font-bold text-[var(--color-text-primary)] mt-0.5">
+            {userName ? `Hei, ${userName.split(' ')[0]}` : 'Oversikt'}
+          </h1>
+        </div>
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setPicker('weekly-report')}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors shadow-sm"
+          >
+            <Send size={14} /> Send ukesrapport
+          </button>
+          <button
+            type="button"
+            onClick={() => setPicker('new-em')}
+            className="inline-flex items-center gap-1.5 px-3 py-2 text-sm font-medium bg-card border border-border text-[var(--color-text-primary)] rounded-lg hover:bg-muted transition-colors"
+          >
+            <Plus size={14} /> Endringsmelding
+          </button>
+        </div>
       </div>
 
       {/* KPI cards — sub-focused economy snapshot */}
@@ -445,6 +507,14 @@ export default function SubcontractorPage() {
               })}
           </div>
         </Card>
+      )}
+
+      {picker && (
+        <ProjectPickerModal
+          projects={dashboard.projects}
+          action={picker}
+          onClose={() => setPicker(null)}
+        />
       )}
     </div>
   )
