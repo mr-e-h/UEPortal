@@ -3,7 +3,7 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { Pencil, Mail, X, Search, Download, Trash2 } from 'lucide-react'
+import { Pencil, Mail, X, Search, Download, Trash2, PowerOff, Power } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Field from '@/components/ui/Field'
@@ -118,6 +118,58 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
     if (u.email === SUPER_ADMIN_EMAIL) return false
     if (me && u.id === me.real_id) return false
     return true
+  }
+
+  // Same guard as delete: super-admin and self can't be locked out.
+  // (Locking yourself out from the admin UI would immediately invalidate
+  // the cookie running the request and be confusing; deactivating super-
+  // admin would lose the only view-as-capable account.)
+  function canToggleActive(u: SafeUser): boolean {
+    if (u.email === SUPER_ADMIN_EMAIL) return false
+    if (me && u.id === me.real_id) return false
+    return true
+  }
+
+  async function toggleActive(u: SafeUser): Promise<void> {
+    const next = !u.active
+    // Optimistic flip so the click feels instant; revert + alert on failure.
+    setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, active: next } : x)))
+    const res = await fetch(`/api/users/${u.id}`, {
+      method: 'PATCH',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ active: next }),
+    })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, active: u.active } : x)))
+      alert(data.error ?? 'Kunne ikke endre status')
+      return
+    }
+    // Server cleared the user's sessions on deactivation already; refresh
+    // server-rendered siblings so badges/lists pick up the new state.
+    router.refresh()
+  }
+
+  async function bulkSetActive(ids: string[], next: boolean): Promise<void> {
+    if (ids.length === 0) return
+    const failures: string[] = []
+    for (const id of ids) {
+      const target = users.find((u) => u.id === id)
+      if (!target || !canToggleActive(target)) continue
+      const res = await fetch(`/api/users/${id}`, {
+        method: 'PATCH',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ active: next }),
+      })
+      if (res.ok) {
+        setUsers((prev) => prev.map((x) => (x.id === id ? { ...x, active: next } : x)))
+      } else {
+        const data = await res.json().catch(() => ({}))
+        failures.push(`${target.full_name}: ${data.error ?? 'feilet'}`)
+      }
+    }
+    router.refresh()
+    if (failures.length > 0) alert('Noen ble ikke endret:\n' + failures.join('\n'))
   }
 
   async function performDelete(ids: string[]): Promise<void> {
@@ -298,19 +350,40 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
             {selected.size > 0 && <span className="text-primary">· {selected.size} valgt</span>}
           </div>
           {selected.size > 0 && (() => {
-            const deletable = Array.from(selected)
+            const selectedUsers = Array.from(selected)
               .map((id) => users.find((u) => u.id === id))
-              .filter((u): u is SafeUser => !!u && canDelete(u))
-              .map((u) => u.id)
+              .filter((u): u is SafeUser => !!u)
+            const togglable = selectedUsers.filter(canToggleActive)
+            const toDeactivate = togglable.filter((u) => u.active).map((u) => u.id)
+            const toActivate = togglable.filter((u) => !u.active).map((u) => u.id)
+            const deletable = selectedUsers.filter(canDelete).map((u) => u.id)
             return (
-              <button
-                onClick={() => setConfirmDelete({ kind: 'bulk', ids: deletable })}
-                disabled={deletable.length === 0}
-                className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
-                title={deletable.length === 0 ? 'Ingen av de valgte kan slettes (super-admin / deg selv)' : undefined}
-              >
-                <Trash2 size={13} /> Slett {deletable.length} valgte
-              </button>
+              <>
+                {toDeactivate.length > 0 && (
+                  <button
+                    onClick={() => bulkSetActive(toDeactivate, false)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-amber-500 hover:bg-amber-600 text-white rounded-lg font-medium"
+                  >
+                    <PowerOff size={13} /> Steng ute {toDeactivate.length}
+                  </button>
+                )}
+                {toActivate.length > 0 && (
+                  <button
+                    onClick={() => bulkSetActive(toActivate, true)}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-green-600 hover:bg-green-700 text-white rounded-lg font-medium"
+                  >
+                    <Power size={13} /> Aktiver {toActivate.length}
+                  </button>
+                )}
+                <button
+                  onClick={() => setConfirmDelete({ kind: 'bulk', ids: deletable })}
+                  disabled={deletable.length === 0}
+                  className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs bg-red-600 hover:bg-red-700 text-white rounded-lg font-medium disabled:opacity-50 disabled:cursor-not-allowed"
+                  title={deletable.length === 0 ? 'Ingen av de valgte kan slettes (super-admin / deg selv)' : undefined}
+                >
+                  <Trash2 size={13} /> Slett {deletable.length} valgte
+                </button>
+              </>
             )
           })()}
           <button
@@ -366,6 +439,18 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
                         >
                           <Pencil size={13} />
                         </Link>
+                        {canToggleActive(u) && (
+                          <button
+                            type="button"
+                            onClick={() => toggleActive(u)}
+                            className={u.active
+                              ? 'text-[var(--color-text-muted)] hover:text-amber-600'
+                              : 'text-amber-500 hover:text-green-600'}
+                            title={u.active ? 'Steng ute (sett inaktiv)' : 'Aktiver bruker'}
+                          >
+                            {u.active ? <PowerOff size={13} /> : <Power size={13} />}
+                          </button>
+                        )}
                         {canDelete(u) && (
                           <button
                             type="button"
