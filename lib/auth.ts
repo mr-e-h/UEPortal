@@ -98,13 +98,17 @@ export async function clearSession(): Promise<void> {
 }
 
 /**
- * Wipe every active session for the user — used after password change/reset
- * so a stolen cookie cannot continue to authenticate.
+ * Wipe every active session for the given user — used after a password
+ * change/reset or when an admin deactivates/deletes someone, so any stolen
+ * cookie elsewhere stops authenticating.
+ *
+ * NOTE: this is targeted at `userId` ONLY. It does NOT touch the caller's
+ * own cookie. When an admin uses this against another user, the admin stays
+ * logged in. When a user calls it against themselves (e.g. self-password
+ * change), the handler should also call `clearSession()` if it wants the
+ * caller's cookie cleared.
  */
 export async function clearAllSessionsForUser(userId: string): Promise<void> {
   const sb = getSupabaseAdmin()
   await sb.from('sessions').delete().eq('user_id', userId)
-  // Also drop the caller's own cookie so this request flow stops being logged in.
-  const cookieStore = await cookies()
-  cookieStore.delete(SESSION_COOKIE)
 }

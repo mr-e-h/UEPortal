@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { getSession, clearAllSessionsForUser } from '@/lib/auth'
+import { getSession, clearAllSessionsForUser, clearSession } from '@/lib/auth'
 import type { User } from '@/types'
 
 const BCRYPT_COST = 12
@@ -40,7 +40,11 @@ export async function POST(request: NextRequest) {
   const { error } = await sb.from('users').update({ password: hashed }).eq('id', session.id)
   if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
 
-  // Invalidate every session for this user so a stolen cookie elsewhere stops working.
+  // Invalidate every session for this user so a stolen cookie elsewhere stops
+  // working — then drop the caller's own cookie too. (The DB rows are gone
+  // already so the existing cookie would be invalid anyway; clearing it just
+  // saves the client from a confused "logged-in-but-401" round trip.)
   await clearAllSessionsForUser(session.id)
+  await clearSession()
   return NextResponse.json({ ok: true })
 }
