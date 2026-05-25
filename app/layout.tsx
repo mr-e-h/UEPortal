@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import { Inter } from "next/font/google";
 import "./globals.css";
+import ViewAsBar from "@/components/ViewAsBar";
 
 const inter = Inter({
   subsets: ['latin'],
@@ -21,6 +22,7 @@ export default function RootLayout({
     <html lang="no">
       <body className={`${inter.variable} font-sans antialiased`}>
         {children}
+        <ViewAsBar />
       </body>
     </html>
   );

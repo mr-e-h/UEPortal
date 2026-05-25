@@ -39,7 +39,11 @@ export default function CompanyLayout({ children }: { children: React.ReactNode 
 
   useEffect(() => {
     if (loading) return
-    if (!me || me.role !== 'company') router.replace('/login')
+    if (!me) { router.replace('/login'); return }
+    if (me.role === 'company') return
+    if (me.role === 'sub') { router.replace('/subcontractor'); return }
+    if (me.role === 'main' || me.role === 'project_manager') { router.replace('/admin'); return }
+    router.replace('/login')
   }, [loading, me, router])
 
   async function handleLogout() {

@@ -78,11 +78,16 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const [pendingAccessRequests, setPendingAccessRequests] = useState(0)
 
   // Role gate. The middleware already requires the session cookie; this
-  // catches the case where a logged-in UE user tries to load /admin/* —
-  // they get bounced to /login (their portal is elsewhere).
+  // catches the case where a logged-in non-admin user tries to load /admin/*.
+  // Redirect to their actual portal — login if no session, sub portal if UE,
+  // company portal if company. (When the super-admin "views as sub" the
+  // effective role is 'sub' and this routes them to /subcontractor — exactly
+  // what the view-as dropdown promises.)
   useEffect(() => {
     if (loading) return
-    if (!me || (me.role !== 'project_manager' && me.role !== 'main' && me.role !== 'company')) {
+    if (!me) { router.replace('/login'); return }
+    if (me.role === 'sub') { router.replace('/subcontractor'); return }
+    if (me.role !== 'project_manager' && me.role !== 'main' && me.role !== 'company') {
       router.replace('/login')
     }
   }, [loading, me, router])

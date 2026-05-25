@@ -6,10 +6,20 @@ import type { UserRole } from '@/types'
 export interface Me {
   id: string
   email: string
+  /**
+   * The role currently in effect — reflects the view-as override when the
+   * super-admin has one active. Use this for UI/routing decisions.
+   */
   role: UserRole
   full_name: string
   subcontractor_id: string | null
   active: boolean
+  /** The user's actual stored role, independent of any view-as override. */
+  real_role: UserRole
+  /** Whether the dropdown should render (hardcoded super-admin only). */
+  can_view_as: boolean
+  /** The current view-as role, or null when not viewing-as. */
+  view_as: UserRole | null
 }
 
 let cached: Me | null = null

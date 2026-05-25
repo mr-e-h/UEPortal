@@ -38,13 +38,16 @@ export default function SubcontractorLayout({ children }: { children: React.Reac
   const { me, loading, clear } = useMe()
 
   // Server-side middleware already gates /subcontractor on cookie presence.
-  // This is the role-level check: if the logged-in user isn't a UE, kick
-  // them back to /login (their dashboard isn't here).
+  // Role-level check: bounce non-subs back to their appropriate portal.
+  // (When the super-admin "views as sub" their effective role is 'sub' so
+  // they land here normally; clearing view-as sends them back to /admin.)
   useEffect(() => {
     if (loading) return
-    if (!me || me.role !== 'sub') {
-      router.replace('/login')
-    }
+    if (!me) { router.replace('/login'); return }
+    if (me.role === 'sub') return
+    if (me.role === 'company') { router.replace('/company'); return }
+    if (me.role === 'main' || me.role === 'project_manager') { router.replace('/admin'); return }
+    router.replace('/login')
   }, [loading, me, router])
 
   async function handleLogout() {
