@@ -86,6 +86,34 @@ function LoginForm() {
     >
       {/* White wash to soften the photo so the login card stays the focal point */}
       <div className="absolute inset-0 bg-white/60" aria-hidden="true" />
+      {/* Decorative rising trend line — pure decoration, not interactive */}
+      <svg
+        className="absolute inset-x-0 bottom-0 w-full h-64 pointer-events-none"
+        viewBox="0 0 1200 240"
+        preserveAspectRatio="none"
+        aria-hidden="true"
+      >
+        <defs>
+          <linearGradient id="trendFill" x1="0" x2="0" y1="0" y2="1">
+            <stop offset="0%" stopColor="#2563EB" stopOpacity="0.25" />
+            <stop offset="100%" stopColor="#2563EB" stopOpacity="0" />
+          </linearGradient>
+        </defs>
+        {/* Soft fill under the curve */}
+        <path
+          d="M0,220 C150,210 280,200 420,170 C560,140 700,110 840,80 C960,55 1080,35 1200,15 L1200,240 L0,240 Z"
+          fill="url(#trendFill)"
+        />
+        {/* Main trend line */}
+        <path
+          d="M0,220 C150,210 280,200 420,170 C560,140 700,110 840,80 C960,55 1080,35 1200,15"
+          stroke="#2563EB"
+          strokeWidth="3"
+          fill="none"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+        />
+      </svg>
       <div className="max-w-md w-full space-y-8 p-8 bg-white/95 backdrop-blur-sm rounded-lg shadow-xl relative z-10">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Logg inn</h1>
