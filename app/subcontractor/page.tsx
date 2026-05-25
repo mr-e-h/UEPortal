@@ -1,8 +1,9 @@
 ﻿'use client'
 
 import { useEffect, useState, useCallback } from 'react'
+import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { CalendarDays, TrendingUp, Clock, Layers, DollarSign, CheckCircle } from 'lucide-react'
+import { Wallet, Clock, FileText, CheckCircle2 } from 'lucide-react'
 import type { ChangeOrder, GanttMilestone } from '@/types'
 import type { BadgeStatus } from '@/components/ui/Badge'
 import Badge from '@/components/ui/Badge'
@@ -40,6 +41,44 @@ type ProjectWithLines = {
 
 type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'>
 
+interface DashboardPayload {
+  kpi: {
+    ordreverdi: number
+    fakturert: number
+    fakturerbart: number
+    gjenstaaende: number
+  }
+  pendingChangeOrders: Array<{
+    id: string
+    project_id: string
+    project_name: string
+    project_number: string
+    product_name: string
+    quantity: number
+    unit: string
+    total_cost: number
+    submitted_at: string | null
+  }>
+  pendingWeeklyReports: Array<{
+    id: string
+    project_id: string
+    project_name: string
+    project_number: string
+    year: number
+    week_number: number
+    submission_number: number
+    line_count: number
+    total_cost: number
+    submitted_at: string | null
+  }>
+}
+
+const EMPTY_DASHBOARD: DashboardPayload = {
+  kpi: { ordreverdi: 0, fakturert: 0, fakturerbart: 0, gjenstaaende: 0 },
+  pendingChangeOrders: [],
+  pendingWeeklyReports: [],
+}
+
 type ProjectRow = {
   id: string
   name: string
@@ -58,6 +97,7 @@ export default function SubcontractorPage() {
   const [projects, setProjects] = useState<ProjectWithLines[]>([])
   const [changeOrders, setChangeOrders] = useState<UEChangeOrder[]>([])
   const [milestones, setMilestones] = useState<(GanttMilestone & { project_name?: string })[]>([])
+  const [dashboard, setDashboard] = useState<DashboardPayload>(EMPTY_DASHBOARD)
   const [loading, setLoading] = useState(true)
   const { me } = useMe()
   const userName = me?.full_name ?? ''
@@ -77,13 +117,17 @@ export default function SubcontractorPage() {
   }
 
   const fetchAll = useCallback(async (subId: string) => {
-    const [proj, cos, ms] = await Promise.all([
+    const [proj, cos, ms, dashRes] = await Promise.all([
       safeJsonArray<ProjectWithLines>(`/api/subcontractor/projects?subcontractor_id=${subId}`),
       safeJsonArray<UEChangeOrder>(`/api/subcontractor/change-orders?subcontractor_id=${subId}`),
       safeJsonArray<GanttMilestone>(`/api/milestones?subcontractor_id=${subId}`),
+      fetch(`/api/subcontractor/dashboard?subcontractor_id=${subId}`)
+        .then((r) => r.ok ? r.json() as Promise<DashboardPayload> : EMPTY_DASHBOARD)
+        .catch(() => EMPTY_DASHBOARD),
     ])
     setProjects(proj)
     setChangeOrders(cos)
+    setDashboard(dashRes)
     const projectMap = new Map(proj.map((p) => [p.id, p.name]))
     setMilestones(ms.map((m) => ({ ...m, project_name: projectMap.get(m.project_id) })))
     setLoading(false)
@@ -99,23 +143,8 @@ export default function SubcontractorPage() {
     fetchAll(me.subcontractor_id)
   }, [me, router, fetchAll])
 
-  const thisYear = new Date().getFullYear()
-  const activeProjects = projects.filter((p) => p.status === 'active')
-  const pendingEM = changeOrders.filter((co) => co.status === 'pending').length
-  const approvedEMThisYear = changeOrders.filter(
-    (co) => co.status === 'approved' && (co.reviewed_at ?? co.submitted_at)?.startsWith(String(thisYear))
-  ).length
-
-  // Financial totals
-  const totalBudgetValue = projects.reduce(
-    (s, p) => s + p.budget_lines.reduce((bs, bl) => bs + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0),
-    0
-  )
-  const totalApprovedEMValue = changeOrders
-    .filter((co) => co.status === 'approved')
-    .reduce((s, co) => s + co.total_cost, 0)
-
-  // Per-project approved EM value map
+  // Per-project approved EM value map — feeds the projects table column.
+  // Other top-level KPIs now come from /api/subcontractor/dashboard.
   const approvedEMByProject = changeOrders
     .filter((co) => co.status === 'approved')
     .reduce<Record<string, number>>((acc, co) => {
@@ -218,56 +247,36 @@ export default function SubcontractorPage() {
         </h1>
       </div>
 
-      {/* KPI cards */}
-      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-4">
+      {/* KPI cards — sub-focused economy snapshot */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
         {[
           {
-            icon: Layers,
-            label: 'Aktive prosjekter',
-            value: activeProjects.length,
-            sub: 'Tildelte prosjekter',
-            color: 'text-blue-600 bg-blue-50',
-            isNumber: true,
-          },
-          {
-            icon: DollarSign,
+            icon: Wallet,
             label: 'Total ordreverdi',
-            value: fmt(totalBudgetValue),
-            sub: 'Budsjettert arbeid',
+            value: fmt(dashboard.kpi.ordreverdi),
+            sub: 'Budsjettert kostnad for alle linjer',
             color: 'text-indigo-600 bg-indigo-50',
-            isNumber: false,
-          },
-          {
-            icon: CheckCircle,
-            label: 'Godkjente EM',
-            value: fmt(totalApprovedEMValue),
-            sub: 'Alle prosjekter',
-            color: 'text-green-600 bg-green-50',
-            isNumber: false,
           },
           {
             icon: Clock,
-            label: 'Ventende EM',
-            value: pendingEM,
-            sub: 'Venter på godkjenning',
-            color: 'text-orange-600 bg-orange-50',
-            isNumber: true,
+            label: 'Gjenstående å fakturere',
+            value: fmt(dashboard.kpi.gjenstaaende),
+            sub: 'Ordreverdi minus fakturert',
+            color: 'text-amber-600 bg-amber-50',
           },
           {
-            icon: TrendingUp,
-            label: `Godkjente EM ${thisYear}`,
-            value: approvedEMThisYear,
-            sub: 'Hittil i år (antall)',
-            color: 'text-purple-600 bg-purple-50',
-            isNumber: true,
+            icon: FileText,
+            label: 'Fakturert',
+            value: fmt(dashboard.kpi.fakturert),
+            sub: 'Sum av dine UE-fakturaer',
+            color: 'text-blue-600 bg-blue-50',
           },
           {
-            icon: CalendarDays,
-            label: 'Milepæler',
-            value: milestones.length,
-            sub: 'Totalt registrert',
-            color: 'text-teal-600 bg-teal-50',
-            isNumber: true,
+            icon: CheckCircle2,
+            label: 'Fakturerbart nå',
+            value: fmt(dashboard.kpi.fakturerbart),
+            sub: 'Godkjent arbeid ikke fakturert ennå',
+            color: 'text-green-600 bg-green-50',
           },
         ].map(({ icon: Icon, label, value, sub, color }) => (
           <div key={label} className="bg-white rounded-xl border border-border p-4 flex items-start gap-3">
@@ -282,6 +291,96 @@ export default function SubcontractorPage() {
           </div>
         ))}
       </div>
+
+      {/* Pending approvals — change orders + weekly reports awaiting admin review */}
+      {(dashboard.pendingChangeOrders.length > 0 || dashboard.pendingWeeklyReports.length > 0) && (
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <Card className="overflow-hidden">
+            <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+              <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Endringsmeldinger til godkjenning</h2>
+              {dashboard.pendingChangeOrders.length > 0 && (
+                <span className="bg-amber-100 text-amber-700 text-xs font-medium px-1.5 py-0.5 rounded-full">
+                  {dashboard.pendingChangeOrders.length}
+                </span>
+              )}
+            </div>
+            {dashboard.pendingChangeOrders.length === 0 ? (
+              <EmptyState title="Ingen ventende EM" description="Alle dine endringsmeldinger er behandlet." />
+            ) : (
+              <ul className="divide-y divide-border">
+                {dashboard.pendingChangeOrders.map((co) => (
+                  <li key={co.id}>
+                    <Link
+                      href={`/subcontractor/projects/${co.project_id}`}
+                      className="block px-6 py-3 hover:bg-muted transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                            {co.product_name}
+                          </p>
+                          <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
+                            {co.project_name} · {co.quantity} {co.unit}
+                          </p>
+                        </div>
+                        <div className="text-right flex-none">
+                          <p className="text-sm font-semibold text-[var(--color-text-primary)]">{fmt(co.total_cost)}</p>
+                          <p className="text-xs text-[var(--color-text-muted)]">
+                            {co.submitted_at ? new Date(co.submitted_at).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short' }) : '–'}
+                          </p>
+                        </div>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+
+          <Card className="overflow-hidden">
+            <div className="px-6 py-4 border-b border-border flex items-center gap-2">
+              <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Ukesrapporter til godkjenning</h2>
+              {dashboard.pendingWeeklyReports.length > 0 && (
+                <span className="bg-amber-100 text-amber-700 text-xs font-medium px-1.5 py-0.5 rounded-full">
+                  {dashboard.pendingWeeklyReports.length}
+                </span>
+              )}
+            </div>
+            {dashboard.pendingWeeklyReports.length === 0 ? (
+              <EmptyState title="Ingen ventende ukesrapporter" description="Alle innsendte ukesrapporter er behandlet." />
+            ) : (
+              <ul className="divide-y divide-border">
+                {dashboard.pendingWeeklyReports.map((wr) => (
+                  <li key={wr.id}>
+                    <Link
+                      href={`/subcontractor/projects/${wr.project_id}`}
+                      className="block px-6 py-3 hover:bg-muted transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                            Uke {wr.week_number} {wr.year}
+                            {wr.submission_number > 1 && <span className="text-[var(--color-text-muted)]"> · innsending #{wr.submission_number}</span>}
+                          </p>
+                          <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
+                            {wr.project_name} · {wr.line_count} {wr.line_count === 1 ? 'linje' : 'linjer'}
+                          </p>
+                        </div>
+                        <div className="text-right flex-none">
+                          <p className="text-sm font-semibold text-[var(--color-text-primary)]">{fmt(wr.total_cost)}</p>
+                          <p className="text-xs text-[var(--color-text-muted)]">
+                            {wr.submitted_at ? new Date(wr.submitted_at).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short' }) : '–'}
+                          </p>
+                        </div>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </Card>
+        </div>
+      )}
 
       {/* Projects table */}
       <Card className="overflow-hidden">
