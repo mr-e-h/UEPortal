@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson } from '@/lib/data'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope } from '@/lib/api-guard'
 import type {
   Project,
   ProjectBudgetLine,
@@ -40,10 +40,16 @@ export async function GET(request: NextRequest) {
   const subMap = new Map(subcontractors.map((s) => [s.id, s]))
   const productMap = new Map(products.map((p) => [p.id, p]))
 
+  // PM scope: a project_manager only sees fakturagrunnlag for their own
+  // assigned projects. main / company / company-admin see everything
+  // (scope is null). Skip this filter for them.
+  const scope = await getProjectScope(auth.user)
+
   // Filter approved weekly report lines
   let approvedReports = weeklyReports.filter(
     (r) => r.status === 'approved' || r.status === 'partially_approved'
   )
+  if (scope) approvedReports = approvedReports.filter((r) => scope.has(r.project_id))
   if (projectId) approvedReports = approvedReports.filter((r) => r.project_id === projectId)
   if (subcontractorId) approvedReports = approvedReports.filter((r) => r.subcontractor_id === subcontractorId)
 
@@ -66,8 +72,9 @@ export async function GET(request: NextRequest) {
     })
   }
 
-  // Filter approved change orders
+  // Filter approved change orders (same PM-scope guard as reports above)
   let approvedCOs = changeOrders.filter((co) => co.status === 'approved')
+  if (scope) approvedCOs = approvedCOs.filter((co) => scope.has(co.project_id))
   if (projectId) approvedCOs = approvedCOs.filter((co) => co.project_id === projectId)
   if (subcontractorId) approvedCOs = approvedCOs.filter((co) => co.subcontractor_id === subcontractorId)
   // BUG was: filtered on !co.reviewed_at, but approved COs always have reviewed_at,

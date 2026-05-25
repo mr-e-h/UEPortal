@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 
 const VALID = new Set(['draft', 'submitted', 'approved', 'rejected'])
 
@@ -16,7 +16,19 @@ export async function POST(
     return NextResponse.json({ error: 'Ugyldig status' }, { status: 400 })
   }
 
-  const { data, error } = await getSupabaseAdmin()
+  // PM write gate via the report's project. Look up first so we 404 before
+  // bothering with the scope check.
+  const sb = getSupabaseAdmin()
+  const { data: report } = await sb
+    .from('reports')
+    .select('project_id')
+    .eq('id', params.id)
+    .maybeSingle<{ project_id: string }>()
+  if (!report) return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })
+  const denied = await ensureProjectWritable(auth.user, report.project_id)
+  if (denied) return denied
+
+  const { data, error } = await sb
     .from('reports')
     .update({ status, updated_at: new Date().toISOString() })
     .eq('id', params.id)
