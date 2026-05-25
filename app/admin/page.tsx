@@ -1,5 +1,5 @@
 import { redirect } from 'next/navigation'
-import { readJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { getProjectScope } from '@/lib/api-guard'
 import { ADMIN_ROLES } from '@/lib/roles'
@@ -48,43 +48,64 @@ export default async function AdminDashboard() {
   const me = await getSession()
   if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
 
-  // Fire all reads in parallel. Sequential awaits added ~800ms (7×~110ms RTT
-  // to Supabase EU); Promise.all collapses that to one roundtrip's worth.
+  const sb = getSupabaseAdmin()
+  const now = new Date()
+  const thisYear = now.getFullYear()
+  // Year bounds for time-series reads — dashboards only show 4w/12w/YTD
+  // windows, none reach beyond last year. Bounding the load means even
+  // 10 years of history stay cheap to render.
+  const lastYearStart = `${thisYear - 1}-01-01`
+  const scope = await getProjectScope(me)
+
+  // Fire bounded reads in parallel. Years are filtered server-side so we
+  // don't ship multi-year history over the wire. project_budget_lines and
+  // subcontractors are needed in full for price snapshots + name lookups.
   const [
-    allProjects,
-    allBudgetLines,
-    allWeeklyReports,
-    weeklyReportLines,
-    allChangeOrders,
-    allHourEntries,
-    subcontractors,
-    scope,
+    projectsRes,
+    budgetLinesRes,
+    weeklyReportsRes,
+    changeOrdersRes,
+    hourEntriesRes,
+    subsRes,
   ] = await Promise.all([
-    readJson<Project>('projects.json'),
-    readJson<ProjectBudgetLine>('project_budget_lines.json'),
-    readJson<WeeklyReport>('weekly_reports.json'),
-    readJson<WeeklyReportLine>('weekly_report_lines.json'),
-    readJson<ChangeOrder>('change_orders.json'),
-    readJson<HourEntry>('hour_entries.json'),
-    readJson<Subcontractor>('subcontractors.json'),
-    getProjectScope(me),
+    sb.from('projects').select('*').neq('deleted', true),
+    sb.from('project_budget_lines').select('id, project_id, customer_price_snapshot, subcontractor_cost_price_snapshot'),
+    sb.from('weekly_reports').select('*').gte('year', thisYear - 1).lte('year', thisYear),
+    sb.from('change_orders').select('*').gte('submitted_at', lastYearStart).neq('status', 'draft'),
+    sb.from('hour_entries').select('*').gte('date', lastYearStart),
+    sb.from('subcontractors').select('id, company_name'),
   ])
+
+  const allProjects = (projectsRes.data ?? []) as Project[]
+  const allBudgetLines = (budgetLinesRes.data ?? []) as ProjectBudgetLine[]
+  const allWeeklyReports = (weeklyReportsRes.data ?? []) as WeeklyReport[]
+  const allChangeOrders = (changeOrdersRes.data ?? []) as ChangeOrder[]
+  const allHourEntries = (hourEntriesRes.data ?? []) as HourEntry[]
+  const subcontractors = (subsRes.data ?? []) as Subcontractor[]
 
   // PM scope: project_manager dashboards see only the projects they're
   // assigned to. main / company see everything (scope is null). Every
   // downstream KPI/chart/table derives from `projects`, so filtering here
   // covers the entire dashboard in one place.
-  const projects = allProjects
-    .filter((p) => !p.deleted)
-    .filter((p) => !scope || scope.has(p.id))
+  const projects = allProjects.filter((p) => !scope || scope.has(p.id))
   const activeProjectIds = new Set(projects.map((p) => p.id))
+
+  // Second pass: only fetch weekly_report_lines for the reports we kept.
+  // Without this we'd download every line ever from the DB.
+  const reportIdsInScope = allWeeklyReports
+    .filter((r) => activeProjectIds.has(r.project_id))
+    .map((r) => r.id)
+  const wrlRes = reportIdsInScope.length > 0
+    ? await sb.from('weekly_report_lines').select('*').in('weekly_report_id', reportIdsInScope)
+    : { data: [] as WeeklyReportLine[] }
+  const weeklyReportLines = (wrlRes.data ?? []) as WeeklyReportLine[]
   const budgetLines = allBudgetLines.filter((bl) => activeProjectIds.has(bl.project_id))
   const weeklyReports = allWeeklyReports.filter((r) => activeProjectIds.has(r.project_id))
   const changeOrders = allChangeOrders.filter((co) => activeProjectIds.has(co.project_id))
   const hourEntries = allHourEntries.filter((he) => activeProjectIds.has(he.project_id))
 
-  const now = new Date()
-  const thisYear = now.getFullYear()
+  // `now` / `thisYear` were resolved at the top so we could bound queries
+  // by year — reuse them here. Only the ISO week is needed locally.
   const currentWeek = getISOWeek(now)
 
   const blMap = new Map(budgetLines.map((b) => [b.id, b]))
