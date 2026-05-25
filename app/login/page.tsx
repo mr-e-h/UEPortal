@@ -85,7 +85,7 @@ function LoginForm() {
       style={{ backgroundImage: 'url(/login-bg.webp)' }}
     >
       {/* White wash to soften the photo so the login card stays the focal point */}
-      <div className="absolute inset-0 bg-white/40" aria-hidden="true" />
+      <div className="absolute inset-0 bg-white/25" aria-hidden="true" />
 
       {/* Grid-paper patches scattered around, same brand blue */}
       <svg
