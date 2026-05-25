@@ -3,7 +3,7 @@
 import { useEffect } from 'react'
 import { useRouter, usePathname } from 'next/navigation'
 import Link from 'next/link'
-import { Briefcase, FileText, Receipt, User } from 'lucide-react'
+import { LayoutDashboard, Briefcase, FileText, Receipt, User } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import { useMe } from '@/lib/useMe'
 
@@ -14,7 +14,8 @@ const sections: NavSection[] = [
   {
     label: 'GENERELT',
     links: [
-      { href: '/subcontractor', label: 'Mine prosjekter', icon: Briefcase, exact: true },
+      { href: '/subcontractor', label: 'Dashbord', icon: LayoutDashboard, exact: true },
+      { href: '/subcontractor/projects', label: 'Prosjekter', icon: Briefcase },
     ],
   },
   {
