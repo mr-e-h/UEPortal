@@ -72,6 +72,18 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
     setInvitations(Array.isArray(inv) ? inv : [])
   }
 
+  async function revokeInvitation(id: string, email: string) {
+    if (!confirm(`Trekke tilbake invitasjonen til ${email}? Den eksisterende lenken slutter å fungere umiddelbart.`)) return
+    const res = await fetch(`/api/invitations/${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      alert(data.error ?? 'Kunne ikke trekke tilbake invitasjonen')
+      return
+    }
+    // Optimistic local update so the row disappears without a round-trip.
+    setInvitations((prev) => prev.filter((i) => i.id !== id))
+  }
+
   async function handleInvite(e: React.FormEvent) {
     e.preventDefault()
     setInviteError(null)
@@ -339,7 +351,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border">
-                  {['E-post', 'Rolle', 'Utløper'].map((h) => (
+                  {['E-post', 'Rolle', 'Utløper', ''].map((h) => (
                     <th key={h} className="px-6 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
                       {h}
                     </th>
@@ -353,6 +365,15 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
                     <td className="px-6 py-3 text-[var(--color-text-secondary)]">{roleLabel(i.role)}</td>
                     <td className="px-6 py-3 text-[var(--color-text-muted)]">
                       {new Date(i.expires_at).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })}
+                    </td>
+                    <td className="px-6 py-3 text-right">
+                      <button
+                        type="button"
+                        onClick={() => revokeInvitation(i.id, i.email)}
+                        className="text-xs font-medium text-red-600 hover:text-red-700 hover:underline"
+                      >
+                        Trekk tilbake
+                      </button>
                     </td>
                   </tr>
                 ))}
