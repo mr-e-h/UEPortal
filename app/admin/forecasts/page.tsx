@@ -13,16 +13,26 @@ import CreatePeriodsButton from './CreatePeriodsButton'
 
 export const dynamic = 'force-dynamic'
 
-export default async function ForecastsOverviewPage() {
+export default async function ForecastsOverviewPage({
+  searchParams,
+}: {
+  searchParams: { year?: string }
+}) {
   const me = await getSession()
   if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
 
-  const year = new Date().getFullYear()
+  // Year switcher: ?year=2027 etc. Default = current calendar year. Bracketed
+  // to the years where data could plausibly live so we don't accept garbage.
+  const currentYear = new Date().getFullYear()
+  const requested = parseInt(searchParams.year ?? '', 10)
+  const year = Number.isFinite(requested) && requested >= currentYear - 5 && requested <= currentYear + 2
+    ? requested
+    : currentYear
   const sb = getSupabaseAdmin()
 
   const [periodsRes, projectsRes, forecastsRes, invoicesRes, budgetLinesRes] = await Promise.all([
     sb.from('forecast_periods').select('*').eq('year', year),
-    sb.from('projects').select('*').eq('status', 'active').neq('deleted', true),
+    sb.from('projects').select('*').neq('deleted', true),
     sb.from('project_forecasts').select('*'),
     sb.from('project_invoices').select('project_id, amount'),
     sb.from('project_budget_lines').select('project_id, budget_quantity, customer_price_snapshot'),
@@ -36,6 +46,17 @@ export default async function ForecastsOverviewPage() {
   const scope = await getProjectScope(me)
   let projects = (projectsRes.data ?? []) as Project[]
   if (scope) projects = projects.filter((p) => scope.has(p.id))
+  // Only show projects that actually overlap the viewed year — otherwise a
+  // 2027 project shows up in 2026's prognose as 'Mangler prognose'. Treat
+  // missing dates as "always-running" so legacy data isn't hidden.
+  const yearStart = `${year}-01-01`
+  const yearEnd = `${year}-12-31`
+  projects = projects.filter((p) => {
+    const startsBeforeYearEnd = !p.start_date || p.start_date <= yearEnd
+    const endsAfterYearStart = !p.end_date || p.end_date >= yearStart
+    const notCompleted = p.status === 'active' || (year < currentYear && p.status === 'completed')
+    return startsBeforeYearEnd && endsAfterYearStart && notCompleted
+  })
   const activeProjectIds = new Set(projects.map((p) => p.id))
   const allForecasts = ((forecastsRes.data ?? []) as ProjectForecast[])
     .filter((f) => activeProjectIds.has(f.project_id))
@@ -72,11 +93,39 @@ export default async function ForecastsOverviewPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Prognoser {year}</h1>
-        <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
-          {projects.length} aktive prosjekter · Totalt budsjett {fmt(totalBudget)} · Fakturert {fmt(totalInvoiced)}
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Prognoser {year}</h1>
+          <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
+            {projects.length} prosjekter aktive i {year} · Totalt budsjett {fmt(totalBudget)} · Fakturert {fmt(totalInvoiced)}
+          </p>
+        </div>
+        {/* Year switcher — admin can revisit closed years or peek ahead. */}
+        <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
+          <Link
+            href={`/admin/forecasts?year=${year - 1}`}
+            className="px-2.5 py-1 text-xs font-medium text-[var(--color-text-secondary)] hover:bg-muted rounded-md"
+            title={`Til ${year - 1}`}
+          >
+            ←
+          </Link>
+          <span className="px-2.5 py-1 text-xs font-semibold text-[var(--color-text-primary)]">{year}</span>
+          <Link
+            href={`/admin/forecasts?year=${year + 1}`}
+            className="px-2.5 py-1 text-xs font-medium text-[var(--color-text-secondary)] hover:bg-muted rounded-md"
+            title={`Til ${year + 1}`}
+          >
+            →
+          </Link>
+          {year !== currentYear && (
+            <Link
+              href="/admin/forecasts"
+              className="ml-1 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary-soft rounded-md"
+            >
+              I dag ({currentYear})
+            </Link>
+          )}
+        </div>
       </div>
 
       {/* Period cards */}

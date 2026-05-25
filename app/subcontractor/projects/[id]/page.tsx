@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Plus, TrendingUp, CheckCircle, Clock, BarChart3, ChevronDown } from 'lucide-react'
 import type { WeeklyReport, WeeklyReportLine, ChangeOrder, GanttMilestone } from '@/types'
-import { getCurrentWeek, formatWeekLabel } from '@/lib/utils/weeks'
+import { getCurrentWeek, formatWeekLabel, prevWeek as prevISOWeek, nextWeek as nextISOWeek } from '@/lib/utils/weeks'
 import { calculateBudgetUsage, type LineWithReportStatus } from '@/lib/utils/budgetUsage'
 import NumberInput from '@/components/NumberInput'
 import SortableTable from '@/components/SortableTable'
@@ -186,11 +186,16 @@ export default function SubcontractorProjectPage() {
     }
   }
 
+  // Walk weeks via the ISO-aware helpers so years like 2026 (53 weeks) can
+  // be reached at all and rolling backward from uke 1 lands on uke 53 / 52
+  // depending on the previous year.
   function prevWeek() {
-    if (week === 1) { changeWeek(year - 1, 52) } else { changeWeek(year, week - 1) }
+    const next = prevISOWeek(year, week)
+    changeWeek(next.year, next.week)
   }
   function nextWeek() {
-    if (week === 52) { changeWeek(year + 1, 1) } else { changeWeek(year, week + 1) }
+    const next = nextISOWeek(year, week)
+    changeWeek(next.year, next.week)
   }
 
   async function createNewDraft() {

@@ -12,7 +12,8 @@ import type {
   HourEntry,
   Subcontractor,
 } from '@/types'
-import { getISOWeek, formatWeekLabel } from '@/lib/utils/weeks'
+import { getISOWeek, formatWeekLabel, getISOWeeksInYear } from '@/lib/utils/weeks'
+import { isInOsloYear } from '@/lib/utils/dates'
 import DashboardClient from '@/components/admin/DashboardClient'
 import type { WeekPoint } from '@/components/admin/DashboardChart'
 import type { PendingRow } from '@/components/admin/PendingTable'
@@ -21,13 +22,26 @@ import type { PendingCORow, ProjectStat } from '@/components/admin/DashboardClie
 
 type PeriodKey = '4w' | '12w' | 'ytd'
 
+/**
+ * Build a rolling window of the last N ISO weeks, oldest first. Walks back
+ * using getISOWeeksInYear so years with 53 weeks (2020, 2026, 2032…) are
+ * traversed correctly instead of wrapping at 52.
+ */
 function weekList(count: number, currentWeek: number, thisYear: number): { week: number; year: number }[] {
-  return Array.from({ length: count }, (_, i) => {
-    let week = currentWeek - (count - 1 - i)
-    let year = thisYear
-    if (week <= 0) { week += 52; year = thisYear - 1 }
-    return { week, year }
-  })
+  const out: { week: number; year: number }[] = []
+  let week = currentWeek
+  let year = thisYear
+  for (let i = 0; i < count; i++) {
+    out.unshift({ week, year })
+    // step one week back
+    if (week <= 1) {
+      year -= 1
+      week = getISOWeeksInYear(year)
+    } else {
+      week -= 1
+    }
+  }
+  return out
 }
 
 export default async function AdminDashboard() {
@@ -87,8 +101,10 @@ export default async function AdminDashboard() {
     (l) => approvedReportIds.has(l.weekly_report_id) && l.status === 'approved'
   )
   const approvedCOs = changeOrders.filter(
-    // Use reviewed_at (approval date) for correct year attribution; fall back to submitted_at
-    (co) => co.status === 'approved' && (co.reviewed_at ?? co.submitted_at)?.startsWith(String(thisYear))
+    // Year-bucket in Europe/Oslo time, not UTC — otherwise a CO approved
+    // at 23:30 norsk tid on Dec 31 (= 22:30/21:30 UTC) gets attributed to
+    // the wrong year compared to the Oslo-rendered dashboards.
+    (co) => co.status === 'approved' && isInOsloYear(co.reviewed_at ?? co.submitted_at, thisYear)
   )
   const pendingCOs = changeOrders.filter((co) => co.status === 'pending')
 
@@ -107,9 +123,10 @@ export default async function AdminDashboard() {
 
   // Use the work date (`he.date`), not when the entry was typed in.
   // Backfilling a timesheet from last year should land in last year's KPI,
-  // not today's. Matches /admin/projects/[id]/forecast which already uses .date.
+  // not today's. `he.date` is a date-only string so isInOsloYear takes the
+  // cheap path (no timezone shift possible).
   const yearInternalCost = hourEntries
-    .filter((he) => he.date?.startsWith(String(thisYear)))
+    .filter((he) => isInOsloYear(he.date, thisYear))
     .reduce((s, he) => s + he.hours * he.cost_per_hour_snapshot, 0)
 
   const yearProfit = yearRevenue - yearCost - yearInternalCost
@@ -143,7 +160,7 @@ export default async function AdminDashboard() {
       (co) =>
         co.project_id === proj.id &&
         co.status === 'approved' &&
-        (co.reviewed_at ?? co.submitted_at)?.startsWith(String(thisYear))
+        isInOsloYear(co.reviewed_at ?? co.submitted_at, thisYear)
     )
     const revenue =
       projApprovedLines.reduce(
@@ -157,7 +174,9 @@ export default async function AdminDashboard() {
         0
       ) + projApprovedCOs.reduce((s, co) => s + co.total_cost, 0)
     const internalCost = hourEntries
-      .filter((he) => he.project_id === proj.id && he.created_at.startsWith(String(thisYear)))
+      // Use the WORK date, same as the global YTD KPI on line ~96 — was
+      // mismatched (used created_at) so totals never agreed with per-project.
+      .filter((he) => he.project_id === proj.id && isInOsloYear(he.date, thisYear))
       .reduce((s, he) => s + he.hours * he.cost_per_hour_snapshot, 0)
     return { id: proj.id, name: proj.name, revenue, cost, internalCost, profit: revenue - cost - internalCost }
   })
