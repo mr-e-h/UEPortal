@@ -85,7 +85,7 @@ function LoginForm() {
       style={{ backgroundImage: 'url(/login-bg.webp)' }}
     >
       {/* White wash to soften the photo so the login card stays the focal point */}
-      <div className="absolute inset-0 bg-white/60" aria-hidden="true" />
+      <div className="absolute inset-0 bg-white/40" aria-hidden="true" />
 
       {/* Grid-paper patches scattered around, same brand blue */}
       <svg
@@ -104,24 +104,6 @@ function LoginForm() {
         <rect x="80" y="630" width="200" height="150" fill="url(#gridPaper)" opacity="0.45" />
         <rect x="1100" y="680" width="200" height="140" fill="url(#gridPaper)" opacity="0.55" />
         <rect x="780" y="40" width="150" height="100" fill="url(#gridPaper)" opacity="0.4" />
-      </svg>
-
-      {/* Rising zigzag trend line — terminates near the top-right corner */}
-      <svg
-        className="absolute inset-x-0 bottom-0 w-full h-96 pointer-events-none"
-        viewBox="0 0 1200 240"
-        preserveAspectRatio="none"
-        aria-hidden="true"
-      >
-        <path
-          d="M0,225 L100,235 L180,210 L260,225 L340,185 L420,205 L500,165 L580,185 L660,135 L740,155 L820,100 L900,125 L980,70 L1060,90 L1140,25 L1200,10"
-          stroke="#2563EB"
-          strokeWidth="3"
-          fill="none"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-          vectorEffect="non-scaling-stroke"
-        />
       </svg>
       <div className="max-w-md w-full space-y-8 p-8 bg-white/95 backdrop-blur-sm rounded-lg shadow-xl relative z-10">
         <div>
