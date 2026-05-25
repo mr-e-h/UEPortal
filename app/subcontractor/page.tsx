@@ -259,7 +259,7 @@ export default function SubcontractorPage() {
           },
           {
             icon: Clock,
-            label: 'Gjenstående å fakturere',
+            label: 'Gjenstående ordreverdi',
             value: fmt(dashboard.kpi.gjenstaaende),
             sub: 'Ordreverdi minus fakturert',
             color: 'text-amber-600 bg-amber-50',
