@@ -79,16 +79,20 @@ export async function POST(request: NextRequest) {
   const sb = getSupabaseAdmin()
 
   // 1. Wipe table contents. Supabase-js requires a filter clause to prevent
-  //    accidental full deletes — `.neq(<pk>, '___never___')` matches every row.
+  //    accidental full deletes — use `.not(<pk>, 'is', null)` which matches
+  //    every row regardless of pk type. (The previous .neq(pk, '___never___')
+  //    string sentinel blew up on UUID-keyed tables with "invalid input syntax
+  //    for type uuid".)
   for (const table of WIPE_TABLES) {
     const pkCol = PK_OVERRIDES[table] ?? 'id'
-    const { error } = await sb.from(table).delete().neq(pkCol, '___never___')
+    const { error } = await sb.from(table).delete().not(pkCol, 'is', null)
     if (error) {
       return NextResponse.json({ error: `Failed wiping ${table}: ${error.message}` }, { status: 500 })
     }
   }
 
-  // 2. Users: keep only the current admin.
+  // 2. Users: keep only the current admin. Their id is a text column so
+  //    `.neq('id', session.id)` works without the UUID gotcha above.
   {
     const { error } = await sb.from('users').delete().neq('id', session.id)
     if (error) {
@@ -96,8 +100,8 @@ export async function POST(request: NextRequest) {
     }
   }
 
-  // 3. Sessions: keep only the caller's current session (rate-limit table
-  //    already wiped above; we don't want to log the calling admin out).
+  // 3. Sessions: keep only the caller's current session — we don't want to
+  //    log the calling admin out as the last act of the reset.
   {
     const { error } = await sb.from('sessions').delete().neq('user_id', session.id)
     if (error) {
