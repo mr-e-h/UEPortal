@@ -99,18 +99,19 @@ function LoginForm() {
             <stop offset="100%" stopColor="#2563EB" stopOpacity="0" />
           </linearGradient>
         </defs>
-        {/* Soft fill under the curve */}
+        {/* Soft fill under the zigzag */}
         <path
-          d="M0,220 C150,210 280,200 420,170 C560,140 700,110 840,80 C960,55 1080,35 1200,15 L1200,240 L0,240 Z"
+          d="M0,215 L100,225 L180,200 L260,215 L340,185 L420,205 L500,170 L580,190 L660,150 L740,170 L820,125 L900,150 L980,100 L1060,125 L1140,70 L1200,90 L1200,240 L0,240 Z"
           fill="url(#trendFill)"
         />
-        {/* Main trend line */}
+        {/* Main jagged trend line — straight segments with peaks and dips, rising overall */}
         <path
-          d="M0,220 C150,210 280,200 420,170 C560,140 700,110 840,80 C960,55 1080,35 1200,15"
+          d="M0,215 L100,225 L180,200 L260,215 L340,185 L420,205 L500,170 L580,190 L660,150 L740,170 L820,125 L900,150 L980,100 L1060,125 L1140,70 L1200,90"
           stroke="#2563EB"
           strokeWidth="3"
           fill="none"
           strokeLinecap="round"
+          strokeLinejoin="round"
           vectorEffect="non-scaling-stroke"
         />
       </svg>
