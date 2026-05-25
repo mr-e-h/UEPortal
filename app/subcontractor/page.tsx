@@ -23,6 +23,8 @@ type BudgetLine = {
   subcontractor_cost_price_snapshot: number
 }
 
+type ProjectManager = { id: string; full_name: string; email: string }
+
 type ProjectWithLines = {
   id: string
   name: string
@@ -33,6 +35,7 @@ type ProjectWithLines = {
   start_date: string
   end_date: string | null
   budget_lines: BudgetLine[]
+  project_managers: ProjectManager[]
 }
 
 type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'>
@@ -46,6 +49,8 @@ type ProjectRow = {
   budget_value: number
   approved_em_value: number
   line_count: number
+  contact: { full_name: string; email: string } | null
+  contact_label: string
 }
 
 export default function SubcontractorPage() {
@@ -118,16 +123,22 @@ export default function SubcontractorPage() {
       return acc
     }, {})
 
-  const projectRows: ProjectRow[] = projects.map((p) => ({
-    id: p.id,
-    name: p.name,
-    project_number: p.project_number,
-    customer: p.customer,
-    status: p.status,
-    budget_value: p.budget_lines.reduce((s, bl) => s + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0),
-    approved_em_value: approvedEMByProject[p.id] ?? 0,
-    line_count: p.budget_lines.length,
-  }))
+  const projectRows: ProjectRow[] = projects.map((p) => {
+    const pm = p.project_managers?.[0] ?? null
+    const extra = p.project_managers && p.project_managers.length > 1 ? ` (+${p.project_managers.length - 1})` : ''
+    return {
+      id: p.id,
+      name: p.name,
+      project_number: p.project_number,
+      customer: p.customer,
+      status: p.status,
+      budget_value: p.budget_lines.reduce((s, bl) => s + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0),
+      approved_em_value: approvedEMByProject[p.id] ?? 0,
+      line_count: p.budget_lines.length,
+      contact: pm,
+      contact_label: pm ? `${pm.full_name}${extra}` : '–',
+    }
+  })
 
   const columns: Column<ProjectRow>[] = [
     { key: 'name', label: 'Prosjektnavn', sortable: true },
@@ -154,6 +165,23 @@ export default function SubcontractorPage() {
           {row.approved_em_value > 0 ? fmt(row.approved_em_value) : '–'}
         </span>
       ),
+    },
+    {
+      key: 'contact_label',
+      label: 'Kontaktperson',
+      sortable: true,
+      render: (row) => row.contact ? (
+        <div className="text-xs leading-tight">
+          <div className="text-[var(--color-text-primary)] font-medium">{row.contact.full_name}</div>
+          <a
+            href={`mailto:${row.contact.email}`}
+            onClick={(e) => e.stopPropagation()}
+            className="text-primary hover:underline"
+          >
+            {row.contact.email}
+          </a>
+        </div>
+      ) : <span className="text-[var(--color-text-muted)]">–</span>,
     },
     {
       key: 'status',

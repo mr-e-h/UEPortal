@@ -33,6 +33,8 @@ type BudgetLineWithProduct = {
   subcontractor_cost_price_snapshot: number
 }
 
+type ProjectManager = { id: string; full_name: string; email: string }
+
 type ProjectWithLines = {
   id: string
   name: string
@@ -43,6 +45,7 @@ type ProjectWithLines = {
   start_date: string
   end_date: string | null
   budget_lines: BudgetLineWithProduct[]
+  project_managers: ProjectManager[]
 }
 
 type ReportWithLines = WeeklyReport & { lines: WeeklyReportLine[] }
@@ -319,14 +322,33 @@ export default function SubcontractorProjectPage() {
     <div className="p-6 space-y-6">
 
       {/* ─── Page header ─────────────────────────────────────────────────────── */}
-      <div>
-        <Button variant="ghost" href="/subcontractor" className="px-0 text-sm mb-2">
-          ← Prosjekter
-        </Button>
-        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">{project.name}</h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-          {project.project_number} · {project.customer} · {project.county}
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <Button variant="ghost" href="/subcontractor" className="px-0 text-sm mb-2">
+            ← Prosjekter
+          </Button>
+          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">{project.name}</h1>
+          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
+            {project.project_number} · {project.customer} · {project.county}
+          </p>
+        </div>
+
+        {/* Contact card — who to reach about this project on the Netel side */}
+        {project.project_managers && project.project_managers.length > 0 && (
+          <div className="bg-card border border-border rounded-lg px-4 py-3 min-w-[220px]">
+            <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wider mb-1.5">
+              {project.project_managers.length > 1 ? 'Kontaktpersoner' : 'Kontaktperson'}
+            </p>
+            <ul className="space-y-1.5">
+              {project.project_managers.map((pm) => (
+                <li key={pm.id} className="text-xs">
+                  <div className="font-medium text-[var(--color-text-primary)]">{pm.full_name}</div>
+                  <a href={`mailto:${pm.email}`} className="text-primary hover:underline">{pm.email}</a>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
       </div>
 
       {showEMModal && (
