@@ -33,7 +33,9 @@ const WIPE_TABLES = [
   // Budget
   'project_budget_lines',
   'budget_versions',
-  // Project membership / projects
+  // Project membership — drop before users so the explicit delete works on a
+  // clean slate, even though the user_id FK is CASCADE.
+  'project_managers',
   'project_subcontractors',
   'projects',
   // Subcontractor data
@@ -45,10 +47,20 @@ const WIPE_TABLES = [
   'forecast_periods',
   'lump_sum_codes',
   // Auth-adjacent
+  'access_requests',
   'invitations',
   'password_resets',
   'rate_limits',
 ] as const
+
+// Tables where the primary key column isn't named `id`. PostgREST refuses
+// to delete without a filter, so we use `.neq(<pk>, '___never___')` — but
+// that filter has to reference an actual column or the call errors out
+// with `column does not exist` and the whole reset bails before users.
+const PK_OVERRIDES: Record<string, string> = {
+  lump_sum_codes: 'code',
+  rate_limits: 'key',
+}
 
 const REQUIRED_CONFIRMATION = 'RESET-SYSTEM'
 
@@ -67,10 +79,10 @@ export async function POST(request: NextRequest) {
   const sb = getSupabaseAdmin()
 
   // 1. Wipe table contents. Supabase-js requires a filter clause to prevent
-  //    accidental full deletes — `.neq('id', '___never___')` matches every row.
+  //    accidental full deletes — `.neq(<pk>, '___never___')` matches every row.
   for (const table of WIPE_TABLES) {
-    const idCol = table === 'lump_sum_codes' ? 'code' : 'id'
-    const { error } = await sb.from(table).delete().neq(idCol, '___never___')
+    const pkCol = PK_OVERRIDES[table] ?? 'id'
+    const { error } = await sb.from(table).delete().neq(pkCol, '___never___')
     if (error) {
       return NextResponse.json({ error: `Failed wiping ${table}: ${error.message}` }, { status: 500 })
     }
