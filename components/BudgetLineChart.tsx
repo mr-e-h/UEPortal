@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { CHART_AXIS_TICK, CHART_LINE_ACCENT, CHART_REFERENCE_LINE } from '@/lib/chart-colors'
 
@@ -34,7 +35,10 @@ function fmtDate(d: string) {
   return new Date(d).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: '2-digit' })
 }
 
-export default function BudgetLineChart({ productName, productCode, unit, subName, importQty, projectStart, approvedCOs, onClose }: Props) {
+// Memoized — when a user expands different budget lines the parent re-renders
+// frequently; without memo, each click re-mounts the SVG and re-runs the
+// step-shape interpolation, visible as a flicker on slower machines.
+function BudgetLineChart({ productName, productCode, unit, subName, importQty, projectStart, approvedCOs, onClose }: Props) {
   const points: ChartPoint[] = [
     { date: projectStart, quantity: importQty, label: 'Opprinnelig import' },
   ]
@@ -146,3 +150,5 @@ export default function BudgetLineChart({ productName, productCode, unit, subNam
     </div>
   )
 }
+
+export default memo(BudgetLineChart)

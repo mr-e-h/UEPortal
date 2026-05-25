@@ -9,7 +9,11 @@ export async function GET() {
   if (!auth.ok) return auth.response
   const { data, error } = await getSupabaseAdmin().from('time_types').select('*')
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-  return NextResponse.json((data ?? []) as TimeType[])
+  // Time types change rarely — let the browser cache for 60s + serve
+  // stale-while-revalidate for another 2 minutes.
+  return NextResponse.json((data ?? []) as TimeType[], {
+    headers: { 'Cache-Control': 'private, max-age=60, stale-while-revalidate=120' },
+  })
 }
 
 export async function POST(request: NextRequest) {

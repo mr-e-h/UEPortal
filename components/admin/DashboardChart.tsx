@@ -1,5 +1,6 @@
 'use client'
 
+import { memo } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, Legend, ResponsiveContainer } from 'recharts'
 import { CHART_AXIS_TICK, CHART_BRAND, CHART_TEXT_SECONDARY, CHART_BORDER } from '@/lib/chart-colors'
 
@@ -11,7 +12,10 @@ function fmtAxis(n: number) {
   return String(n)
 }
 
-export default function DashboardChart({ data }: { data: WeekPoint[] }) {
+// recharts re-mounts the SVG on every parent re-render unless we memoize.
+// The parent (DashboardClient) changes state for the period tabs / filters
+// without changing this `data` prop, so unmemoized renders waste ~30-50ms.
+function DashboardChart({ data }: { data: WeekPoint[] }) {
   return (
     <ResponsiveContainer width="100%" height={200}>
       <LineChart data={data} margin={{ top: 4, right: 16, bottom: 0, left: 0 }}>
@@ -61,3 +65,5 @@ export default function DashboardChart({ data }: { data: WeekPoint[] }) {
     </ResponsiveContainer>
   )
 }
+
+export default memo(DashboardChart)

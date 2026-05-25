@@ -9,20 +9,24 @@ export async function GET() {
   if (!auth.ok) return auth.response
 
   const sb = getSupabaseAdmin()
+  // Read-mostly catalog — change orders rarely. 30s fresh + 60s stale-while-
+  // revalidate is plenty for the assignment dropdowns and admin lists.
+  const headers = { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+
   // UE only ever sees their own row (used by /account etc).
   if (isSub(auth.user)) {
-    if (!auth.user.subcontractor_id) return NextResponse.json([])
+    if (!auth.user.subcontractor_id) return NextResponse.json([], { headers })
     const { data, error } = await sb
       .from('subcontractors')
       .select('*')
       .eq('id', auth.user.subcontractor_id)
     if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-    return NextResponse.json((data ?? []) as Subcontractor[])
+    return NextResponse.json((data ?? []) as Subcontractor[], { headers })
   }
 
   const { data, error } = await sb.from('subcontractors').select('*')
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-  return NextResponse.json((data ?? []) as Subcontractor[])
+  return NextResponse.json((data ?? []) as Subcontractor[], { headers })
 }
 
 export async function POST(request: NextRequest) {

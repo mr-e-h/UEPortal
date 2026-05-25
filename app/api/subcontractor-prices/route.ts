@@ -21,7 +21,11 @@ export async function GET(request: NextRequest) {
   if (subcontractorId) query.eq('subcontractor_id', subcontractorId)
   const { data, error } = await query
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-  return NextResponse.json((data ?? []) as SubcontractorProductPrice[])
+  // Read-mostly price catalog — 30s fresh + 60s stale-while-revalidate.
+  // Cuts round-trips on every assignment dropdown.
+  return NextResponse.json((data ?? []) as SubcontractorProductPrice[], {
+    headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
+  })
 }
 
 export async function POST(request: NextRequest) {

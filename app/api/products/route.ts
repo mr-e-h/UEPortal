@@ -21,11 +21,16 @@ export async function GET(req: NextRequest) {
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
   const products = (data ?? []) as Product[]
 
+  // Read-mostly catalog — let the browser cache for 30s and serve stale
+  // for another 60s while it refetches in background. `private` because
+  // sub-role users get a stripped response (customer_price hidden).
+  const headers = { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
+
   // UE never sees customer_price (MinUE's selling price).
   if (isSub(auth.user)) {
-    return NextResponse.json(products.map((p) => ({ ...p, customer_price: 0 })))
+    return NextResponse.json(products.map((p) => ({ ...p, customer_price: 0 })), { headers })
   }
-  return NextResponse.json(products)
+  return NextResponse.json(products, { headers })
 }
 
 export async function POST(request: NextRequest) {
