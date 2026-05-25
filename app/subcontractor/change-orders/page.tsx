@@ -66,7 +66,9 @@ export default function SubcontractorChangeOrdersPage() {
   useEffect(() => {
     if (!me) return
     if (me.role !== 'sub') { router.replace('/login'); return }
-    if (!me.subcontractor_id) { router.replace('/login'); return }
+    // View-as preview: super-admin posing as `sub` has no subcontractor_id
+    // of their own. Show empty state instead of bouncing.
+    if (!me.subcontractor_id) { setLoading(false); return }
     fetchAll(me.subcontractor_id)
   }, [me, router, fetchAll])
 

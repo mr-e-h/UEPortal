@@ -132,7 +132,10 @@ export default function SubcontractorProjectPage() {
   useEffect(() => {
     if (!me) return
     if (me.role !== 'sub') { router.replace('/login'); return }
-    if (!me.subcontractor_id) { router.replace('/login'); return }
+    // View-as preview: super-admin posing as `sub` has no subcontractor_id.
+    // Send them back to the sub home so they see the empty dashboard rather
+    // than getting kicked to login from a deep route.
+    if (!me.subcontractor_id) { router.replace('/subcontractor'); return }
     const subId = me.subcontractor_id
 
     const init = async () => {
