@@ -2,15 +2,15 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { getSession, clearAllSessionsForUser } from '@/lib/auth'
-import { requireAdmin } from '@/lib/api-guard'
+import { clearAllSessionsForUser } from '@/lib/auth'
+import { requireUserAdmin } from '@/lib/api-guard'
 import { SUPER_ADMIN_EMAIL } from '@/lib/view-as'
 import type { User } from '@/types'
 
 const BCRYPT_COST = 12
 
 export async function GET() {
-  const auth = await requireAdmin()
+  const auth = await requireUserAdmin()
   if (!auth.ok) return auth.response
 
   const { data, error } = await getSupabaseAdmin()
@@ -21,7 +21,7 @@ export async function GET() {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAdmin()
+  const auth = await requireUserAdmin()
   if (!auth.ok) return auth.response
 
   const body = await request.json() as {
@@ -69,10 +69,9 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const session = await getSession()
-  if (!session || (session.role !== 'main' && session.role !== 'project_manager')) {
-    return NextResponse.json({ error: 'Ikke tilgang' }, { status: 401 })
-  }
+  const auth = await requireUserAdmin()
+  if (!auth.ok) return auth.response
+  const session = auth.user
 
   const id = new URL(request.url).searchParams.get('id')
   if (!id) return NextResponse.json({ error: 'Mangler id' }, { status: 400 })

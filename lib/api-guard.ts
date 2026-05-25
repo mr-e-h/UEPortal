@@ -2,7 +2,20 @@ import { NextResponse } from 'next/server'
 import { getSession } from './auth'
 import { getSupabaseAdmin } from './supabase'
 import { ADMIN_ROLES, SUB_ROLES } from './roles'
-import type { User } from '@/types'
+import type { User, UserRole } from '@/types'
+
+/**
+ * "User management" roles — the subset of admins allowed to see and modify
+ * accounts, invitations, and access requests. Specifically EXCLUDES
+ * project_manager: a PM is a project-scoped admin, not a company-wide
+ * admin, and shouldn't be inviting users / approving access requests /
+ * deleting other accounts.
+ */
+export const USER_ADMIN_ROLES: UserRole[] = ['main', 'company']
+
+export function isUserAdmin(user: User): boolean {
+  return USER_ADMIN_ROLES.includes(user.role)
+}
 
 export type AuthResult =
   | { ok: true; user: User }
@@ -20,6 +33,20 @@ export async function requireAdmin(): Promise<AuthResult> {
   const result = await requireAuth()
   if (!result.ok) return result
   if (!ADMIN_ROLES.includes(result.user.role)) {
+    return { ok: false, response: NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 }) }
+  }
+  return result
+}
+
+/**
+ * Stricter than requireAdmin — only company-wide admins (main / company).
+ * Use for user-management endpoints (users, invitations, access requests).
+ * project_managers get a 403 here even though they're admins for project data.
+ */
+export async function requireUserAdmin(): Promise<AuthResult> {
+  const result = await requireAuth()
+  if (!result.ok) return result
+  if (!USER_ADMIN_ROLES.includes(result.user.role)) {
     return { ok: false, response: NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 }) }
   }
   return result

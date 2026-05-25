@@ -62,13 +62,17 @@ const sections = [
   },
   {
     label: 'INNSTILLINGER',
+    // 'Brukere' and 'Tilgangsforespørsler' are admin-only — added per role
+    // when we render. Min konto is for everyone.
     links: [
-      { href: '/admin/users', label: 'Brukere', icon: Users },
-      { href: '/admin/access-requests', label: 'Tilgangsforespørsler', icon: UserPlus, badgeKey: 'access-requests' as const },
+      { href: '/admin/users', label: 'Brukere', icon: Users, userAdminOnly: true as const },
+      { href: '/admin/access-requests', label: 'Tilgangsforespørsler', icon: UserPlus, badgeKey: 'access-requests' as const, userAdminOnly: true as const },
       { href: '/admin/account', label: 'Min konto', icon: Settings },
     ],
   },
 ]
+
+const USER_ADMIN_ROLES = ['main', 'company']
 
 export default function AdminLayout({ children }: { children: React.ReactNode }) {
   const router = useRouter()
@@ -95,9 +99,11 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
   const ready = !loading && me !== null
 
   // Poll the pending-request count so the sidebar badge stays roughly fresh.
-  // 30s is frequent enough to feel live but cheap on the DB.
+  // 30s is frequent enough to feel live but cheap on the DB. Skip for PMs —
+  // they don't see the menu item OR have permission to call /api/access-
+  // requests; polling would just spam 403s.
   useEffect(() => {
-    if (!ready) return
+    if (!ready || !me || !USER_ADMIN_ROLES.includes(me.role)) return
     let cancelled = false
     async function refresh() {
       try {
@@ -110,7 +116,7 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
     refresh()
     const id = setInterval(refresh, 30_000)
     return () => { cancelled = true; clearInterval(id) }
-  }, [ready, pathname])
+  }, [ready, me, pathname])
 
   const badgeFor = (key?: string): number => {
     if (key === 'access-requests') return pendingAccessRequests
@@ -140,12 +146,21 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
         </div>
 
         <nav className="flex-1 overflow-y-auto py-4">
-          {sections.map((section) => (
+          {sections.map((section) => {
+            // Drop admin-only links for non-user-admin roles (PM). If a section
+            // would end up empty, drop the section heading too so we don't
+            // render lonely labels.
+            const isUserAdmin = USER_ADMIN_ROLES.includes(me.role)
+            const visibleLinks = section.links.filter((link) =>
+              !('userAdminOnly' in link && link.userAdminOnly) || isUserAdmin,
+            )
+            if (visibleLinks.length === 0) return null
+            return (
             <div key={section.label} className="mb-4">
               <p className="px-5 mb-1 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest">
                 {section.label}
               </p>
-              {section.links.map((link) => {
+              {visibleLinks.map((link) => {
                 const { href, label, icon: Icon } = link
                 const exact = 'exact' in link ? link.exact : false
                 const badgeKey = 'badgeKey' in link ? link.badgeKey : undefined
@@ -172,7 +187,8 @@ export default function AdminLayout({ children }: { children: React.ReactNode })
                 )
               })}
             </div>
-          ))}
+            )
+          })}
         </nav>
 
       </aside>

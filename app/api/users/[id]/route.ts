@@ -2,13 +2,14 @@ import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession, clearAllSessionsForUser } from '@/lib/auth'
+import { USER_ADMIN_ROLES } from '@/lib/api-guard'
 import { SUPER_ADMIN_EMAIL } from '@/lib/view-as'
 import type { User } from '@/types'
 
 const BCRYPT_COST = 12
 
 function adminOnly(role: string): boolean {
-  return role === 'main' || role === 'project_manager'
+  return USER_ADMIN_ROLES.includes(role as typeof USER_ADMIN_ROLES[number])
 }
 
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {

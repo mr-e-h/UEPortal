@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireUserAdmin } from '@/lib/api-guard'
 import { generateToken, hashToken } from '@/lib/tokens'
 import { sendEmail, buildAppUrl } from '@/lib/email'
 import { invitationEmail } from '@/lib/email-templates'
@@ -21,7 +21,7 @@ import type { AccessRequest, Invitation } from '@/types'
  *   - Do not email — silent decline
  */
 export async function PATCH(req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireAdmin()
+  const auth = await requireUserAdmin()
   if (!auth.ok) return auth.response
 
   const body = await req.json().catch(() => ({})) as Partial<{
@@ -132,7 +132,7 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
  * Admin-only: delete an access request entirely. Used for spam cleanup.
  */
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireAdmin()
+  const auth = await requireUserAdmin()
   if (!auth.ok) return auth.response
 
   const { error } = await getSupabaseAdmin()

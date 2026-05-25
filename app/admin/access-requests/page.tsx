@@ -8,7 +8,7 @@
 import { redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
-import { ADMIN_ROLES } from '@/lib/roles'
+import { isUserAdmin } from '@/lib/api-guard'
 import type { AccessRequest } from '@/types'
 import AccessRequestsClient from './AccessRequestsClient'
 
@@ -16,9 +16,8 @@ export const dynamic = 'force-dynamic'
 
 export default async function AccessRequestsPage() {
   const me = await getSession()
-  if (!me || !ADMIN_ROLES.includes(me.role)) {
-    redirect('/login')
-  }
+  if (!me) redirect('/login')
+  if (!isUserAdmin(me)) redirect('/admin')
 
   const { data } = await getSupabaseAdmin()
     .from('access_requests')

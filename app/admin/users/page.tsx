@@ -16,16 +16,17 @@
 import { redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
-import { ADMIN_ROLES } from '@/lib/roles'
+import { isUserAdmin } from '@/lib/api-guard'
 import UsersClient, { type SafeUser, type SubcontractorLite, type InvitationLite } from './UsersClient'
 
 export const dynamic = 'force-dynamic'
 
 export default async function UsersPage() {
   const me = await getSession()
-  if (!me || !ADMIN_ROLES.includes(me.role)) {
-    redirect('/login')
-  }
+  if (!me) redirect('/login')
+  // Bouncing PMs to the admin dashboard makes more sense than /login —
+  // they're a legitimate admin user, just not a user-management one.
+  if (!isUserAdmin(me)) redirect('/admin')
 
   const sb = getSupabaseAdmin()
   const [usersRes, subsRes, invRes] = await Promise.all([

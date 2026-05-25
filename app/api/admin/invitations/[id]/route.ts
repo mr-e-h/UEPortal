@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireUserAdmin } from '@/lib/api-guard'
 
 /**
  * Revoke (delete) a pending invitation by id. Admin-only.
@@ -14,7 +14,7 @@ import { requireAdmin } from '@/lib/api-guard'
  * up history), but the resulting user account is not touched.
  */
 export async function DELETE(_req: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireAdmin()
+  const auth = await requireUserAdmin()
   if (!auth.ok) return auth.response
 
   const { error, count } = await getSupabaseAdmin()

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { rateLimit, clientIp } from '@/lib/rate-limit'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireUserAdmin } from '@/lib/api-guard'
 import type { AccessRequest } from '@/types'
 
 const MAX_LEN = {
@@ -93,7 +93,7 @@ export async function POST(req: NextRequest) {
  * Default: pending only (the actionable bucket).
  */
 export async function GET(req: NextRequest) {
-  const auth = await requireAdmin()
+  const auth = await requireUserAdmin()
   if (!auth.ok) return auth.response
 
   const status = new URL(req.url).searchParams.get('status') ?? 'pending'
