@@ -7,19 +7,22 @@ export interface Me {
   id: string
   email: string
   /**
-   * The role currently in effect — reflects the view-as override when the
-   * super-admin has one active. Use this for UI/routing decisions.
+   * The role currently in effect — reflects the view-as user when the
+   * super-admin is impersonating. Use this for UI/routing decisions.
    */
   role: UserRole
   full_name: string
   subcontractor_id: string | null
   active: boolean
-  /** The user's actual stored role, independent of any view-as override. */
+  /** The real session user — preserved regardless of impersonation. */
+  real_id: string
+  real_email: string
   real_role: UserRole
+  real_full_name: string
   /** Whether the dropdown should render (hardcoded super-admin only). */
   can_view_as: boolean
-  /** The current view-as role, or null when not viewing-as. */
-  view_as: UserRole | null
+  /** True when the top-level id ≠ real_id (i.e. impersonating someone). */
+  impersonating: boolean
 }
 
 let cached: Me | null = null

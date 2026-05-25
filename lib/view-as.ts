@@ -1,33 +1,31 @@
 import { cookies } from 'next/headers'
-import type { User, UserRole } from '@/types'
+import { getSupabaseAdmin } from './supabase'
+import type { User } from '@/types'
 
 /**
- * "View as <role>" feature — lets the hardcoded super-admin browse the app
- * as if they had a different role, to verify what each role sees.
+ * "View as <user>" feature — lets the hardcoded super-admin browse the app
+ * as if they WERE another specific user, to see exactly what that user sees.
  *
  * Security model (CRITICAL):
  *
  *   1. Only ONE account can use this: the hardcoded super-admin email.
- *      Even an upgraded `main` account cannot trigger view-as unless
- *      their email matches SUPER_ADMIN_EMAIL.
+ *      Even another `main` account cannot trigger view-as unless their
+ *      email matches SUPER_ADMIN_EMAIL.
  *
- *   2. view-as is READ-ONLY in spirit. It changes the role that page-level
- *      gates and the client UI see, so the super-admin can navigate as the
- *      target role would. But it does NOT change the user.id, user.email,
- *      or user.subcontractor_id — so existing role-based mutation gates
- *      (requireAdmin, requireSubcontractor, etc.) still check the REAL
- *      role. Mutations from a `main` user simply continue to work as `main`
- *      regardless of view-as.
+ *   2. view-as is READ-ONLY in spirit. /api/me, page guards, sidebar
+ *      and UI filtering all see the impersonated user — but mutation
+ *      gates (requireAdmin, requireSubcontractor) still resolve the
+ *      REAL session user via getSession(), so audit trails always show
+ *      the real actor. If the super-admin (viewing as a sub) submits
+ *      a sub-only form, the API will refuse it because the real role
+ *      is `main`, not `sub`. That's the intended trade-off.
  *
- *   3. Cookie value is validated against the known UserRole union — never
- *      trusted as raw input.
- *
- * Consequence: when admin "views as sub", they see what a sub sees, but if
- * they try to submit a sub-only form, the server will refuse it (real role
- * is `main`, not `sub`). That is the intended trade-off.
+ *   3. Cookie value is a user id; the actual user record (id, email,
+ *      role, subcontractor_id) is always loaded from the database, so
+ *      a tampered cookie just yields a null lookup.
  */
 
-export const VIEW_AS_COOKIE = 'view_as'
+export const VIEW_AS_COOKIE = 'view_as_user_id'
 
 /** The single account allowed to use view-as. Hardcoded so a compromised
  *  `main` row in the users table cannot grant itself view-as access. */
@@ -37,37 +35,38 @@ export function isSuperAdmin(user: User | null | undefined): boolean {
   return !!user && user.email === SUPER_ADMIN_EMAIL && user.role === 'main'
 }
 
-const VALID_ROLES: ReadonlyArray<UserRole> = ['main', 'project_manager', 'company', 'sub']
-
-function parseRole(raw: string | undefined): UserRole | null {
-  if (!raw) return null
-  return (VALID_ROLES as ReadonlyArray<string>).includes(raw) ? (raw as UserRole) : null
-}
-
 /**
- * Read the view-as cookie. Returns null if not set or invalid.
+ * Read the view-as cookie. Returns null if not set.
  * Does NOT check permission — callers should pair with isSuperAdmin().
  */
-export async function getViewAsRole(): Promise<UserRole | null> {
+export async function getViewAsUserId(): Promise<string | null> {
   const cookieStore = await cookies()
-  return parseRole(cookieStore.get(VIEW_AS_COOKIE)?.value)
+  return cookieStore.get(VIEW_AS_COOKIE)?.value ?? null
 }
 
 /**
  * Returns the user as it should appear to READ-side gates and UI:
- *  - For the super-admin with view-as set: real user but with overridden role
- *  - For anyone else: the real user unchanged
+ *  - For the super-admin with view-as set: the impersonated user (full
+ *    row from DB), unless lookup fails (cookie stale / user deleted /
+ *    deactivated), in which case fall back to the real user.
+ *  - For anyone else: the real user unchanged.
  *
- * Use this for: page guards (admin layout role check), /api/me, sidebar
- * filtering, conditional UI.
+ * Use this for: page guards, /api/me, sidebar filtering, conditional UI.
  *
- * Do NOT use this for: write authorization. Server endpoints should keep
+ * Do NOT use this for write authorization. Server endpoints should keep
  * calling requireAdmin/requireSubcontractor with the raw session user so
  * audit trails always reflect the real actor.
  */
 export async function getEffectiveUser(realUser: User): Promise<User> {
   if (!isSuperAdmin(realUser)) return realUser
-  const viewAs = await getViewAsRole()
-  if (!viewAs || viewAs === realUser.role) return realUser
-  return { ...realUser, role: viewAs }
+  const targetId = await getViewAsUserId()
+  if (!targetId || targetId === realUser.id) return realUser
+
+  const { data: target } = await getSupabaseAdmin()
+    .from('users')
+    .select('*')
+    .eq('id', targetId)
+    .maybeSingle<User>()
+  if (!target || target.active === false) return realUser
+  return target
 }

@@ -1,20 +1,19 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { cookies } from 'next/headers'
 import { getSession } from '@/lib/auth'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { isSuperAdmin, VIEW_AS_COOKIE } from '@/lib/view-as'
 import { isProd } from '@/lib/env'
-import type { UserRole } from '@/types'
+import type { User } from '@/types'
 
 /**
- * Set or clear the view-as override cookie. Only the hardcoded super-admin
- * can call this — every other caller, including other `main` accounts, gets
- * a 403 even if they manually craft the request.
+ * Set or clear the view-as override. Only the hardcoded super-admin can
+ * call this — every other caller, including other `main` accounts, gets
+ * 403 even if they craft the request manually.
  *
- * POST { role: UserRole | null }  — set cookie (null = clear)
+ * POST { userId: string | null }  — impersonate that user (null = clear)
  * DELETE                          — clear cookie
  */
-
-const VALID: ReadonlyArray<UserRole> = ['main', 'project_manager', 'company', 'sub']
 
 function denied(): NextResponse {
   return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
@@ -25,36 +24,58 @@ export async function POST(request: NextRequest) {
   if (!user) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
   if (!isSuperAdmin(user)) return denied()
 
-  const body = await request.json().catch(() => ({})) as { role?: unknown }
-  const role = body.role
+  const body = await request.json().catch(() => ({})) as { userId?: unknown }
+  const targetId = body.userId
   const cookieStore = await cookies()
 
-  if (role === null || role === undefined || role === '') {
+  // null / empty = clear the impersonation
+  if (targetId === null || targetId === undefined || targetId === '') {
     cookieStore.delete(VIEW_AS_COOKIE)
-    return NextResponse.json({ ok: true, viewAs: null })
+    return NextResponse.json({ ok: true, view_as: null })
   }
 
-  if (typeof role !== 'string' || !(VALID as ReadonlyArray<string>).includes(role)) {
-    return NextResponse.json({ error: 'Ugyldig rolle' }, { status: 400 })
+  if (typeof targetId !== 'string') {
+    return NextResponse.json({ error: 'Ugyldig brukerID' }, { status: 400 })
   }
 
-  // If the super-admin "views as main", that's a no-op — just clear.
-  if (role === user.role) {
+  // Impersonating yourself = clear.
+  if (targetId === user.id) {
     cookieStore.delete(VIEW_AS_COOKIE)
-    return NextResponse.json({ ok: true, viewAs: null })
+    return NextResponse.json({ ok: true, view_as: null })
   }
 
-  cookieStore.set(VIEW_AS_COOKIE, role, {
+  // Confirm the target exists and is active before setting the cookie —
+  // avoids leaving the super-admin in a phantom-user state.
+  const { data: target } = await getSupabaseAdmin()
+    .from('users')
+    .select('id, active, role, full_name, email')
+    .eq('id', targetId)
+    .maybeSingle<Pick<User, 'id' | 'active' | 'role' | 'full_name' | 'email'>>()
+  if (!target) {
+    return NextResponse.json({ error: 'Brukeren finnes ikke' }, { status: 404 })
+  }
+  if (target.active === false) {
+    return NextResponse.json({ error: 'Brukeren er deaktivert' }, { status: 400 })
+  }
+
+  cookieStore.set(VIEW_AS_COOKIE, targetId, {
     httpOnly: true,
     path: '/',
     sameSite: 'strict',
     secure: isProd,
-    // Short-lived — view-as is a debug aid, not a permanent state. 12 hours
-    // is long enough to span an admin's working day without leaving a
-    // forgotten override hanging around overnight.
+    // Short-lived debug aid, not a permanent state. 12h spans a working
+    // day without leaving forgotten overrides hanging around overnight.
     maxAge: 12 * 60 * 60,
   })
-  return NextResponse.json({ ok: true, viewAs: role })
+  return NextResponse.json({
+    ok: true,
+    view_as: {
+      id: target.id,
+      email: target.email,
+      full_name: target.full_name,
+      role: target.role,
+    },
+  })
 }
 
 export async function DELETE() {
@@ -64,5 +85,5 @@ export async function DELETE() {
 
   const cookieStore = await cookies()
   cookieStore.delete(VIEW_AS_COOKIE)
-  return NextResponse.json({ ok: true, viewAs: null })
+  return NextResponse.json({ ok: true, view_as: null })
 }
