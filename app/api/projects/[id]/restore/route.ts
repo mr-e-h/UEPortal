@@ -1,13 +1,11 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
+import { requireUserAdmin } from '@/lib/api-guard'
 
 export async function POST(_request: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireAdmin()
+  // Restore lives with the trash UI — main / company only, no PMs.
+  const auth = await requireUserAdmin()
   if (!auth.ok) return auth.response
-
-  const denied = await ensureProjectWritable(auth.user, params.id)
-  if (denied) return denied
 
   const { error, count } = await getSupabaseAdmin()
     .from('projects')

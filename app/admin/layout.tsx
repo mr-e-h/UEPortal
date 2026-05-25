@@ -57,7 +57,7 @@ const sections = [
     label: 'VERKTØY',
     links: [
       { href: '/admin/time-types', label: 'Timetyper', icon: Clock },
-      { href: '/admin/trash', label: 'Papirkurv', icon: Trash2 },
+      { href: '/admin/trash', label: 'Papirkurv', icon: Trash2, userAdminOnly: true as const },
     ],
   },
   {

@@ -2,13 +2,26 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
+import { useRouter } from 'next/navigation'
+import { useMe } from '@/lib/useMe'
 import type { Project } from '@/types'
 
+const USER_ADMIN_ROLES = ['main', 'company']
+
 export default function TrashPage() {
+  const router = useRouter()
+  const { me } = useMe()
   const [projects, setProjects] = useState<Project[]>([])
   const [loading, setLoading] = useState(true)
   const [restoring, setRestoring] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
+
+  // PMs can land here by typing the URL — bounce them back to the admin
+  // dashboard. The API also 403s but the user shouldn't see a stuck spinner.
+  useEffect(() => {
+    if (!me) return
+    if (!USER_ADMIN_ROLES.includes(me.role)) router.replace('/admin')
+  }, [me, router])
 
   const load = useCallback(async () => {
     try {
