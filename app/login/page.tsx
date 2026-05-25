@@ -80,11 +80,16 @@ function LoginForm() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50">
-      <div className="max-w-md w-full space-y-8 p-8 bg-white rounded-lg shadow">
+    <div
+      className="min-h-screen flex items-center justify-center bg-cover bg-center bg-no-repeat relative px-4"
+      style={{ backgroundImage: 'url(/login-bg.webp)' }}
+    >
+      {/* Dark scrim so the white login card stays readable on top of the photo */}
+      <div className="absolute inset-0 bg-black/40" aria-hidden="true" />
+      <div className="max-w-md w-full space-y-8 p-8 bg-white/95 backdrop-blur-sm rounded-lg shadow-xl relative z-10">
         <div>
           <h1 className="text-3xl font-bold text-gray-900">Logg inn</h1>
-          <p className="mt-2 text-sm text-gray-600">Underentreprenør-rapportering</p>
+          <p className="mt-2 text-sm text-gray-600">MinUE — underentreprenør-rapportering</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
