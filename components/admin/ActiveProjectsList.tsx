@@ -11,8 +11,12 @@ export interface ActiveProjectRow {
   name: string
   actualRevenue: number
   plannedRevenue: number
+  /** Actual UE-cost (approved weekly-report lines + approved EMs). */
   actualCost: number
+  /** Budgeted UE-cost from project_budget_lines. */
   plannedCost: number
+  /** Actual internal cost (sum of approved hour-entry rows × time-type rate). */
+  actualInternalCost: number
 }
 
 interface Props {
@@ -23,11 +27,12 @@ interface Props {
 interface BarPairProps {
   label: string
   actual: number
-  planned: number
+  /** When omitted, the bar shows actual only (no budget comparison). */
+  planned?: number
   /** Tailwind classes for the fill color of the actual segment. */
   actualFill: string
   /** When actual > planned, render this color past the planned mark to flag overrun. */
-  overFill: string
+  overFill?: string
 }
 
 /**
@@ -38,19 +43,39 @@ interface BarPairProps {
  *   - When actual > planned, the overflow shows in overFill color
  */
 function BarPair({ label, actual, planned, actualFill, overFill }: BarPairProps) {
-  const trackMax = Math.max(actual, planned, 1) // never divide by 0
-  const actualPct = (Math.min(actual, planned) / trackMax) * 100
-  const overflowPct = actual > planned ? ((actual - planned) / trackMax) * 100 : 0
-  const plannedPct = (planned / trackMax) * 100
-  const used = planned > 0 ? Math.round((actual / planned) * 100) : 0
-  const overrun = actual > planned
+  const hasPlan = planned !== undefined && planned > 0
+  if (!hasPlan) {
+    // No-planned mode: render a thin info-only bar of relative width (relative
+    // to the bar pair group's max would need parent context — instead we use
+    // a tiny scale where the bar is just a visual marker, not comparison).
+    return (
+      <div className="space-y-1">
+        <div className="flex items-baseline justify-between gap-2 text-xs">
+          <span className="font-medium text-[var(--color-text-secondary)]">{label}</span>
+          <span className="tabular-nums text-[var(--color-text-muted)]">{fmt(actual)}</span>
+        </div>
+        <div className="relative h-1.5 rounded-full bg-muted overflow-hidden">
+          {actual > 0 && (
+            <div className={`absolute inset-y-0 left-0 ${actualFill}`} style={{ width: '100%' }} />
+          )}
+        </div>
+      </div>
+    )
+  }
+  const plannedSafe = planned ?? 0
+  const trackMax = Math.max(actual, plannedSafe, 1) // never divide by 0
+  const actualPct = (Math.min(actual, plannedSafe) / trackMax) * 100
+  const overflowPct = actual > plannedSafe ? ((actual - plannedSafe) / trackMax) * 100 : 0
+  const plannedPct = (plannedSafe / trackMax) * 100
+  const used = plannedSafe > 0 ? Math.round((actual / plannedSafe) * 100) : 0
+  const overrun = actual > plannedSafe
 
   return (
     <div className="space-y-1">
       <div className="flex items-baseline justify-between gap-2 text-xs">
         <span className="font-medium text-[var(--color-text-secondary)]">{label}</span>
         <span className={`tabular-nums ${overrun ? 'text-red-600 font-semibold' : 'text-[var(--color-text-muted)]'}`}>
-          {fmt(actual)} <span className="text-[var(--color-text-muted)]">/ {fmt(planned)}</span>
+          {fmt(actual)} <span className="text-[var(--color-text-muted)]">/ {fmt(plannedSafe)}</span>
           <span className="ml-1.5 text-[var(--color-text-muted)]">({used}%)</span>
         </span>
       </div>
@@ -60,15 +85,15 @@ function BarPair({ label, actual, planned, actualFill, overFill }: BarPairProps)
           <div className={`absolute inset-y-0 left-0 ${actualFill}`} style={{ width: `${actualPct}%` }} />
         )}
         {/* Overflow segment (only if actual > planned) */}
-        {overflowPct > 0 && (
+        {overflowPct > 0 && overFill && (
           <div className={`absolute inset-y-0 ${overFill}`} style={{ left: `${actualPct}%`, width: `${overflowPct}%` }} />
         )}
         {/* Planned marker — a slim vertical line, suppressed when planned ≥ track (== 100%) */}
-        {planned > 0 && plannedPct < 100 && (
+        {plannedSafe > 0 && plannedPct < 100 && (
           <div
             className="absolute inset-y-0 w-0.5 bg-[var(--color-text-secondary)]/70"
             style={{ left: `${plannedPct}%` }}
-            title={`Budsjettert: ${fmt(planned)}`}
+            title={`Budsjettert: ${fmt(plannedSafe)}`}
           />
         )}
       </div>
@@ -112,10 +137,25 @@ export default function ActiveProjectsList({ projects, limit = 5 }: Props) {
                   overFill="bg-blue-300"
                 />
                 <BarPair
-                  label="UE-kostnad"
+                  label="Kost UE"
                   actual={p.actualCost}
                   planned={p.plannedCost}
                   actualFill="bg-amber-500"
+                  overFill="bg-red-500"
+                />
+                <BarPair
+                  label="Kost internt"
+                  actual={p.actualInternalCost}
+                  actualFill="bg-purple-400"
+                />
+                {/* Total kost — actual = UE + internal, planned baseline is
+                    the UE budget (no separate internal budget exists). When
+                    total cost passes UE-budget the bar overruns in red. */}
+                <BarPair
+                  label="Total kost"
+                  actual={p.actualCost + p.actualInternalCost}
+                  planned={p.plannedCost}
+                  actualFill="bg-gray-700"
                   overFill="bg-red-500"
                 />
               </Link>

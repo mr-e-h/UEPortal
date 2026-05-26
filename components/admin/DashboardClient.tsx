@@ -133,6 +133,7 @@ export default function DashboardClient({
         plannedRevenue: p.plannedRevenue,
         actualCost: p.cost,
         plannedCost: p.plannedCost,
+        actualInternalCost: p.internalCost,
       }))
   }, [projectBreakdowns, activeProjectIds])
 
