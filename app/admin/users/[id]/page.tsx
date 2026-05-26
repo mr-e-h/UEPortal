@@ -10,7 +10,7 @@ import Field from '@/components/ui/Field'
 import ErrorBox from '@/components/ui/ErrorBox'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { ROLES, roleLabel } from '@/lib/roles'
-import { displayUsername, displayCompany } from '@/lib/usernames'
+import { displayCompany } from '@/lib/usernames'
 import type { User, Subcontractor, UserRole } from '@/types'
 
 type UserView = Omit<User, 'password'>
@@ -148,7 +148,6 @@ export default function UserDetailPage() {
   if (!user) return null
 
   const subPicked = subs.find((s) => s.id === subcontractorId) ?? null
-  const username = displayUsername({ ...user, full_name: fullName, role }, subPicked)
   const company = displayCompany({ ...user, role }, subPicked)
   const isAdminRole = role === 'main' || role === 'project_manager' || role === 'company'
 
@@ -163,7 +162,7 @@ export default function UserDetailPage() {
 
       <div>
         <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">{user.full_name}</h1>
-        <p className="text-sm text-[var(--color-text-muted)] font-mono mt-0.5">{username}</p>
+        <p className="text-sm text-[var(--color-text-muted)] mt-0.5">{user.email}</p>
       </div>
 
       {error && <ErrorBox variant="error">{error}</ErrorBox>}
@@ -226,9 +225,6 @@ export default function UserDetailPage() {
               />
               <span className="text-sm">{active ? 'Aktiv — kan logge inn' : 'Inaktiv — innlogging blokkert, alle sesjoner slettes ved lagring'}</span>
             </label>
-          </Field>
-          <Field label="Brukernavn (autogenerert)" className="sm:col-span-2">
-            <input value={username} readOnly className="input bg-muted text-[var(--color-text-muted)] font-mono text-xs" />
           </Field>
           <div className="sm:col-span-2 flex items-center justify-between pt-2">
             <Button type="submit" variant="primary" className="px-4 py-2 text-sm inline-flex items-center gap-1.5" disabled={saving}>

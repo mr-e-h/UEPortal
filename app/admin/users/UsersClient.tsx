@@ -11,7 +11,7 @@ import ErrorBox from '@/components/ui/ErrorBox'
 import StatusPill from '@/components/ui/StatusPill'
 import EmptyState from '@/components/ui/EmptyState'
 import { roleLabel } from '@/lib/roles'
-import { displayUsername, displayCompany } from '@/lib/usernames'
+import { displayCompany } from '@/lib/usernames'
 import { useMe } from '@/lib/useMe'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import type { UserRole } from '@/types'
@@ -40,7 +40,7 @@ export type InvitationLite = {
   accepted_at: string | null
 }
 
-type SortKey = 'full_name' | 'username' | 'role' | 'id' | 'active' | 'company'
+type SortKey = 'full_name' | 'email' | 'role' | 'id' | 'active' | 'company'
 type SortDir = 'asc' | 'desc'
 
 interface Props {
@@ -208,7 +208,6 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
     const sub = u.subcontractor_id ? subMap.get(u.subcontractor_id) ?? null : null
     return {
       ...u,
-      username: displayUsername(u, sub),
       company: displayCompany(u, sub),
     }
   }), [users, subMap])
@@ -219,7 +218,6 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
     return enriched.filter((u) =>
       u.full_name.toLowerCase().includes(q) ||
       u.email.toLowerCase().includes(q) ||
-      u.username.toLowerCase().includes(q) ||
       u.company.toLowerCase().includes(q) ||
       u.id.toLowerCase().includes(q)
     )
@@ -231,7 +229,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
       const dir = sortDir === 'asc' ? 1 : -1
       const get = (x: typeof a): string | number | boolean => {
         if (sortKey === 'full_name') return x.full_name
-        if (sortKey === 'username') return x.username
+        if (sortKey === 'email') return x.email
         if (sortKey === 'role') return roleLabel(x.role)
         if (sortKey === 'id') return x.id
         if (sortKey === 'active') return x.active ? 1 : 0
@@ -263,9 +261,9 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
   }
 
   function exportCsv() {
-    const headers = ['Navn', 'Brukernavn', 'E-post', 'Brukernivå', 'BrukerId', 'Status', 'Selskap']
+    const headers = ['Navn', 'E-post', 'Brukernivå', 'BrukerId', 'Status', 'Selskap']
     const rows = sorted.map((u) => [
-      u.full_name, u.username, u.email, roleLabel(u.role), u.id,
+      u.full_name, u.email, roleLabel(u.role), u.id,
       u.active ? 'Aktiv' : 'Inaktiv', u.company,
     ])
     const escape = (s: string) => `"${s.replace(/"/g, '""')}"`
@@ -410,7 +408,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
                     </div>
                   </th>
                   <Th label="Navn" sortKey="full_name" current={sortKey} dir={sortDir} onSort={toggleSort} />
-                  <Th label="Brukernavn" sortKey="username" current={sortKey} dir={sortDir} onSort={toggleSort} />
+                  <Th label="E-post" sortKey="email" current={sortKey} dir={sortDir} onSort={toggleSort} />
                   <Th label="Brukernivå" sortKey="role" current={sortKey} dir={sortDir} onSort={toggleSort} />
                   <Th label="BrukerId" sortKey="id" current={sortKey} dir={sortDir} onSort={toggleSort} />
                   <Th label="Status" sortKey="active" current={sortKey} dir={sortDir} onSort={toggleSort} />
@@ -464,7 +462,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
                       </div>
                     </td>
                     <td className="px-3 py-2.5 font-medium text-[var(--color-text-primary)]">{u.full_name}</td>
-                    <td className="px-3 py-2.5 text-[var(--color-text-secondary)] font-mono text-xs">{u.username}</td>
+                    <td className="px-3 py-2.5 text-[var(--color-text-secondary)] text-xs">{u.email}</td>
                     <td className="px-3 py-2.5">
                       <StatusPill tone={u.role === 'main' || u.role === 'project_manager' || u.role === 'company' ? 'blue' : 'amber'}>
                         {roleLabel(u.role)}
