@@ -18,6 +18,7 @@ import {
   BarChart2,
   Receipt,
   UserPlus,
+  PieChart,
   Menu,
   X,
 } from 'lucide-react'
@@ -52,6 +53,7 @@ const sections = [
   {
     label: 'ØKONOMI',
     links: [
+      { href: '/admin/totalokonomi', label: 'Totaløkonomi', icon: PieChart },
       { href: '/admin/invoice-basis', label: 'Fakturagrunnlag', icon: Receipt },
     ],
   },
