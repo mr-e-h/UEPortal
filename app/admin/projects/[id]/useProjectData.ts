@@ -22,6 +22,13 @@ import type {
 
 export type WRWithLines = WeeklyReport & { lines: WeeklyReportLine[] }
 
+/** PM assignment row hydrated with the user's public-safe fields. Matches
+ *  the shape returned by GET /api/project-managers?project_id=… */
+export type ProjectManagerRow = {
+  user_id: string
+  user: { id: string; full_name: string; email: string } | null
+}
+
 function safeArr<T>(val: unknown): T[] {
   return Array.isArray(val) ? val as T[] : []
 }
@@ -55,6 +62,7 @@ export function useProjectData(id: string) {
   const [milestones, setMilestones] = useState<GanttMilestone[]>([])
   const [budgetVersions, setBudgetVersions] = useState<BudgetVersion[]>([])
   const [monthPlans, setMonthPlans] = useState<ProjectMonthPlan[]>([])
+  const [projectManagers, setProjectManagers] = useState<ProjectManagerRow[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchAll = useCallback(async () => {
@@ -75,6 +83,7 @@ export function useProjectData(id: string) {
       fetch(`/api/milestones?project_id=${id}`),
       fetch(`/api/budget-versions?project_id=${id}`),
       fetch(`/api/project-month-plans?project_id=${id}`),
+      fetch(`/api/project-managers?project_id=${id}`),
     ])
 
     if (responses.some((r) => r.status === 401)) {
@@ -82,7 +91,7 @@ export function useProjectData(id: string) {
       return
     }
 
-    const [proj, prods, bls, rls, pSubs, subs, cos, ics, wrls, sps, ms, bv, mp] = await Promise.all(
+    const [proj, prods, bls, rls, pSubs, subs, cos, ics, wrls, sps, ms, bv, mp, pms] = await Promise.all(
       responses.map((r) => r.json())
     )
 
@@ -101,6 +110,7 @@ export function useProjectData(id: string) {
     setMilestones(safeArr(ms))
     setBudgetVersions(safeArr(bv))
     setMonthPlans(safeArr(mp))
+    setProjectManagers(safeArr(pms))
     setLoading(false)
   }, [id, router])
 
@@ -177,6 +187,7 @@ export function useProjectData(id: string) {
     milestones,
     budgetVersions,
     monthPlans,
+    projectManagers,
     // state
     loading,
     adminName,

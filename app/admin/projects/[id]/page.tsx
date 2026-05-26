@@ -18,6 +18,7 @@ import MaterialSection from './MaterialSection'
 import ForecastSection from './ForecastSection'
 import OverviewSection from './OverviewSection'
 import BudgetLinesSection from './BudgetLinesSection'
+import ProjectStatusHero from './ProjectStatusHero'
 
 const TABS = [
   { id: 'oversikt', label: 'Oversikt' },
@@ -40,7 +41,7 @@ export default function ProjectDetailPage() {
   const {
     project, allProducts, budgetLines, reportLines, projectSubs, allSubs,
     changeOrders, internalCosts, weeklyReportsWL, subPrices, milestones,
-    budgetVersions, monthPlans, loading, adminName,
+    budgetVersions, monthPlans, projectManagers, loading, adminName,
     fetchAll, addBudgetLine: addBudgetLineHandler, addSubToProject: addSubHandler,
     removeSubFromProject, updateReportStatus, updateChangeOrderStatus: updateCOStatus,
     deleteInternalCost,
@@ -304,6 +305,17 @@ export default function ProjectDetailPage() {
         </div>
         <Link href={`/admin/projects/${id}/edit`} className="text-sm text-gray-600 border border-gray-200 px-3 py-1 rounded hover:bg-gray-50">Rediger</Link>
       </div>
+
+      {/* Status hero — always visible. Click-through targets pop the right
+          detail tab so the user lands on the EM / report queue they came for. */}
+      <ProjectStatusHero
+        project={project}
+        budgetLines={budgetLines}
+        weeklyReportsWL={weeklyReportsWL}
+        changeOrders={changeOrders}
+        projectManagers={projectManagers}
+        onGoToTab={(tab) => setActiveTab(tab)}
+      />
 
       {/* Tab navigation */}
       <div className="border-b border-gray-200 -mb-2">
