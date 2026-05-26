@@ -1,12 +1,28 @@
 import { NextRequest, NextResponse } from 'next/server'
-import { readJson } from '@/lib/data'
+import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { isAdmin } from '@/lib/api-guard'
-import type { Project, ProjectSubcontractor, ProjectBudgetLine, Product, User } from '@/types'
+import type {
+  Project,
+  ProjectSubcontractor,
+  ProjectBudgetLine,
+  Product,
+  User,
+  WeeklyReport,
+  WeeklyReportLine,
+  ChangeOrder,
+} from '@/types'
 
 interface ProjectManagerLink {
   project_id: string
   user_id: string
+}
+
+interface UEInvoice {
+  id: string
+  subcontractor_id: string
+  project_id: string | null
+  amount: number
 }
 
 export async function GET(request: NextRequest) {
@@ -22,43 +38,105 @@ export async function GET(request: NextRequest) {
   }
 
   const subcontractorId = requestedSubId
+  const sb = getSupabaseAdmin()
 
-  const [links, projects, allBudgetLines, allProducts, pmLinks, allUsers] = await Promise.all([
-    readJson<ProjectSubcontractor>('project_subcontractors.json'),
-    readJson<Project>('projects.json'),
-    readJson<ProjectBudgetLine>('project_budget_lines.json'),
-    readJson<Product>('products.json'),
-    readJson<ProjectManagerLink>('project_managers.json'),
-    readJson<User>('users.json'),
+  // Fetch in parallel — scope what we can to this sub at the SQL layer so we
+  // don't ship every project's data over the wire.
+  const [
+    linksRes,
+    projectsRes,
+    budgetLinesRes,
+    productsRes,
+    pmLinksRes,
+    usersRes,
+    wrRes,
+    coRes,
+    invRes,
+  ] = await Promise.all([
+    sb.from('project_subcontractors').select('*').eq('subcontractor_id', subcontractorId),
+    sb.from('projects').select('*').neq('deleted', true),
+    sb.from('project_budget_lines').select('*').eq('assigned_subcontractor_id', subcontractorId),
+    sb.from('products').select('id, name, description, unit'),
+    sb.from('project_managers').select('project_id, user_id'),
+    sb.from('users').select('id, full_name, email, active').eq('active', true),
+    sb.from('weekly_reports').select('id, project_id, status').eq('subcontractor_id', subcontractorId),
+    sb.from('change_orders').select('id, project_id, status, total_cost').eq('subcontractor_id', subcontractorId),
+    sb.from('ue_invoices').select('id, subcontractor_id, project_id, amount').eq('subcontractor_id', subcontractorId),
   ])
 
-  const projectIds = links.filter((l) => l.subcontractor_id === subcontractorId).map((l) => l.project_id)
+  const links = (linksRes.data ?? []) as ProjectSubcontractor[]
+  const projects = (projectsRes.data ?? []) as Project[]
+  const allBudgetLines = (budgetLinesRes.data ?? []) as ProjectBudgetLine[]
+  const allProducts = (productsRes.data ?? []) as Pick<Product, 'id' | 'name' | 'description' | 'unit'>[]
+  const pmLinks = (pmLinksRes.data ?? []) as ProjectManagerLink[]
+  const allUsers = (usersRes.data ?? []) as Pick<User, 'id' | 'full_name' | 'email'>[]
+  const myReports = (wrRes.data ?? []) as Pick<WeeklyReport, 'id' | 'project_id' | 'status'>[]
+  const myChangeOrders = (coRes.data ?? []) as Pick<ChangeOrder, 'id' | 'project_id' | 'status' | 'total_cost'>[]
+  const myInvoices = (invRes.data ?? []) as UEInvoice[]
+
+  const projectIds = links.map((l) => l.project_id)
   const projectIdSet = new Set(projectIds)
 
-  // Map each project to its assigned PMs so the sub can see who to contact.
-  // Exclude password and other internal fields — return only public-safe ones.
+  // Fetch weekly_report_lines just for our reports — without this we'd ship
+  // every line in the DB across the wire.
+  const approvedReportIds = myReports
+    .filter((r) => r.status === 'approved' || r.status === 'partially_approved')
+    .map((r) => r.id)
+  const wrlRes = approvedReportIds.length > 0
+    ? await sb.from('weekly_report_lines').select('id, weekly_report_id, project_budget_line_id, reported_quantity, status').in('weekly_report_id', approvedReportIds)
+    : { data: [] as WeeklyReportLine[] }
+  const allReportLines = (wrlRes.data ?? []) as WeeklyReportLine[]
+
+  // Lookups
+  const productMap = new Map(allProducts.map((p) => [p.id, p]))
+  const blMap = new Map(allBudgetLines.map((bl) => [bl.id, bl]))
   const usersById = new Map(allUsers.map((u) => [u.id, u]))
+
+  // Approved-value per project: approved weekly-report lines (qty × cost)
+  // PLUS approved change orders (their already-computed total_cost).
+  const approvedValueByProject = new Map<string, number>()
+  for (const line of allReportLines) {
+    if (line.status !== 'approved') continue
+    const bl = blMap.get(line.project_budget_line_id)
+    if (!bl || !projectIdSet.has(bl.project_id)) continue
+    const v = line.reported_quantity * bl.subcontractor_cost_price_snapshot
+    approvedValueByProject.set(bl.project_id, (approvedValueByProject.get(bl.project_id) ?? 0) + v)
+  }
+  for (const co of myChangeOrders) {
+    if (co.status !== 'approved') continue
+    approvedValueByProject.set(co.project_id, (approvedValueByProject.get(co.project_id) ?? 0) + co.total_cost)
+  }
+
+  // Invoiced-amount per project (ue_invoices.project_id may be null when
+  // a UE filed an unassigned invoice — those are excluded from per-project
+  // totals but still show up in the global fakturert KPI).
+  const invoicedByProject = new Map<string, number>()
+  for (const inv of myInvoices) {
+    if (!inv.project_id) continue
+    invoicedByProject.set(inv.project_id, (invoicedByProject.get(inv.project_id) ?? 0) + inv.amount)
+  }
+
+  // PM contacts per project
   const pmsByProject = new Map<string, Array<Pick<User, 'id' | 'full_name' | 'email'>>>()
   for (const link of pmLinks) {
     if (!projectIdSet.has(link.project_id)) continue
     const user = usersById.get(link.user_id)
-    if (!user || user.active === false) continue
+    if (!user) continue
     const arr = pmsByProject.get(link.project_id) ?? []
     arr.push({ id: user.id, full_name: user.full_name, email: user.email })
     pmsByProject.set(link.project_id, arr)
   }
 
   const result = projects
-    .filter((p) => projectIds.includes(p.id) && !p.deleted)
+    .filter((p) => projectIdSet.has(p.id))
     .map((project) => {
       const assignedLines = allBudgetLines.filter(
         (bl) =>
           bl.project_id === project.id &&
-          bl.assigned_subcontractor_id === subcontractorId &&
-          (bl.line_type === 'subcontractor_work' || bl.line_type == null)
+          (bl.line_type === 'subcontractor_work' || bl.line_type == null),
       )
       const linesWithProduct = assignedLines.map((bl) => {
-        const product = allProducts.find((p) => p.id === bl.product_id)
+        const product = productMap.get(bl.product_id)
         return {
           id: bl.id,
           product_id: bl.product_id,
@@ -73,6 +151,8 @@ export async function GET(request: NextRequest) {
         ...project,
         budget_lines: linesWithProduct,
         project_managers: pmsByProject.get(project.id) ?? [],
+        approved_value: approvedValueByProject.get(project.id) ?? 0,
+        invoiced_value: invoicedByProject.get(project.id) ?? 0,
       }
     })
 

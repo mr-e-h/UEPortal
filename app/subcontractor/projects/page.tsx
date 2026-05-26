@@ -3,7 +3,6 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { Search } from 'lucide-react'
-import type { ChangeOrder } from '@/types'
 import type { BadgeStatus } from '@/components/ui/Badge'
 import Badge from '@/components/ui/Badge'
 import Card from '@/components/ui/Card'
@@ -35,9 +34,11 @@ type ProjectWithLines = {
   end_date: string | null
   budget_lines: BudgetLine[]
   project_managers: ProjectManager[]
+  /** Sum of approved work cost (weekly-report lines + approved EMs). */
+  approved_value: number
+  /** Sum of ue_invoices.amount tagged to this project. */
+  invoiced_value: number
 }
-
-type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'>
 
 type ProjectRow = {
   id: string
@@ -47,7 +48,8 @@ type ProjectRow = {
   county: string
   status: string
   budget_value: number
-  approved_em_value: number
+  approved_value: number
+  invoiced_value: number
   line_count: number
   contact: { full_name: string; email: string } | null
   contact_label: string
@@ -66,7 +68,6 @@ export default function SubcontractorProjectsPage() {
   const router = useRouter()
   const { me } = useMe()
   const [projects, setProjects] = useState<ProjectWithLines[]>([])
-  const [changeOrders, setChangeOrders] = useState<UEChangeOrder[]>([])
   const [loading, setLoading] = useState(true)
   const [search, setSearch] = useState('')
   const [statusFilter, setStatusFilter] = useState<StatusFilter>('active')
@@ -83,12 +84,8 @@ export default function SubcontractorProjectsPage() {
   }
 
   const fetchAll = useCallback(async (subId: string) => {
-    const [proj, cos] = await Promise.all([
-      safeJsonArray<ProjectWithLines>(`/api/subcontractor/projects?subcontractor_id=${subId}`),
-      safeJsonArray<UEChangeOrder>(`/api/subcontractor/change-orders?subcontractor_id=${subId}`),
-    ])
+    const proj = await safeJsonArray<ProjectWithLines>(`/api/subcontractor/projects?subcontractor_id=${subId}`)
     setProjects(proj)
-    setChangeOrders(cos)
     setLoading(false)
   }, [])
 
@@ -98,13 +95,6 @@ export default function SubcontractorProjectsPage() {
     if (!me.subcontractor_id) { setLoading(false); return }
     fetchAll(me.subcontractor_id)
   }, [me, router, fetchAll])
-
-  const approvedEMByProject = useMemo(() => changeOrders
-    .filter((co) => co.status === 'approved')
-    .reduce<Record<string, number>>((acc, co) => {
-      acc[co.project_id] = (acc[co.project_id] ?? 0) + co.total_cost
-      return acc
-    }, {}), [changeOrders])
 
   const rows: ProjectRow[] = useMemo(() => projects.map((p) => {
     const pm = p.project_managers?.[0] ?? null
@@ -117,14 +107,15 @@ export default function SubcontractorProjectsPage() {
       county: p.county,
       status: p.status,
       budget_value: p.budget_lines.reduce((s, bl) => s + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0),
-      approved_em_value: approvedEMByProject[p.id] ?? 0,
+      approved_value: p.approved_value,
+      invoiced_value: p.invoiced_value,
       line_count: p.budget_lines.length,
       contact: pm,
       contact_label: pm ? `${pm.full_name}${extra}` : '–',
       start_date: p.start_date,
       end_date: p.end_date,
     }
-  }), [projects, approvedEMByProject])
+  }), [projects])
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -158,13 +149,24 @@ export default function SubcontractorProjectsPage() {
       ),
     },
     {
-      key: 'approved_em_value',
-      label: 'Godkjente EM',
+      key: 'approved_value',
+      label: 'Omsatt pdd',
       sortable: true,
-      getValue: (row) => row.approved_em_value,
+      getValue: (row) => row.approved_value,
       render: (row) => (
-        <span className={row.approved_em_value > 0 ? 'font-medium text-green-600' : 'text-[var(--color-text-muted)]'}>
-          {row.approved_em_value > 0 ? fmt(row.approved_em_value) : '–'}
+        <span className={row.approved_value > 0 ? 'font-medium text-green-600' : 'text-[var(--color-text-muted)]'}>
+          {row.approved_value > 0 ? fmt(row.approved_value) : '–'}
+        </span>
+      ),
+    },
+    {
+      key: 'invoiced_value',
+      label: 'Fakturert totalt',
+      sortable: true,
+      getValue: (row) => row.invoiced_value,
+      render: (row) => (
+        <span className={row.invoiced_value > 0 ? 'font-medium text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)]'}>
+          {row.invoiced_value > 0 ? fmt(row.invoiced_value) : '–'}
         </span>
       ),
     },
