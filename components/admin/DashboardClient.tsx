@@ -115,28 +115,26 @@ export default function DashboardClient({
     return items
   }, [pendingReportRows, pendingCOCount, currentWeek, projectBreakdowns])
 
-  // Active projects list — rev as headline value, % computed against the
-  // project's BUDGET from breakdowns (cost / budget). Fall back to revenue
-  // share of yearRevenue as a coarse progress proxy if no per-project budget.
+  // Active projects list — each row carries actual + planned for both
+  // revenue and cost so the bars can render planned-vs-actual pairs.
+  // `projectBreakdowns` is the YTD breakdown which already includes
+  // plannedRevenue + plannedCost.
+  const activeProjectIds = useMemo(
+    () => new Set(projectStats.ytd.filter((p) => p.status === 'active').map((p) => p.id)),
+    [projectStats],
+  )
   const activeProjects: ActiveProjectRow[] = useMemo(() => {
-    return projectStats.ytd
-      .filter((p) => p.status === 'active')
-      .map((p) => {
-        // Progress proxy: revenue this project / its budget approximation.
-        // We don't have per-project budget in the props yet, so use revenue
-        // share of the totalled year revenue across active projects.
-        const totalActive = projectStats.ytd
-          .filter((x) => x.status === 'active')
-          .reduce((s, x) => s + x.revenue, 0)
-        const pct = totalActive > 0 ? (p.revenue / totalActive) * 100 : 0
-        return {
-          id: p.id,
-          name: p.name,
-          revenue: p.revenue,
-          progressPct: pct,
-        }
-      })
-  }, [projectStats])
+    return projectBreakdowns
+      .filter((p) => activeProjectIds.has(p.id))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        actualRevenue: p.revenue,
+        plannedRevenue: p.plannedRevenue,
+        actualCost: p.cost,
+        plannedCost: p.plannedCost,
+      }))
+  }, [projectBreakdowns, activeProjectIds])
 
   return (
     <div className="p-6 space-y-6">

@@ -10,6 +10,13 @@ export interface ProjectBreakdown {
   cost: number
   internalCost: number
   profit: number
+  // Planned-vs-actual fields for the Aktive prosjekter bars on
+  // /admin/totalokonomi. Planned values come from project_budget_lines
+  // (budget_quantity × the respective price snapshot); actual revenue/cost
+  // are the same numbers as `revenue` / `cost` above but pulled out for
+  // semantic clarity at the call site.
+  plannedRevenue: number
+  plannedCost: number
 }
 
 function fmt(n: number) {

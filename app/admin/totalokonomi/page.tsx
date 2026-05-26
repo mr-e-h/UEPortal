@@ -69,7 +69,7 @@ export default async function AdminDashboard() {
     subsRes,
   ] = await Promise.all([
     sb.from('projects').select('*').neq('deleted', true),
-    sb.from('project_budget_lines').select('id, project_id, customer_price_snapshot, subcontractor_cost_price_snapshot'),
+    sb.from('project_budget_lines').select('id, project_id, budget_quantity, customer_price_snapshot, subcontractor_cost_price_snapshot'),
     sb.from('weekly_reports').select('*').gte('year', thisYear - 1).lte('year', thisYear),
     sb.from('change_orders').select('*').gte('submitted_at', lastYearStart).neq('status', 'draft'),
     sb.from('hour_entries').select('*').gte('date', lastYearStart),
@@ -199,7 +199,28 @@ export default async function AdminDashboard() {
       // mismatched (used created_at) so totals never agreed with per-project.
       .filter((he) => he.project_id === proj.id && isInOsloYear(he.date, thisYear))
       .reduce((s, he) => s + he.hours * he.cost_per_hour_snapshot, 0)
-    return { id: proj.id, name: proj.name, revenue, cost, internalCost, profit: revenue - cost - internalCost }
+    // Planned vs actual — baseline is the ORIGINAL budget, NOT including
+    // EMs. (EMs expand scope; if you want including-EM later, add
+    // approvedCOs.total_customer_value to plannedRevenue.)
+    const projBudgetLines = budgetLines.filter((bl) => bl.project_id === proj.id)
+    const plannedRevenue = projBudgetLines.reduce(
+      (s, bl) => s + (bl.budget_quantity ?? 0) * (bl.customer_price_snapshot ?? 0),
+      0,
+    )
+    const plannedCost = projBudgetLines.reduce(
+      (s, bl) => s + (bl.budget_quantity ?? 0) * (bl.subcontractor_cost_price_snapshot ?? 0),
+      0,
+    )
+    return {
+      id: proj.id,
+      name: proj.name,
+      revenue,
+      cost,
+      internalCost,
+      profit: revenue - cost - internalCost,
+      plannedRevenue,
+      plannedCost,
+    }
   })
 
   // Helper: compute chart points for a list of weeks
