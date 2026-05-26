@@ -3,7 +3,6 @@
 import { useState, useMemo } from 'react'
 import DashboardChart from './DashboardChart'
 import DashboardKpiCardsV2 from './DashboardKpiCardsV2'
-import AttentionFeed, { type AttentionItem } from './AttentionFeed'
 import ActiveProjectsList, { type ActiveProjectRow } from './ActiveProjectsList'
 import Card from '@/components/ui/Card'
 import type { WeekPoint } from './DashboardChart'
@@ -40,11 +39,6 @@ const PERIOD_LABELS: Record<PeriodKey, string> = {
   'ytd': '1 år',
 }
 
-// Margin target — projects with margin under this threshold surface in the
-// attention feed as "Margin under mål". Easy to lift to config later if
-// admin wants per-project or per-customer thresholds.
-const MARGIN_TARGET_PCT = 15
-
 type Props = {
   chartData: Record<PeriodKey, WeekPoint[]>
   projectStats: Record<PeriodKey, ProjectStat[]>
@@ -79,41 +73,6 @@ export default function DashboardClient({
   projectBreakdowns,
 }: Props) {
   const [period, setPeriod] = useState<PeriodKey>('12w')
-
-  // Attention feed — pending reports first, then EMs, then margin warnings.
-  // Compact: one row per category, with a count, not one row per item.
-  const attentionItems: AttentionItem[] = useMemo(() => {
-    const items: AttentionItem[] = []
-
-    if (pendingReportRows.length > 0) {
-      const subsSet = new Set(pendingReportRows.map((r) => r.sub_name))
-      items.push({
-        kind: 'weekly_report',
-        count: pendingReportRows.length,
-        week: currentWeek,
-        submittedBy: subsSet.size,
-      })
-    }
-
-    if (pendingCOCount > 0) {
-      items.push({ kind: 'change_order', count: pendingCOCount })
-    }
-
-    // Margin warnings — only flag projects that actually have revenue,
-    // otherwise a brand-new project (0/0) reads as -∞ % margin.
-    const lowMargin = projectBreakdowns
-      .filter((p) => p.revenue > 0 && (p.profit / p.revenue) * 100 < MARGIN_TARGET_PCT)
-      .sort((a, b) => a.profit / a.revenue - b.profit / b.revenue)
-    if (lowMargin.length > 0) {
-      items.push({
-        kind: 'margin_warning',
-        count: lowMargin.length,
-        projectName: lowMargin[0].name,
-        projectId: lowMargin[0].id,
-      })
-    }
-    return items
-  }, [pendingReportRows, pendingCOCount, currentWeek, projectBreakdowns])
 
   // Active projects list — each row carries actual + planned for both
   // revenue and cost so the bars can render planned-vs-actual pairs.
@@ -175,11 +134,7 @@ export default function DashboardClient({
         <DashboardChart data={chartData[period]} />
       </Card>
 
-      {/* Bottom row: action feed + active projects */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        <AttentionFeed items={attentionItems} />
-        <ActiveProjectsList projects={activeProjects} />
-      </div>
+      <ActiveProjectsList projects={activeProjects} />
     </div>
   )
 }
