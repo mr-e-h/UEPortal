@@ -54,6 +54,20 @@ interface DashboardPayload {
     total_cost: number
     submitted_at: string | null
   }>
+  revisionChangeOrders: Array<{
+    id: string
+    project_id: string
+    project_name: string
+    project_number: string
+    em_title: string
+    change_order_number: number
+    product_name: string
+    quantity: number
+    unit: string
+    total_cost: number
+    admin_comment: string
+    submitted_at: string | null
+  }>
   pendingWeeklyReports: Array<{
     id: string
     project_id: string
@@ -72,6 +86,7 @@ interface DashboardPayload {
 const EMPTY_DASHBOARD: DashboardPayload = {
   kpi: { ordreverdi: 0, fakturert: 0, fakturerbart: 0, gjenstaaende: 0, produsertIkkeBedt: 0 },
   pendingChangeOrders: [],
+  revisionChangeOrders: [],
   pendingWeeklyReports: [],
   projects: [],
 }
@@ -225,6 +240,49 @@ export default function SubcontractorPage() {
           >
             <Plus size={20} strokeWidth={2.5} /> Send endringsmelding
           </button>
+          {/* Trenger revisjon — admin har returnert EMer som UE må rette opp og
+              sende inn på nytt. Skilles fra "til behandling" så denne
+              oppgaveboksen tydelig sier "DU har jobb å gjøre". */}
+          {dashboard.revisionChangeOrders.length > 0 && (
+            <Card className="overflow-hidden border-orange-200">
+              <div className="px-5 py-3 border-b border-orange-200 bg-orange-50 flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-orange-900">Trenger revisjon</h2>
+                <span className="bg-orange-200 text-orange-800 text-xs font-semibold px-2 py-0.5 rounded-full">
+                  {dashboard.revisionChangeOrders.length}
+                </span>
+              </div>
+              <ul className="divide-y divide-orange-100">
+                {dashboard.revisionChangeOrders.map((co) => (
+                  <li key={co.id}>
+                    <Link
+                      href={`/subcontractor/projects/${co.project_id}`}
+                      className="block px-5 py-3 hover:bg-orange-50/50 transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                            {co.em_title}
+                          </p>
+                          <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
+                            {co.product_name} · {co.quantity} {co.unit}
+                          </p>
+                          {co.admin_comment && (
+                            <p className="text-xs text-orange-800 bg-orange-50 border border-orange-200 rounded p-2 mt-2 whitespace-pre-line">
+                              <span className="font-semibold">Admin: </span>{co.admin_comment}
+                            </p>
+                          )}
+                        </div>
+                        <div className="text-right flex-none">
+                          <p className="text-[10px] text-orange-700 font-semibold uppercase tracking-wide">Åpne →</p>
+                        </div>
+                      </div>
+                    </Link>
+                  </li>
+                ))}
+              </ul>
+            </Card>
+          )}
+
           <Card className="overflow-hidden">
             <div className="px-5 py-3 border-b border-border flex items-center gap-2">
               <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Endringsmeldinger til behandling</h2>

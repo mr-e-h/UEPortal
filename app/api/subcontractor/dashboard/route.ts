@@ -155,6 +155,30 @@ export async function GET(request: NextRequest) {
       }
     })
 
+  // EM-er admin har sendt tilbake til revisjon. Dette er UEs oppgaver — de
+  // må rette opp og sende inn på nytt. Vises i en egen oransje seksjon på
+  // dashboardet med admin-kommentaren synlig.
+  const revisionChangeOrders = allChangeOrders
+    .filter((co) => co.status === 'revision_requested')
+    .sort((a, b) => (b.submitted_at ?? '').localeCompare(a.submitted_at ?? ''))
+    .map((co) => {
+      const proj = projectMap.get(co.project_id)
+      return {
+        id: co.id,
+        project_id: co.project_id,
+        project_name: proj?.name ?? '–',
+        project_number: proj?.project_number ?? '',
+        em_title: fmtChangeOrderTitle(co.change_order_number, proj?.name),
+        change_order_number: co.change_order_number,
+        product_name: productMap.get(co.product_id) ?? '–',
+        quantity: co.requested_quantity,
+        unit: co.unit,
+        total_cost: co.total_cost,
+        admin_comment: co.admin_comment ?? '',
+        submitted_at: co.submitted_at ?? null,
+      }
+    })
+
   // Pending weekly reports (status = submitted). Compute per-report cost from
   // its lines so the row can show a value without an extra round-trip.
   const linesByReport = new Map<string, WeeklyReportLine[]>()
@@ -266,6 +290,7 @@ export async function GET(request: NextRequest) {
   return NextResponse.json({
     kpi: { ordreverdi, fakturert, fakturerbart, gjenstaaende, produsertIkkeBedt },
     pendingChangeOrders,
+    revisionChangeOrders,
     pendingWeeklyReports,
     projects: myProjects,
   })

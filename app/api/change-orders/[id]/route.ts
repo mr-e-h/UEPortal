@@ -34,15 +34,17 @@ export async function PUT(
       if (order.subcontractor_id !== session.subcontractor_id) {
         return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
       }
-      // Subs can only touch their own drafts.
-      if (order.status !== 'draft') {
-        return NextResponse.json({ error: 'Kan kun redigere kladder' }, { status: 409 })
+      // Subs can edit their own drafts AND any EM admin returned for revision
+      // (revision_requested). The latter case is the "Be om ny versjon"-flyten:
+      // admin sender tilbake, UE retter opp og sender på nytt → pending.
+      if (order.status !== 'draft' && order.status !== 'revision_requested') {
+        return NextResponse.json({ error: 'Kan kun redigere kladder eller EM som er sendt tilbake til revisjon' }, { status: 409 })
       }
     } else if (isAdmin(session)) {
       // Admins can edit drafts AND pending EMs (audit-trailed). Once an EM
       // is approved or rejected they must hit 'Angre' first so review state
       // is reset alongside.
-      if (order.status !== 'draft' && order.status !== 'pending') {
+      if (order.status !== 'draft' && order.status !== 'pending' && order.status !== 'revision_requested') {
         return NextResponse.json({ error: 'Behandlede endringsmeldinger må angres før de kan redigeres' }, { status: 409 })
       }
     } else {
@@ -257,6 +259,21 @@ export async function PUT(
       .maybeSingle<ChangeOrder>()
     if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
     if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    // UE som sender inn ny versjon etter revisjon — logg som 'resubmitted'.
+    // Egen handlingstype så Versjonsloggen kan vise "Sendte inn ny versjon"
+    // tydelig adskilt fra første innsending eller en vanlig redigering.
+    if (isSub(session) && order.status === 'revision_requested' && newStatus === 'pending') {
+      const { randomUUID } = await import('crypto')
+      await sb.from('activity_log').insert({
+        id: randomUUID(),
+        entity_type: 'change_order',
+        entity_id: params.id,
+        action: 'resubmitted',
+        actor: session.full_name,
+        created_at: now,
+      })
+    }
 
     // Audit-trail admin edits to non-draft EMs — sub-editing their own draft
     // pre-submission is routine and would just be noise in the activity log.

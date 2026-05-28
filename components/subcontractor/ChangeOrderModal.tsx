@@ -249,7 +249,11 @@ export default function ChangeOrderModal({
       <Card className="w-full max-w-lg max-h-[90vh] overflow-y-auto">
         <div className="px-6 py-4 border-b border-border flex items-center justify-between">
           <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
-            {initialDraft ? 'Rediger kladd' : 'Send endringsmelding'}
+            {initialDraft?.status === 'revision_requested'
+              ? 'Revider endringsmelding'
+              : initialDraft
+                ? 'Rediger kladd'
+                : 'Send endringsmelding'}
           </h2>
           <button
             type="button"
@@ -262,6 +266,17 @@ export default function ChangeOrderModal({
         </div>
 
         <div className="px-6 py-5 space-y-4">
+          {/* Admin-kommentar når EMen er returnert til revisjon — vises øverst
+              så UE leser hva som mangler før de begynner å redigere. */}
+          {initialDraft?.status === 'revision_requested' && initialDraft.admin_comment && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+              <p className="text-xs font-semibold text-orange-900 uppercase tracking-wide mb-1">
+                Admin har bedt om revisjon
+              </p>
+              <p className="text-sm text-orange-900 whitespace-pre-line">{initialDraft.admin_comment}</p>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
               Produkt <span className="text-danger">*</span>
@@ -454,7 +469,11 @@ export default function ChangeOrderModal({
               onClick={() => handleSave('pending')}
               disabled={submitting}
             >
-              {submitting ? 'Sender inn…' : 'Send endringsmelding'}
+              {submitting
+                ? 'Sender inn…'
+                : initialDraft?.status === 'revision_requested'
+                  ? 'Send revidert versjon'
+                  : 'Send endringsmelding'}
             </Button>
           </div>
         </div>

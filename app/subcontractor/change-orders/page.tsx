@@ -179,6 +179,7 @@ export default function SubcontractorChangeOrdersPage() {
             >
               <option value="all">Alle</option>
               <option value="draft">Kladd</option>
+              <option value="revision_requested">Trenger revisjon</option>
               <option value="pending">Venter</option>
               <option value="approved">Godkjent</option>
               <option value="rejected">Avvist</option>

@@ -44,10 +44,11 @@ export function weeklyReportLineStatus(status: string): StatusMeta {
 // ─── Change Order ──────────────────────────────────────────────────────────────
 
 export const CHANGE_ORDER_STATUSES: Record<ChangeOrderStatus, StatusMeta> = {
-  draft:    { label: 'Utkast',   cls: 'bg-gray-100 text-gray-600' },
-  pending:  { label: 'Venter',   cls: 'bg-yellow-100 text-yellow-700' },
-  approved: { label: 'Godkjent', cls: 'bg-green-100 text-green-700' },
-  rejected: { label: 'Avvist',   cls: 'bg-red-100 text-red-700' },
+  draft:              { label: 'Utkast',          cls: 'bg-gray-100 text-gray-600' },
+  pending:            { label: 'Venter',          cls: 'bg-yellow-100 text-yellow-700' },
+  revision_requested: { label: 'Trenger revisjon', cls: 'bg-orange-100 text-orange-700' },
+  approved:           { label: 'Godkjent',        cls: 'bg-green-100 text-green-700' },
+  rejected:           { label: 'Avvist',          cls: 'bg-red-100 text-red-700' },
 }
 
 export function changeOrderStatus(status: string): StatusMeta {

@@ -882,14 +882,16 @@ export default function SubcontractorProjectPage() {
                 </tr>
               </thead>
               <tbody>
-                {changeOrders.map((co) => (
+                {changeOrders.map((co) => {
+                  const isEditable = co.status === 'draft' || co.status === 'revision_requested'
+                  return (
                   <tr
                     key={co.id}
                     className={`border-b border-border last:border-0 ${
-                      co.status === 'draft' ? 'cursor-pointer hover:bg-muted/50' : ''
-                    }`}
+                      isEditable ? 'cursor-pointer hover:bg-muted/50' : ''
+                    } ${co.status === 'revision_requested' ? 'bg-orange-50/40' : ''}`}
                     onClick={
-                      co.status === 'draft'
+                      isEditable
                         ? () => { setEditingDraft(co); setShowEMModal(true) }
                         : undefined
                     }
@@ -935,6 +937,10 @@ export default function SubcontractorProjectPage() {
                     <td className="px-3 py-2">
                       {co.status === 'rejected' && co.admin_comment ? (
                         <span className="text-xs text-danger">{co.admin_comment}</span>
+                      ) : co.status === 'revision_requested' && co.admin_comment ? (
+                        <span className="text-xs text-orange-700"><span className="font-semibold">Trenger revisjon: </span>{co.admin_comment}</span>
+                      ) : co.status === 'revision_requested' ? (
+                        <span className="text-xs text-orange-700 font-medium">Klikk for å rette opp</span>
                       ) : co.status === 'draft' ? (
                         <span className="text-xs text-primary">Klikk for å redigere</span>
                       ) : (
@@ -942,7 +948,8 @@ export default function SubcontractorProjectPage() {
                       )}
                     </td>
                   </tr>
-                ))}
+                  )
+                })}
               </tbody>
             </table>
           </div>

@@ -1,4 +1,4 @@
-export type BadgeStatus = 'approved' | 'pending' | 'rejected' | 'active' | 'draft' | 'submitted' | 'completed' | 'archived'
+export type BadgeStatus = 'approved' | 'pending' | 'rejected' | 'active' | 'draft' | 'submitted' | 'completed' | 'archived' | 'revision_requested'
 
 const cls: Record<BadgeStatus, string> = {
   approved: 'bg-success-soft text-success',
@@ -9,6 +9,7 @@ const cls: Record<BadgeStatus, string> = {
   draft: 'bg-muted text-[var(--color-text-muted)]',
   completed: 'bg-success-soft text-success',
   archived: 'bg-muted text-[var(--color-text-muted)]',
+  revision_requested: 'bg-orange-100 text-orange-700',
 }
 
 const label: Record<BadgeStatus, string> = {
@@ -20,6 +21,7 @@ const label: Record<BadgeStatus, string> = {
   draft: 'Kladd',
   completed: 'Fullført',
   archived: 'Arkivert',
+  revision_requested: 'Trenger revisjon',
 }
 
 export default function Badge({ status }: { status: BadgeStatus }) {

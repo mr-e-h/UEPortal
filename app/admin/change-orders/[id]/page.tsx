@@ -109,6 +109,25 @@ export default function ChangeOrderDetailPage() {
     setSubmitting(false)
   }
 
+  // Returnerer EMen tilbake til UE for revisjon. Statusen flippes til
+  // 'revision_requested' og admin-kommentaren (samme tekstfelt som
+  // Avvis/Godkjenn bruker) blir lagret så UE ser hva som mangler.
+  async function requestRevision() {
+    if (!comment.trim()) {
+      // Krev kommentar — uten den vet ikke UE hva som mangler.
+      window.alert('Skriv en kommentar som forklarer UE hva som mangler eller må endres.')
+      return
+    }
+    setSubmitting(true)
+    await fetch(`/api/change-orders/${id}/request-revision`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ admin_comment: comment }),
+    })
+    await load()
+    setSubmitting(false)
+  }
+
   function startEdit() {
     if (!co) return
     const seed: EditLine[] = lines.length > 0
@@ -200,12 +219,13 @@ export default function ChangeOrderDetailPage() {
     ? Math.round((co.profit / co.total_customer_value) * 100)
     : 0
 
-  // Status pill — three states for a pending EM (untouched, sent-to-customer,
-  // mid-review), plus the existing approved/rejected.
+  // Status pill — flere tilstander for pending (ubehandlet, sent-til-kunde),
+  // pluss kladd, godkjent, avslått og 'Trenger revisjon' (returnert til UE).
   const statusPill: { label: string; cls: string } = (() => {
     if (co.status === 'approved') return { label: 'Godkjent', cls: 'bg-green-100 text-green-700' }
     if (co.status === 'rejected') return { label: 'Avslått', cls: 'bg-red-100 text-red-700' }
     if (co.status === 'draft') return { label: 'Kladd', cls: 'bg-gray-100 text-gray-500' }
+    if (co.status === 'revision_requested') return { label: 'Trenger revisjon hos UE', cls: 'bg-orange-100 text-orange-700' }
     if (sentToCustomer) return { label: 'Til behandling', cls: 'bg-blue-50 text-blue-700' }
     return { label: 'Ubehandlet', cls: 'bg-amber-50 text-amber-700' }
   })()
@@ -521,6 +541,14 @@ export default function ChangeOrderDetailPage() {
                 >
                   Avvis
                 </button>
+                <button
+                  onClick={requestRevision}
+                  disabled={submitting}
+                  className="px-4 py-2 text-sm bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50"
+                  title="Returnerer EMen til UE for revisjon. Kommentaren over blir vist for UE så de vet hva som mangler."
+                >
+                  Be om ny versjon
+                </button>
                 {!sentToCustomer && (
                   <button
                     onClick={markAsSent}
@@ -542,8 +570,25 @@ export default function ChangeOrderDetailPage() {
             </div>
           )}
 
-          {/* Already reviewed — hidden in print */}
-          {isReviewed && (
+          {/* Returnert til UE for revisjon — egen panel siden statusen ikke er
+              "ferdig behandlet"; admin venter på at UE skal sende inn ny
+              versjon. Angre-knappen øverst i headeren kan trekke EMen tilbake
+              til pending hvis admin ombestemmer seg. */}
+          {co.status === 'revision_requested' && (
+            <div className="print:hidden bg-orange-50 border border-orange-200 rounded-lg p-6 space-y-2">
+              <p className="text-sm font-semibold text-orange-900">Returnert til UE for revisjon</p>
+              <p className="text-xs text-orange-700">EMen ligger nå i UEs oppgaveboks. Når UE har rettet opp og sender inn på nytt, dukker den opp her som pending igjen.</p>
+              {co.admin_comment && (
+                <div>
+                  <p className="text-xs text-orange-600 mb-1 mt-2">Kommentar til UE</p>
+                  <p className="text-sm text-orange-900 bg-white rounded p-3 border border-orange-100 whitespace-pre-line">{co.admin_comment}</p>
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* Already reviewed (approved/rejected) — hidden in print */}
+          {(co.status === 'approved' || co.status === 'rejected') && (
             <div className="print:hidden bg-white rounded-lg shadow p-6 space-y-2">
               <p className="text-sm font-medium text-gray-700">Behandlet av: {co.reviewed_by ?? '–'}</p>
               <p className="text-sm text-gray-500">Dato: {co.reviewed_at?.split('T')[0] ?? '–'}</p>

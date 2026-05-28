@@ -163,7 +163,17 @@ export interface ProjectBudgetLine {
   line_type?: 'subcontractor_work' | 'internal_cost' | 'material'
 }
 
-export type ChangeOrderStatus = 'draft' | 'pending' | 'approved' | 'rejected'
+/**
+ * EM-statusflyt:
+ *
+ *   draft               UE har påbegynt men ikke sendt inn ennå
+ *   pending             Innsendt og venter på admin-godkjenning
+ *   revision_requested  Admin har returnert med kommentar — UE må rette opp
+ *                       og sende inn på nytt (flippes til pending igjen)
+ *   approved            Admin har godkjent
+ *   rejected            Admin har avvist (sluttilstand, ikke revisjon)
+ */
+export type ChangeOrderStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'revision_requested'
 
 /**
  * One product line within a change order. Multiple lines per EM are
@@ -402,7 +412,7 @@ export interface ActivityEntry {
   id: string
   entity_type: 'weekly_report' | 'change_order'
   entity_id: string
-  action: 'approved' | 'rejected' | 'reverted' | 'commented' | 'edited' | 'sent_to_customer'
+  action: 'approved' | 'rejected' | 'reverted' | 'commented' | 'edited' | 'sent_to_customer' | 'revision_requested' | 'resubmitted'
   /**
    * Optional structured snapshot. For 'edited' rows: { before, after } with
    * the values at the moment of change. The activity GET endpoint strips
