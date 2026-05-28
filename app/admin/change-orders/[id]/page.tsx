@@ -3,8 +3,8 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Pencil, X, Save, Printer, History } from 'lucide-react'
-import type { ChangeOrder, Project, Product, Subcontractor, ActivityEntry } from '@/types'
+import { Pencil, X, Save, Printer, History, Plus, Trash2 } from 'lucide-react'
+import type { ChangeOrder, ChangeOrderLine, Project, Product, Subcontractor, ActivityEntry } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
 import { activityActionLabel } from '@/lib/activity-actions'
 import { useMe } from '@/lib/useMe'
@@ -47,9 +47,13 @@ export default function ChangeOrderDetailPage() {
   const [submitting, setSubmitting] = useState(false)
   const [exporting, setExporting] = useState(false)
 
-  // Inline edit for qty + reason. Allowed for draft + pending (admin).
+  // EM lines — source of truth for product + qty in multi-line mode.
+  const [lines, setLines] = useState<ChangeOrderLine[]>([])
+  // Inline edit. Allowed for draft + pending (admin).
+  // editLines drives the editable table; each row has product_id and qty.
+  type EditLine = { tempId: string; product_id: string; requested_quantity: string }
   const [editing, setEditing] = useState(false)
-  const [editQty, setEditQty] = useState('')
+  const [editLines, setEditLines] = useState<EditLine[]>([])
   const [editReason, setEditReason] = useState('')
   const [editError, setEditError] = useState<string | null>(null)
   const [editSaving, setEditSaving] = useState(false)
@@ -59,12 +63,13 @@ export default function ChangeOrderDetailPage() {
   const [products, setProducts] = useState<Product[]>([])
 
   const load = useCallback(async () => {
-    const [orders, projects, products, subs, activityData] = await Promise.all([
+    const [orders, projects, products, subs, activityData, linesData] = await Promise.all([
       fetch(`/api/change-orders?id=${id}`).then((r) => r.json()),
       fetch('/api/projects').then((r) => r.json()),
       fetch('/api/products').then((r) => r.json()),
       fetch('/api/subcontractors').then((r) => r.json()),
       fetch(`/api/activity?entity_id=${id}&entity_type=change_order`).then((r) => r.json()),
+      fetch(`/api/change-orders/${id}/lines`).then((r) => r.json()),
     ])
     const found: ChangeOrder = orders[0] ?? null
     setCo(found)
@@ -76,6 +81,7 @@ export default function ChangeOrderDetailPage() {
       setComment(found.admin_comment ?? '')
     }
     setActivity(Array.isArray(activityData) ? activityData : [])
+    setLines(Array.isArray(linesData) ? (linesData as ChangeOrderLine[]) : [])
     setLoading(false)
   }, [id])
 
@@ -94,25 +100,57 @@ export default function ChangeOrderDetailPage() {
 
   function startEdit() {
     if (!co) return
-    setEditQty(String(co.requested_quantity))
+    const seed: EditLine[] = lines.length > 0
+      ? lines.map((l) => ({
+          tempId: l.id,
+          product_id: l.product_id,
+          requested_quantity: String(l.requested_quantity),
+        }))
+      : [{ tempId: crypto.randomUUID(), product_id: co.product_id, requested_quantity: String(co.requested_quantity) }]
+    setEditLines(seed)
     setEditReason(co.reason ?? '')
     setEditError(null)
     setEditing(true)
   }
 
+  function addEditLine() {
+    setEditLines((prev) => [
+      ...prev,
+      { tempId: crypto.randomUUID(), product_id: '', requested_quantity: '' },
+    ])
+  }
+
+  function removeEditLine(tempId: string) {
+    setEditLines((prev) => prev.length <= 1 ? prev : prev.filter((l) => l.tempId !== tempId))
+  }
+
+  function updateEditLine(tempId: string, patch: Partial<EditLine>) {
+    setEditLines((prev) => prev.map((l) => (l.tempId === tempId ? { ...l, ...patch } : l)))
+  }
+
   async function saveEdit() {
     setEditSaving(true)
     setEditError(null)
-    const qty = Number(editQty)
-    if (!Number.isFinite(qty) || qty <= 0) {
-      setEditError('Mengde må være et positivt tall')
-      setEditSaving(false)
-      return
+    // Validate locally before round-tripping.
+    const cleaned: Array<{ product_id: string; requested_quantity: number }> = []
+    for (const ln of editLines) {
+      if (!ln.product_id) {
+        setEditError('Velg produkt på alle linjer')
+        setEditSaving(false)
+        return
+      }
+      const qty = Number(ln.requested_quantity)
+      if (!Number.isFinite(qty) || qty <= 0) {
+        setEditError('Mengde må være et positivt tall på hver linje')
+        setEditSaving(false)
+        return
+      }
+      cleaned.push({ product_id: ln.product_id, requested_quantity: qty })
     }
     const res = await fetch(`/api/change-orders/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ requested_quantity: qty, reason: editReason }),
+      body: JSON.stringify({ lines: cleaned, reason: editReason }),
     })
     setEditSaving(false)
     if (!res.ok) {
@@ -232,22 +270,43 @@ export default function ChangeOrderDetailPage() {
               </div>
             </div>
 
-            <div className="grid grid-cols-2 gap-4 text-sm">
-              <div>
-                <p className="text-xs text-gray-400">Produkt</p>
-                <p className="font-medium text-gray-900">{product?.name ?? '–'}</p>
-                {product?.description && (
-                  <p className="text-xs text-gray-500 mt-0.5">{product.description}</p>
-                )}
+            {/* Lines table — shows every product on the EM. Single-line EMs
+                render as a one-row table; multi-line ones get all rows. */}
+            <div>
+              <p className="text-xs text-gray-400 mb-2">Produkter</p>
+              <div className="overflow-x-auto rounded border border-gray-200">
+                <table className="w-full text-sm">
+                  <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                    <tr>
+                      <th className="px-3 py-2 text-left font-medium">Produkt</th>
+                      <th className="px-3 py-2 text-right font-medium">Mengde</th>
+                    </tr>
+                  </thead>
+                  <tbody className="divide-y divide-gray-100">
+                    {(lines.length > 0 ? lines : [{ id: co.id, product_id: co.product_id, requested_quantity: co.requested_quantity, unit: co.unit } as unknown as ChangeOrderLine]).map((ln) => {
+                      const p = products.find((pp) => pp.id === ln.product_id) ?? null
+                      return (
+                        <tr key={ln.id}>
+                          <td className="px-3 py-2">
+                            <p className="font-medium text-gray-900">{p?.name ?? '–'}</p>
+                            {p?.description && (
+                              <p className="text-[10px] text-gray-500 mt-0.5">{p.description}</p>
+                            )}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+                            {ln.requested_quantity} <span className="text-gray-400">{ln.unit}</span>
+                          </td>
+                        </tr>
+                      )
+                    })}
+                  </tbody>
+                </table>
               </div>
-              <div>
-                <p className="text-xs text-gray-400">Mengde</p>
-                <p className="font-medium text-gray-900">{co.requested_quantity} {co.unit}</p>
-              </div>
-              <div className="col-span-2">
-                <p className="text-xs text-gray-400 mb-1">Begrunnelse</p>
-                <p className="text-sm text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-line">{co.reason}</p>
-              </div>
+            </div>
+
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Begrunnelse</p>
+              <p className="text-sm text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-line">{co.reason}</p>
             </div>
 
             <div className="rounded-md bg-blue-50 border border-blue-200 p-4 flex items-baseline justify-between">
@@ -258,109 +317,116 @@ export default function ChangeOrderDetailPage() {
             {/* Inline edit panel — admin only, hidden in print. The product +
                 quantity sit in a 'gammel → ny' table so the change is
                 explicit at a glance. */}
-            {editing && (() => {
-              const newQty = Number(editQty)
-              const diff = Number.isFinite(newQty) ? newQty - co.requested_quantity : 0
-              const diffPct = co.requested_quantity > 0
-                ? Math.round((diff / co.requested_quantity) * 1000) / 10
-                : 0
-              return (
-                <div className="print:hidden border-2 border-primary bg-primary-soft rounded-lg p-4 space-y-4">
+            {editing && (
+              <div className="print:hidden border-2 border-primary bg-primary-soft rounded-lg p-4 space-y-4">
+                <div className="flex items-center justify-between">
                   <p className="text-sm font-semibold text-primary">Rediger endringsmelding</p>
-
-                  {/* Product + quantity comparison table */}
-                  <div className="overflow-x-auto bg-white rounded border border-primary/30">
-                    <table className="w-full text-xs">
-                      <thead className="bg-gray-50">
-                        <tr>
-                          <th className="px-3 py-2 text-left font-semibold text-gray-600">Produkt</th>
-                          <th className="px-3 py-2 text-right font-semibold text-gray-600">Gammel</th>
-                          <th className="px-3 py-2 text-right font-semibold text-gray-600">Ny</th>
-                          <th className="px-3 py-2 text-right font-semibold text-gray-600">Differanse</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        <tr>
-                          <td className="px-3 py-3">
-                            <p className="font-medium text-gray-900">{product?.name ?? '–'}</p>
-                            {product?.description && (
-                              <p className="text-[10px] text-gray-500 mt-0.5">{product.description}</p>
-                            )}
-                          </td>
-                          <td className="px-3 py-3 text-right tabular-nums text-gray-700">
-                            {co.requested_quantity} <span className="text-gray-400">{co.unit}</span>
-                          </td>
-                          <td className="px-3 py-3 text-right">
-                            <div className="inline-flex items-center justify-end gap-1.5">
-                              <input
-                                type="number"
-                                inputMode="decimal"
-                                step="0.01"
-                                min="0"
-                                value={editQty}
-                                onChange={(e) => setEditQty(e.target.value)}
-                                autoFocus
-                                className="w-24 px-2 py-1 text-right text-sm font-semibold border border-primary rounded focus:outline-none focus:ring-1 focus:ring-primary tabular-nums"
-                              />
-                              <span className="text-gray-400 text-xs">{co.unit}</span>
-                            </div>
-                          </td>
-                          <td className={`px-3 py-3 text-right tabular-nums font-medium ${
-                            diff === 0
-                              ? 'text-gray-400'
-                              : diff > 0
-                                ? 'text-green-600'
-                                : 'text-red-600'
-                          }`}>
-                            {diff > 0 ? '+' : ''}{Number.isFinite(diff) ? diff : 0} {co.unit}
-                            {co.requested_quantity > 0 && diff !== 0 && (
-                              <span className="text-[10px] block text-gray-500">
-                                {diff > 0 ? '+' : ''}{diffPct}%
-                              </span>
-                            )}
-                          </td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Begrunnelse</label>
-                    <textarea
-                      rows={3}
-                      value={editReason}
-                      onChange={(e) => setEditReason(e.target.value)}
-                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
-                  </div>
-
-                  {editError && (
-                    <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">{editError}</p>
-                  )}
-                  <p className="text-[10px] text-gray-500">
-                    Pris-snapshots er låst (kostpris {fmt(co.cost_price_snapshot)}/{co.unit}, kundepris {fmt(co.customer_price_snapshot)}/{co.unit}). Total kostnad, salgsverdi og fortjeneste regnes ut på nytt fra de samme prisene. Endringen logges i versjonsloggen, og UE ser sin oppdaterte versjon — uten kundepris eller fortjeneste.
-                  </p>
-                  <div className="flex gap-2 justify-end">
-                    <button
-                      type="button"
-                      onClick={() => setEditing(false)}
-                      disabled={editSaving}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
-                    >
-                      <X size={12} /> Avbryt
-                    </button>
-                    <button
-                      type="button"
-                      onClick={saveEdit}
-                      disabled={editSaving}
-                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
-                    >
-                      <Save size={12} /> {editSaving ? 'Lagrer...' : 'Lagre'}
-                    </button>
-                  </div>
+                  <button
+                    type="button"
+                    onClick={addEditLine}
+                    className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-white border border-primary text-primary rounded hover:bg-primary-soft"
+                  >
+                    <Plus size={12} /> Legg til produkt
+                  </button>
                 </div>
-              )
-            })()}
+
+                {/* Multi-row product table — admin can add, remove and edit
+                    each line. Pris-snapshots resolves server-side from
+                    each product's customer_price + the UE's price list. */}
+                <div className="overflow-x-auto bg-white rounded border border-primary/30">
+                  <table className="w-full text-xs">
+                    <thead className="bg-gray-50">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-semibold text-gray-600">Produkt</th>
+                        <th className="px-3 py-2 text-right font-semibold text-gray-600 w-32">Mengde</th>
+                        <th className="px-3 py-2 w-12"></th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {editLines.map((ln) => {
+                        const prod = products.find((p) => p.id === ln.product_id) ?? null
+                        return (
+                          <tr key={ln.tempId} className="border-t border-gray-100">
+                            <td className="px-3 py-2">
+                              <select
+                                value={ln.product_id}
+                                onChange={(e) => updateEditLine(ln.tempId, { product_id: e.target.value })}
+                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+                              >
+                                <option value="">Velg produkt...</option>
+                                {products.map((p) => (
+                                  <option key={p.id} value={p.id}>{p.name}{p.description ? ` · ${p.description}` : ''}</option>
+                                ))}
+                              </select>
+                            </td>
+                            <td className="px-3 py-2 text-right">
+                              <div className="inline-flex items-center justify-end gap-1.5">
+                                <input
+                                  type="number"
+                                  inputMode="decimal"
+                                  step="0.01"
+                                  min="0"
+                                  value={ln.requested_quantity}
+                                  onChange={(e) => updateEditLine(ln.tempId, { requested_quantity: e.target.value })}
+                                  className="w-20 px-2 py-1 text-right text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary tabular-nums"
+                                />
+                                <span className="text-gray-400 text-xs w-8">{prod?.unit ?? ''}</span>
+                              </div>
+                            </td>
+                            <td className="px-3 py-2 text-center">
+                              <button
+                                type="button"
+                                onClick={() => removeEditLine(ln.tempId)}
+                                disabled={editLines.length <= 1}
+                                className="p-1 text-gray-400 hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                                title={editLines.length <= 1 ? 'Minst én linje må være igjen' : 'Fjern linje'}
+                              >
+                                <Trash2 size={14} />
+                              </button>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Begrunnelse</label>
+                  <textarea
+                    rows={3}
+                    value={editReason}
+                    onChange={(e) => setEditReason(e.target.value)}
+                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                {editError && (
+                  <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">{editError}</p>
+                )}
+                <p className="text-[10px] text-gray-500">
+                  Pris-snapshots resolves serverside fra produktets kundepris og UEs prisliste (faller tilbake til budsjettlinjen om UE-pris mangler). Totaler regnes ut fra disse, endringen logges, og UE ser samme oppdatering — uten kundepris.
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setEditing(false)}
+                    disabled={editSaving}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <X size={12} /> Avbryt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveEdit}
+                    disabled={editSaving}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
+                  >
+                    <Save size={12} /> {editSaving ? 'Lagrer...' : 'Lagre'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Attachment — rides along in the PDF. */}

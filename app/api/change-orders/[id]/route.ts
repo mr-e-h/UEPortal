@@ -17,6 +17,7 @@ export async function PUT(
       requested_quantity?: number
       reason?: string
       status?: 'pending' | 'draft'
+      lines?: Array<{ product_id: string; requested_quantity: number }>
     }
 
     const sb = getSupabaseAdmin()
@@ -51,6 +52,139 @@ export async function PUT(
     if (isAdmin(session)) {
       const denied = await ensureProjectWritable(session, order.project_id)
       if (denied) return denied
+    }
+
+    // ── Multi-line path (admin edit form sends `lines: [...]`) ────────────
+    // When the client sends a lines array, we treat it as the authoritative
+    // composition of the EM: delete existing lines, insert these, and
+    // recompute the change_orders rollup totals. Single-product compat is
+    // preserved by syncing the first line's product/qty/unit/snapshots back
+    // onto change_orders (so list views and project rollups still work).
+    if (Array.isArray(body.lines)) {
+      const newReason = body.reason ?? order.reason
+      const linesIn = body.lines
+      if (linesIn.length === 0) {
+        return NextResponse.json({ error: 'En endringsmelding må ha minst én linje' }, { status: 400 })
+      }
+
+      // Resolve snapshots for every line in parallel: product (for customer
+      // price + unit), and per-sub price → fall back to project_budget_lines'
+      // already-locked sub cost if the per-sub list doesn't carry it.
+      type Snap = { product_id: string; qty: number; unit: string; cost: number; customer: number; productName?: string }
+      const snaps: Snap[] = []
+      for (const ln of linesIn) {
+        const qty = Number(ln.requested_quantity)
+        if (!Number.isFinite(qty) || qty <= 0) {
+          return NextResponse.json({ error: 'Mengde må være et positivt tall på hver linje' }, { status: 400 })
+        }
+        const [productRes, priceRes, blRes] = await Promise.all([
+          sb.from('products').select('name, customer_price, unit').eq('id', ln.product_id).maybeSingle<{ name: string; customer_price: number; unit: string }>(),
+          sb.from('subcontractor_product_prices').select('cost_price')
+            .eq('subcontractor_id', order.subcontractor_id)
+            .eq('product_id', ln.product_id)
+            .maybeSingle<Pick<SubcontractorProductPrice, 'cost_price'>>(),
+          sb.from('project_budget_lines').select('subcontractor_cost_price_snapshot')
+            .eq('project_id', order.project_id)
+            .eq('product_id', ln.product_id)
+            .eq('assigned_subcontractor_id', order.subcontractor_id)
+            .maybeSingle<Pick<ProjectBudgetLine, 'subcontractor_cost_price_snapshot'>>(),
+        ])
+        if (!productRes.data) return NextResponse.json({ error: 'Produkt ikke funnet' }, { status: 404 })
+        let cost = priceRes.data?.cost_price ?? 0
+        if (cost === 0 && blRes.data && blRes.data.subcontractor_cost_price_snapshot > 0) {
+          cost = blRes.data.subcontractor_cost_price_snapshot
+        }
+        snaps.push({
+          product_id: ln.product_id,
+          qty,
+          unit: productRes.data.unit,
+          cost,
+          customer: productRes.data.customer_price,
+          productName: productRes.data.name,
+        })
+      }
+
+      // Replace lines: delete current, insert new in order.
+      const { randomUUID: makeId } = await import('crypto')
+      const { error: delErr } = await sb.from('change_order_lines').delete().eq('change_order_id', params.id)
+      if (delErr) return NextResponse.json({ error: 'Lagring feilet (lines/del)' }, { status: 500 })
+      const newLinesPayload = snaps.map((s, i) => ({
+        id: makeId(),
+        change_order_id: params.id,
+        product_id: s.product_id,
+        requested_quantity: s.qty,
+        unit: s.unit,
+        cost_price_snapshot: s.cost,
+        customer_price_snapshot: s.customer,
+        sort_order: i,
+      }))
+      const { error: insErr } = await sb.from('change_order_lines').insert(newLinesPayload)
+      if (insErr) return NextResponse.json({ error: 'Lagring feilet (lines/ins)' }, { status: 500 })
+
+      // Rollup totals + sync first-line fields back to change_orders so the
+      // existing single-product list views keep working.
+      const totalCost = snaps.reduce((s, l) => s + l.cost * l.qty, 0)
+      const totalCustomer = snaps.reduce((s, l) => s + l.customer * l.qty, 0)
+      const firstLine = snaps[0]
+      const now2 = new Date().toISOString()
+      const { data: updatedOrder, error: updErr } = await sb
+        .from('change_orders')
+        .update({
+          product_id: firstLine.product_id,
+          requested_quantity: firstLine.qty,
+          unit: firstLine.unit,
+          cost_price_snapshot: firstLine.cost,
+          customer_price_snapshot: firstLine.customer,
+          total_cost: totalCost,
+          total_customer_value: totalCustomer,
+          profit: totalCustomer - totalCost,
+          reason: newReason,
+        })
+        .eq('id', params.id)
+        .select()
+        .maybeSingle<ChangeOrder>()
+      if (updErr) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+
+      // Audit log — capture full before/after rollup so the version diff
+      // popup can render it. Per-line diffs are intentionally summarized
+      // (counts) rather than dumped — keeps the popup compact.
+      if (isAdmin(session) && order.status === 'pending') {
+        const before = {
+          requested_quantity: order.requested_quantity,
+          unit: order.unit,
+          reason: order.reason,
+          product_id: order.product_id,
+          total_cost: order.total_cost,
+          total_customer_value: order.total_customer_value,
+          profit: order.profit,
+        }
+        const after = {
+          requested_quantity: firstLine.qty,
+          unit: firstLine.unit,
+          reason: newReason,
+          product_id: firstLine.product_id,
+          total_cost: totalCost,
+          total_customer_value: totalCustomer,
+          profit: totalCustomer - totalCost,
+        }
+        const summary = `${snaps.length} ${snaps.length === 1 ? 'linje' : 'linjer'} · totalkost ${order.total_cost} → ${totalCost}`
+        await sb.from('activity_log').insert({
+          id: makeId(),
+          entity_type: 'change_order',
+          entity_id: params.id,
+          action: 'edited',
+          actor: session.full_name,
+          comment: summary,
+          created_at: now2,
+          metadata: { before, after },
+        })
+      }
+
+      if (isSub(session) && updatedOrder) {
+        const { customer_price_snapshot: _cp, total_customer_value: _tcv, profit: _p, ...rest } = updatedOrder
+        return NextResponse.json(rest)
+      }
+      return NextResponse.json(updatedOrder)
     }
 
     const newProductId = body.product_id ?? order.product_id

@@ -165,6 +165,24 @@ export interface ProjectBudgetLine {
 
 export type ChangeOrderStatus = 'draft' | 'pending' | 'approved' | 'rejected'
 
+/**
+ * One product line within a change order. Multiple lines per EM are
+ * supported on the admin edit flow. The parent change_orders row keeps
+ * rolled-up totals as a cache for list queries; this table is the source
+ * of truth for product / qty / per-line snapshots.
+ */
+export interface ChangeOrderLine {
+  id: string
+  change_order_id: string
+  product_id: string
+  requested_quantity: number
+  unit: string
+  cost_price_snapshot: number
+  customer_price_snapshot: number
+  sort_order: number
+  created_at: string
+}
+
 export interface ChangeOrder {
   id: string
   project_id: string

@@ -159,6 +159,20 @@ export async function POST(request: NextRequest) {
     const { error } = await sb.from('change_orders').insert(newOrder)
     if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
 
+    // Also write the first line into change_order_lines — admin can later
+    // add more lines via the edit form; that table is the source of truth
+    // for product/qty/snapshots while change_orders caches the rollup.
+    await sb.from('change_order_lines').insert({
+      id: randomUUID(),
+      change_order_id: newOrder.id,
+      product_id: newOrder.product_id,
+      requested_quantity: newOrder.requested_quantity,
+      unit: newOrder.unit,
+      cost_price_snapshot: newOrder.cost_price_snapshot,
+      customer_price_snapshot: newOrder.customer_price_snapshot,
+      sort_order: 0,
+    })
+
     return NextResponse.json(userIsSub ? stripForUE(newOrder) : newOrder, { status: 201 })
   } catch (error) {
     console.error('change-orders POST error:', error)
