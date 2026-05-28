@@ -118,15 +118,15 @@ export default function ViewAsBar() {
         </div>
       )}
 
-      <div ref={menuRef} className={`fixed right-4 z-[60] ${me.impersonating ? 'top-8' : 'top-3'}`}>
+      <div ref={menuRef} className={`fixed right-4 z-[100] ${me.impersonating ? 'top-8' : 'top-3'}`}>
         <button
           type="button"
           onClick={() => setOpen((v) => !v)}
           disabled={busy}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-lg text-xs font-medium shadow-md border transition-colors ${
+          className={`flex items-center gap-2 px-3 py-2 rounded-lg text-xs font-semibold shadow-lg border-2 transition-colors ${
             me.impersonating
               ? 'bg-amber-500 border-amber-600 text-white hover:bg-amber-600'
-              : 'bg-card border-border text-[var(--color-text-primary)] hover:bg-muted'
+              : 'bg-white border-primary text-primary hover:bg-primary-soft'
           }`}
         >
           <Eye size={13} />
