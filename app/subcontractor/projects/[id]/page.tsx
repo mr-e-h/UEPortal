@@ -21,7 +21,7 @@ const ChangeOrderModal = dynamic(() => import('@/components/subcontractor/Change
 const BudgetLineChart = dynamic(() => import('@/components/BudgetLineChart'), { ssr: false })
 const GanttView = dynamic(() => import('@/components/subcontractor/GanttView'), { ssr: false })
 import { fmtNOK as fmt } from '@/lib/format'
-import { weeklyReportStatus, weeklyReportLineStatus } from '@/lib/statuses'
+import { weeklyReportStatus, weeklyReportLineStatus, changeOrderType } from '@/lib/statuses'
 
 type BudgetLineWithProduct = {
   id: string
@@ -871,6 +871,7 @@ export default function SubcontractorProjectPage() {
               <thead>
                 <tr className="border-b border-border bg-muted">
                   <th className="px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-12">Nr</th>
+                  <th className="px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Type</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Produkt</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Mengde</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Kostnad</th>
@@ -898,6 +899,12 @@ export default function SubcontractorProjectPage() {
                   >
                     <td className="px-3 py-2 font-semibold tabular-nums text-[var(--color-text-secondary)]">
                       #{co.change_order_number}
+                    </td>
+                    <td className="px-3 py-2">
+                      {(() => {
+                        const t = changeOrderType(co.em_type)
+                        return <span className={`text-xs px-2 py-0.5 rounded ${t.cls}`}>{t.label}</span>
+                      })()}
                     </td>
                     <td className="px-3 py-2 font-medium text-[var(--color-text-primary)]">
                       {productNameMap.get(co.product_id) ?? '–'}

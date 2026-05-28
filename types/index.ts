@@ -176,6 +176,15 @@ export interface ProjectBudgetLine {
 export type ChangeOrderStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 'revision_requested'
 
 /**
+ * EM-type — påkrevd ved oppretting av endringsmelding:
+ *
+ *   economic        "Økonomisk":      tillegg som påvirker budsjett/pris
+ *   spec_deviation  "Avvik kravspec": avvik fra opprinnelig kravspesifikasjon
+ *   time            "Tid":            tids-tillegg uten direkte budsjetteffekt
+ */
+export type ChangeOrderType = 'economic' | 'spec_deviation' | 'time'
+
+/**
  * One product line within a change order. Multiple lines per EM are
  * supported on the admin edit flow. The parent change_orders row keeps
  * rolled-up totals as a cache for list queries; this table is the source
@@ -202,6 +211,8 @@ export interface ChangeOrder {
    * "Endringsmelding 7 - Sentrumsgården".
    */
   change_order_number: number
+  /** Påkrevd type — se ChangeOrderType. */
+  em_type: ChangeOrderType
   project_id: string
   product_id: string
   subcontractor_id: string

@@ -2,6 +2,7 @@ import type {
   WeeklyReportStatus,
   WeeklyReportLineStatus,
   ChangeOrderStatus,
+  ChangeOrderType,
   ForecastStatus,
   ForecastPeriodStatus,
   ProjectStatus,
@@ -53,6 +54,18 @@ export const CHANGE_ORDER_STATUSES: Record<ChangeOrderStatus, StatusMeta> = {
 
 export function changeOrderStatus(status: string): StatusMeta {
   return CHANGE_ORDER_STATUSES[status as ChangeOrderStatus] ?? { ...FALLBACK, label: status }
+}
+
+// ─── Change Order Type ─────────────────────────────────────────────────────────
+
+export const CHANGE_ORDER_TYPES: Record<ChangeOrderType, StatusMeta> = {
+  economic:       { label: 'Økonomisk',       cls: 'bg-blue-100 text-blue-700' },
+  spec_deviation: { label: 'Avvik kravspec',  cls: 'bg-purple-100 text-purple-700' },
+  time:           { label: 'Tid',             cls: 'bg-teal-100 text-teal-700' },
+}
+
+export function changeOrderType(type: string): StatusMeta {
+  return CHANGE_ORDER_TYPES[type as ChangeOrderType] ?? { ...FALLBACK, label: type }
 }
 
 // ─── Forecast ──────────────────────────────────────────────────────────────────

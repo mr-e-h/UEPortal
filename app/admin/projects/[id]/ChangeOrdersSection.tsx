@@ -5,11 +5,12 @@ import Link from 'next/link'
 import type { ChangeOrder, Product, Subcontractor } from '@/types'
 import SortableTable from '@/components/SortableTable'
 import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
-import { changeOrderStatus } from '@/lib/statuses'
+import { changeOrderStatus, changeOrderType } from '@/lib/statuses'
 
 type CORow = {
   id: string
   number: number
+  em_type: string
   status: string
   sub_name: string
   product_label: string
@@ -45,6 +46,7 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
     return {
       id: co.id,
       number: co.change_order_number,
+      em_type: co.em_type,
       status: co.status,
       sub_name: sub?.company_name ?? '–',
       product_label: fmtProductLabel(prod),
@@ -61,6 +63,15 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
       label: 'Nr',
       sortable: true,
       render: (row: CORow) => <span className="font-semibold tabular-nums text-gray-700">#{row.number}</span>,
+    },
+    {
+      key: 'em_type',
+      label: 'Type',
+      sortable: true,
+      render: (row: CORow) => {
+        const t = changeOrderType(row.em_type)
+        return <span className={`text-xs px-2 py-0.5 rounded ${t.cls}`}>{t.label}</span>
+      },
     },
     {
       key: 'status',

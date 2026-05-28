@@ -8,6 +8,7 @@ import type { ChangeOrder, Project, Subcontractor, Product } from '@/types'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import { fmtNOK as fmt, fmtChangeOrderTitle, fmtProductLabel } from '@/lib/format'
+import { changeOrderType } from '@/lib/statuses'
 
 export const dynamic = 'force-dynamic'
 
@@ -98,7 +99,7 @@ function OrderTable({
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border">
-            {['Endringsmelding', 'Underentreprenør', 'Produkt', 'Mengde', 'Kundeverdi', 'Kostnad', 'Innsendt', 'Status', ''].map(
+            {['Endringsmelding', 'Type', 'Underentreprenør', 'Produkt', 'Mengde', 'Kundeverdi', 'Kostnad', 'Innsendt', 'Status', ''].map(
               (h) => (
                 <th
                   key={h}
@@ -117,6 +118,12 @@ function OrderTable({
             <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted transition-colors">
               <td className="px-6 py-3 font-medium text-[var(--color-text-primary)]">
                 {fmtChangeOrderTitle(o.change_order_number, projMap.get(o.project_id)?.name)}
+              </td>
+              <td className="px-6 py-3">
+                {(() => {
+                  const t = changeOrderType(o.em_type)
+                  return <span className={`text-xs font-medium px-2 py-0.5 rounded ${t.cls}`}>{t.label}</span>
+                })()}
               </td>
               <td className="px-6 py-3 text-[var(--color-text-secondary)]">
                 {subMap.get(o.subcontractor_id)?.company_name ?? '–'}

@@ -9,6 +9,7 @@ import Card from '@/components/ui/Card'
 import SortableTable from '@/components/SortableTable'
 import type { Column } from '@/components/SortableTable'
 import { fmtNOK as fmt, fmtChangeOrderTitle } from '@/lib/format'
+import { changeOrderType } from '@/lib/statuses'
 import { useMe } from '@/lib/useMe'
 
 type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'>
@@ -35,6 +36,7 @@ type EMRow = {
   id: string
   project_id: string
   em_title: string
+  em_type: string
   product_name: string
   requested_quantity: number
   unit: string
@@ -84,6 +86,7 @@ export default function SubcontractorChangeOrdersPage() {
       id: co.id,
       project_id: co.project_id,
       em_title: fmtChangeOrderTitle(co.change_order_number, projectMap.get(co.project_id)),
+      em_type: co.em_type,
       product_name: productNameMap.get(co.product_id) ?? '–',
       requested_quantity: co.requested_quantity,
       unit: co.unit,
@@ -95,6 +98,15 @@ export default function SubcontractorChangeOrdersPage() {
 
   const columns: Column<EMRow>[] = [
     { key: 'em_title', label: 'Endringsmelding', sortable: true },
+    {
+      key: 'em_type',
+      label: 'Type',
+      sortable: true,
+      render: (row) => {
+        const t = changeOrderType(row.em_type)
+        return <span className={`text-xs px-2 py-0.5 rounded ${t.cls}`}>{t.label}</span>
+      },
+    },
     { key: 'product_name', label: 'Produkt', sortable: true },
     {
       key: 'requested_quantity',

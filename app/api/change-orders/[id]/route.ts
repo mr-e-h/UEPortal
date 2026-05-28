@@ -17,8 +17,13 @@ export async function PUT(
       requested_quantity?: number
       reason?: string
       solution?: string
+      em_type?: 'economic' | 'spec_deviation' | 'time'
       status?: 'pending' | 'draft'
       lines?: Array<{ product_id: string; requested_quantity: number }>
+    }
+
+    if (body.em_type !== undefined && !['economic', 'spec_deviation', 'time'].includes(body.em_type)) {
+      return NextResponse.json({ error: 'Ugyldig type' }, { status: 400 })
     }
 
     const sb = getSupabaseAdmin()
@@ -66,6 +71,7 @@ export async function PUT(
     if (Array.isArray(body.lines)) {
       const newReason = body.reason ?? order.reason
       const newSolution = body.solution ?? order.solution ?? ''
+      const newEmType = body.em_type ?? order.em_type
       const linesIn = body.lines
       if (linesIn.length === 0) {
         return NextResponse.json({ error: 'En endringsmelding må ha minst én linje' }, { status: 400 })
@@ -144,6 +150,7 @@ export async function PUT(
           profit: totalCustomer - totalCost,
           reason: newReason,
           solution: newSolution,
+          em_type: newEmType,
         })
         .eq('id', params.id)
         .select()
@@ -203,6 +210,7 @@ export async function PUT(
     }
     const newReason = body.reason ?? order.reason
     const newSolution = body.solution ?? order.solution ?? ''
+    const newEmType = body.em_type ?? order.em_type
     const newStatus = body.status ?? order.status
 
     let costPriceSnapshot = order.cost_price_snapshot
@@ -242,6 +250,7 @@ export async function PUT(
       unit,
       reason: newReason,
       solution: newSolution,
+      em_type: newEmType,
       cost_price_snapshot: costPriceSnapshot,
       customer_price_snapshot: customerPriceSnapshot,
       total_cost: costPriceSnapshot * newQuantity,

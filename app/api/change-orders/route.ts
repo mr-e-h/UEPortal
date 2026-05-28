@@ -63,7 +63,12 @@ export async function POST(request: NextRequest) {
       requested_quantity: number
       reason: string
       solution?: string
+      em_type: 'economic' | 'spec_deviation' | 'time'
       status?: 'pending' | 'draft'
+    }
+
+    if (!body.em_type || !['economic', 'spec_deviation', 'time'].includes(body.em_type)) {
+      return NextResponse.json({ error: 'Type er påkrevd (Økonomisk, Avvik kravspec eller Tid)' }, { status: 400 })
     }
 
     const userIsSub = isSub(session)
@@ -140,6 +145,7 @@ export async function POST(request: NextRequest) {
     // serie. Vi leser det tilbake via .select() etter insert.
     const newOrderInsert: Omit<ChangeOrder, 'change_order_number'> = {
       id: randomUUID(),
+      em_type: body.em_type,
       project_id: body.project_id,
       product_id: body.product_id,
       subcontractor_id: body.subcontractor_id,

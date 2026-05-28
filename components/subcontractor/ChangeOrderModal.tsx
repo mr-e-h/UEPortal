@@ -42,6 +42,9 @@ export default function ChangeOrderModal({
   const [quantity, setQuantity] = useState(
     initialDraft ? String(initialDraft.requested_quantity) : ''
   )
+  const [emType, setEmType] = useState<'economic' | 'spec_deviation' | 'time'>(
+    initialDraft?.em_type ?? 'economic',
+  )
   const [reason, setReason] = useState(initialDraft?.reason ?? '')
   const [solution, setSolution] = useState(initialDraft?.solution ?? '')
   const [file, setFile] = useState<File | null>(null)
@@ -168,6 +171,7 @@ export default function ChangeOrderModal({
             requested_quantity: qty,
             reason: reason.trim(),
             solution: solution.trim(),
+            em_type: emType,
             status: action,
           }),
         })
@@ -190,6 +194,7 @@ export default function ChangeOrderModal({
             requested_quantity: qty,
             reason: reason.trim(),
             solution: solution.trim(),
+            em_type: emType,
             status: action,
           }),
         })
@@ -276,6 +281,21 @@ export default function ChangeOrderModal({
               <p className="text-sm text-orange-900 whitespace-pre-line">{initialDraft.admin_comment}</p>
             </div>
           )}
+
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
+              Type <span className="text-danger">*</span>
+            </label>
+            <select
+              value={emType}
+              onChange={(e) => setEmType(e.target.value as 'economic' | 'spec_deviation' | 'time')}
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
+            >
+              <option value="economic">Økonomisk</option>
+              <option value="spec_deviation">Avvik kravspec</option>
+              <option value="time">Tid</option>
+            </select>
+          </div>
 
           <div>
             <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">

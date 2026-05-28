@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { Pencil, X, Save, Printer, History, Plus, Trash2 } from 'lucide-react'
 import type { ChangeOrder, ChangeOrderLine, Project, Product, Subcontractor, ActivityEntry } from '@/types'
 import { fmtNOK as fmt, fmtProductLabel, fmtChangeOrderTitle } from '@/lib/format'
+import { changeOrderType } from '@/lib/statuses'
 import { activityActionLabel } from '@/lib/activity-actions'
 import { useMe } from '@/lib/useMe'
 import VersionDiffModal from '@/components/admin/VersionDiffModal'
@@ -56,6 +57,7 @@ export default function ChangeOrderDetailPage() {
   const [editLines, setEditLines] = useState<EditLine[]>([])
   const [editReason, setEditReason] = useState('')
   const [editSolution, setEditSolution] = useState('')
+  const [editEmType, setEditEmType] = useState<'economic' | 'spec_deviation' | 'time'>('economic')
   const [editError, setEditError] = useState<string | null>(null)
   const [editSaving, setEditSaving] = useState(false)
 
@@ -140,6 +142,7 @@ export default function ChangeOrderDetailPage() {
     setEditLines(seed)
     setEditReason(co.reason ?? '')
     setEditSolution(co.solution ?? '')
+    setEditEmType(co.em_type ?? 'economic')
     setEditError(null)
     setEditing(true)
   }
@@ -181,7 +184,7 @@ export default function ChangeOrderDetailPage() {
     const res = await fetch(`/api/change-orders/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lines: cleaned, reason: editReason, solution: editSolution }),
+      body: JSON.stringify({ lines: cleaned, reason: editReason, solution: editSolution, em_type: editEmType }),
     })
     setEditSaving(false)
     if (!res.ok) {
@@ -274,7 +277,13 @@ export default function ChangeOrderDetailPage() {
           <div className="bg-white rounded-lg shadow p-6 space-y-5">
             <div className="border-b border-gray-100 pb-3 flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs text-gray-400">Endringsmelding {co.change_order_number}</p>
+                <div className="flex items-center gap-2 mb-0.5">
+                  <p className="text-xs text-gray-400">Endringsmelding {co.change_order_number}</p>
+                  {(() => {
+                    const t = changeOrderType(co.em_type)
+                    return <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${t.cls}`}>{t.label}</span>
+                  })()}
+                </div>
                 <h2 className="text-lg font-bold text-gray-900">{project?.name ?? '–'}</h2>
                 <p className="text-xs text-gray-500">
                   Prosjektnummer: {project?.project_number ?? '–'}
@@ -448,6 +457,19 @@ export default function ChangeOrderDetailPage() {
                       })}
                     </tbody>
                   </table>
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
+                  <select
+                    value={editEmType}
+                    onChange={(e) => setEditEmType(e.target.value as 'economic' | 'spec_deviation' | 'time')}
+                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+                  >
+                    <option value="economic">Økonomisk</option>
+                    <option value="spec_deviation">Avvik kravspec</option>
+                    <option value="time">Tid</option>
+                  </select>
                 </div>
 
                 <div>
