@@ -1,22 +1,18 @@
 'use client'
 
-import { useEffect, useState, useCallback, useRef } from 'react'
+import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Pencil, X, Save, Printer, History, Send } from 'lucide-react'
+import { Pencil, X, Save, Printer, History } from 'lucide-react'
 import type { ChangeOrder, Project, Product, Subcontractor, ActivityEntry } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
 import { activityActionLabel } from '@/lib/activity-actions'
 import { useMe } from '@/lib/useMe'
 
 /**
- * Admin EM-detail layout — three columns:
+ * Admin EM-detail layout — two columns:
  *
- *   LEFT  (col-span-3)  Chat — comments thread between admin/PM and UE.
- *                       Polls /api/activity so new messages from the other
- *                       side land within seconds. Hidden in print.
- *
- *   CENTER (col-span-6) Kundedel — the customer-facing slice (project,
+ *   CENTER (col-span-9) Kundedel — the customer-facing slice (project,
  *                       product, qty, reason, attachment, salgsverdi).
  *                       Rediger + Eksporter PDF buttons sit IN this card
  *                       so they're discoverable next to the content they
@@ -36,8 +32,6 @@ import { useMe } from '@/lib/useMe'
  * EMs are out at the customer.
  */
 
-const POLL_INTERVAL_MS = 8_000
-
 export default function ChangeOrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { me } = useMe()
@@ -48,7 +42,6 @@ export default function ChangeOrderDetailPage() {
   const [sub, setSub] = useState<Subcontractor | null>(null)
   const [activity, setActivity] = useState<ActivityEntry[]>([])
   const [comment, setComment] = useState('')
-  const [newComment, setNewComment] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
   const [exporting, setExporting] = useState(false)
@@ -59,9 +52,6 @@ export default function ChangeOrderDetailPage() {
   const [editReason, setEditReason] = useState('')
   const [editError, setEditError] = useState<string | null>(null)
   const [editSaving, setEditSaving] = useState(false)
-
-  // Chat — auto-scroll to newest on update.
-  const chatEndRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
     const [orders, projects, products, subs, activityData] = await Promise.all([
@@ -83,25 +73,7 @@ export default function ChangeOrderDetailPage() {
     setLoading(false)
   }, [id])
 
-  // Polling — picks up messages from the UE side without a refresh.
-  // Stops cleanly when the component unmounts.
-  const loadActivityOnly = useCallback(async () => {
-    try {
-      const a = await fetch(`/api/activity?entity_id=${id}&entity_type=change_order`).then((r) => r.json())
-      if (Array.isArray(a)) setActivity(a)
-    } catch { /* swallow — next tick will retry */ }
-  }, [id])
-
   useEffect(() => { load() }, [load])
-  useEffect(() => {
-    const t = setInterval(loadActivityOnly, POLL_INTERVAL_MS)
-    return () => clearInterval(t)
-  }, [loadActivityOnly])
-
-  // Auto-scroll the chat to the latest entry whenever new activity arrives.
-  useEffect(() => {
-    chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
-  }, [activity.length])
 
   async function handleStatus(status: 'approved' | 'rejected' | 'pending') {
     setSubmitting(true)
@@ -163,24 +135,6 @@ export default function ChangeOrderDetailPage() {
     setTimeout(() => window.print(), 50)
   }
 
-  async function submitComment(e: React.FormEvent) {
-    e.preventDefault()
-    if (!newComment.trim()) return
-    await fetch('/api/activity', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        entity_type: 'change_order',
-        entity_id: id,
-        action: 'commented',
-        actor: adminName,
-        comment: newComment.trim(),
-      }),
-    })
-    setNewComment('')
-    await loadActivityOnly()
-  }
-
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500">Laster...</div>
   if (!co) return <div className="min-h-screen flex items-center justify-center text-gray-500">Endringsmelding ikke funnet</div>
 
@@ -204,11 +158,6 @@ export default function ChangeOrderDetailPage() {
   const versionEvents = activity
     .filter((a) => a.action !== 'commented')
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
-
-  // Chat entries — comments only, oldest first so newest sits at the bottom.
-  const chatEntries = activity
-    .filter((a) => a.action === 'commented')
-    .sort((a, b) => a.created_at.localeCompare(b.created_at))
 
   return (
     <div className="min-h-screen bg-gray-50 print:bg-white">
@@ -242,61 +191,8 @@ export default function ChangeOrderDetailPage() {
       </header>
 
       <main className="px-4 sm:px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT — Chat */}
-        <aside className="lg:col-span-3 print:hidden">
-          <div className="bg-white rounded-lg shadow flex flex-col h-[calc(100vh-9rem)] lg:sticky lg:top-4">
-            <div className="px-5 py-3 border-b border-gray-100">
-              <h2 className="text-sm font-semibold text-gray-900">Chat</h2>
-              <p className="text-[10px] text-gray-500 mt-0.5">Synlig for admin og UE — oppdateres automatisk</p>
-            </div>
-            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
-              {chatEntries.length === 0 ? (
-                <p className="text-xs text-gray-400 text-center mt-8">Ingen meldinger ennå</p>
-              ) : (
-                chatEntries.map((ev) => {
-                  const mine = ev.actor === adminName
-                  return (
-                    <div key={ev.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
-                      <div
-                        className={`max-w-[85%] rounded-lg px-3 py-2 text-xs space-y-0.5 ${
-                          mine ? 'bg-primary text-white' : 'bg-gray-100 text-gray-800'
-                        }`}
-                      >
-                        {!mine && (
-                          <p className={`text-[10px] font-semibold ${mine ? 'text-white/80' : 'text-gray-500'}`}>{ev.actor}</p>
-                        )}
-                        <p className="whitespace-pre-line">{ev.comment}</p>
-                        <p className={`text-[9px] ${mine ? 'text-white/70' : 'text-gray-400'}`}>
-                          {new Date(ev.created_at).toLocaleString('nb-NO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                        </p>
-                      </div>
-                    </div>
-                  )
-                })
-              )}
-              <div ref={chatEndRef} />
-            </div>
-            <form onSubmit={submitComment} className="p-3 border-t border-gray-100 flex gap-2">
-              <input
-                type="text"
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Skriv melding..."
-                className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <button
-                type="submit"
-                disabled={!newComment.trim()}
-                className="px-3 py-2 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50 inline-flex items-center gap-1"
-              >
-                <Send size={12} />
-              </button>
-            </form>
-          </div>
-        </aside>
-
         {/* CENTER — Kundedel (printable) */}
-        <section className="lg:col-span-6 space-y-6">
+        <section className="lg:col-span-9 space-y-6">
           <div className="bg-white rounded-lg shadow p-6 space-y-5">
             <div className="border-b border-gray-100 pb-3 flex items-start justify-between gap-3">
               <div>
