@@ -365,7 +365,7 @@ export default async function AdminDashboard() {
                     href={`/admin/change-orders/${co.id}`}
                     className="block px-5 py-3 hover:bg-muted transition-colors"
                   >
-                    <div className="flex items-start justify-between gap-3">
+                    <div className="flex items-start justify-between gap-4">
                       <div className="min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
@@ -376,18 +376,8 @@ export default async function AdminDashboard() {
                         <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
                           Innsender: {co.sub_name} · {co.submitted_at}
                         </p>
-                        {/* Kost / Salg / Fortjeneste — kun for admin + PM. UE
-                            ser denne listen aldri (de er på /subcontractor).
-                            Layout: 3 kompakte tall ved siden av hverandre. */}
-                        <div className="flex gap-4 mt-1.5 text-xs">
-                          <span className="text-[var(--color-text-muted)]">Kost <span className="font-medium text-[var(--color-text-primary)] tabular-nums">{fmt(co.total_cost)}</span></span>
-                          <span className="text-[var(--color-text-muted)]">Salg <span className="font-medium text-[var(--color-text-primary)] tabular-nums">{fmt(co.total_customer_value)}</span></span>
-                          <span className="text-[var(--color-text-muted)]">Fortj. <span className={`font-medium tabular-nums ${co.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(co.profit)}</span></span>
-                        </div>
-                      </div>
-                      <div className="text-right flex-none">
                         <span
-                          className={`inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                          className={`inline-flex mt-1.5 items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
                             co.sent_to_customer
                               ? 'bg-blue-50 text-blue-700'
                               : 'bg-amber-50 text-amber-700'
@@ -395,6 +385,25 @@ export default async function AdminDashboard() {
                         >
                           {co.sent_to_customer ? 'Til behandling' : 'Ubehandlet'}
                         </span>
+                      </div>
+                      {/* Salg → Kost → Fortjeneste stablet vertikalt til høyre.
+                          Salgsverdi øverst (det kunden ser), kost under, og
+                          fortjeneste nederst med samme grønn ≥ 0 / rød
+                          fargeregel som Internt-økonomi-kortet på EM-detaljen.
+                          Kun synlig på admin/PM-flate (UE er på /subcontractor). */}
+                      <div className="text-right flex-none space-y-0.5 text-xs">
+                        <div>
+                          <span className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide">Salg</span>
+                          <p className="font-semibold text-[var(--color-text-primary)] tabular-nums">{fmt(co.total_customer_value)}</p>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide">Kost</span>
+                          <p className="font-medium text-[var(--color-text-secondary)] tabular-nums">{fmt(co.total_cost)}</p>
+                        </div>
+                        <div>
+                          <span className="text-[10px] text-[var(--color-text-muted)] uppercase tracking-wide">Fortj.</span>
+                          <p className={`font-semibold tabular-nums ${co.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(co.profit)}</p>
+                        </div>
                       </div>
                     </div>
                   </Link>
