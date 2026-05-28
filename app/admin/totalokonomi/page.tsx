@@ -13,7 +13,7 @@ import type {
   Subcontractor,
 } from '@/types'
 import { getISOWeek, formatWeekLabel, getISOWeeksInYear } from '@/lib/utils/weeks'
-import { isInOsloYear } from '@/lib/utils/dates'
+import { isInOsloYear, osloYearMonth } from '@/lib/utils/dates'
 import DashboardClient from '@/components/admin/DashboardClient'
 import type { WeekPoint } from '@/components/admin/DashboardChart'
 import type { PendingRow } from '@/components/admin/PendingTable'
@@ -67,6 +67,7 @@ export default async function AdminDashboard() {
     changeOrdersRes,
     hourEntriesRes,
     subsRes,
+    invoicesRes,
   ] = await Promise.all([
     sb.from('projects').select('*').neq('deleted', true),
     sb.from('project_budget_lines').select('id, project_id, budget_quantity, customer_price_snapshot, subcontractor_cost_price_snapshot'),
@@ -74,6 +75,9 @@ export default async function AdminDashboard() {
     sb.from('change_orders').select('*').gte('submitted_at', lastYearStart).neq('status', 'draft'),
     sb.from('hour_entries').select('*').gte('date', lastYearStart),
     sb.from('subcontractors').select('id, company_name'),
+    // Invoices for the per-month bar chart — bounded to current year so we
+    // don't ship a project's full billing history every dashboard render.
+    sb.from('project_invoices').select('project_id, amount, invoice_date').gte('invoice_date', `${thisYear}-01-01`).lte('invoice_date', `${thisYear}-12-31`),
   ])
 
   const allProjects = (projectsRes.data ?? []) as Project[]
@@ -82,6 +86,7 @@ export default async function AdminDashboard() {
   const allChangeOrders = (changeOrdersRes.data ?? []) as ChangeOrder[]
   const allHourEntries = (hourEntriesRes.data ?? []) as HourEntry[]
   const subcontractors = (subsRes.data ?? []) as Subcontractor[]
+  const allInvoices = (invoicesRes.data ?? []) as Array<{ project_id: string; amount: number; invoice_date: string }>
 
   // PM scope: project_manager dashboards see only the projects they're
   // assigned to. main / company see everything (scope is null). Every
@@ -309,6 +314,65 @@ export default async function AdminDashboard() {
     'ytd': computeProjectStats(weeksYTD),
   }
 
+  // Monthly bar chart — revenue, cost, invoiced bucketed into the 12 months
+  // of the current year. Revenue/cost use the week's submitted_at (so a
+  // late-reported week shows up in the month it was actually filed in),
+  // not the report's `week_number`, since week-to-month mapping is ambiguous
+  // for weeks that straddle months. Invoiced uses invoice_date directly.
+  const monthlyBuckets = Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1,
+    label: new Date(thisYear, i, 1).toLocaleDateString('nb-NO', { month: 'short' }),
+    omsetning: 0,
+    kostnad: 0,
+    fakturert: 0,
+  }))
+
+  // Reports submitted (or approved) this year — bucket their lines into the
+  // submitted_at month.
+  for (const wr of weeklyReports) {
+    if (wr.status !== 'approved' && wr.status !== 'partially_approved') continue
+    const bucket = osloYearMonth(wr.submitted_at ?? null)
+    if (!bucket) continue
+    const [y, m] = bucket.split('-').map((s) => parseInt(s, 10))
+    if (y !== thisYear) continue
+    const slot = monthlyBuckets[m - 1]
+    if (!slot) continue
+    for (const l of weeklyReportLines) {
+      if (l.weekly_report_id !== wr.id || l.status !== 'approved') continue
+      const bl = blMap.get(l.project_budget_line_id)
+      if (!bl) continue
+      slot.omsetning += l.reported_quantity * bl.customer_price_snapshot
+      slot.kostnad += l.reported_quantity * bl.subcontractor_cost_price_snapshot
+    }
+  }
+
+  // Approved EMs — bucket by reviewed_at (or submitted_at fallback).
+  for (const co of changeOrders) {
+    if (co.status !== 'approved') continue
+    const bucket = osloYearMonth(co.reviewed_at ?? co.submitted_at ?? null)
+    if (!bucket) continue
+    const [y, m] = bucket.split('-').map((s) => parseInt(s, 10))
+    if (y !== thisYear) continue
+    const slot = monthlyBuckets[m - 1]
+    if (!slot) continue
+    slot.omsetning += co.total_customer_value
+    slot.kostnad += co.total_cost
+  }
+
+  // Project invoices — bucket by invoice_date (already filtered to this
+  // year in the SQL query). PM scope: only count invoices for projects
+  // the user can see.
+  for (const inv of allInvoices) {
+    if (!activeProjectIds.has(inv.project_id)) continue
+    const bucket = osloYearMonth(inv.invoice_date)
+    if (!bucket) continue
+    const [y, m] = bucket.split('-').map((s) => parseInt(s, 10))
+    if (y !== thisYear) continue
+    const slot = monthlyBuckets[m - 1]
+    if (!slot) continue
+    slot.fakturert += inv.amount
+  }
+
   // Pending weekly report rows
   const pendingRows: PendingRow[] = pendingReports.map((wr) => {
     const lines = weeklyReportLines.filter((l) => l.weekly_report_id === wr.id)
@@ -363,6 +427,7 @@ export default async function AdminDashboard() {
       currentWeek={currentWeek}
       thisYear={thisYear}
       projectBreakdowns={projectBreakdowns}
+      monthlyBuckets={monthlyBuckets}
     />
   )
 }

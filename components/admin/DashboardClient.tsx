@@ -4,6 +4,7 @@ import { useState, useMemo } from 'react'
 import DashboardChart from './DashboardChart'
 import DashboardKpiCardsV2 from './DashboardKpiCardsV2'
 import ActiveProjectsList, { type ActiveProjectRow } from './ActiveProjectsList'
+import MonthlyBarChart, { type MonthBucket } from './MonthlyBarChart'
 import Card from '@/components/ui/Card'
 import type { WeekPoint } from './DashboardChart'
 import type { PendingRow } from './PendingTable'
@@ -56,6 +57,7 @@ type Props = {
   currentWeek: number
   thisYear: number
   projectBreakdowns: ProjectBreakdown[]
+  monthlyBuckets: MonthBucket[]
 }
 
 export default function DashboardClient({
@@ -70,7 +72,9 @@ export default function DashboardClient({
   pendingCOCount,
   submittedThisWeek,
   currentWeek,
+  thisYear,
   projectBreakdowns,
+  monthlyBuckets,
 }: Props) {
   const [period, setPeriod] = useState<PeriodKey>('12w')
 
@@ -132,6 +136,17 @@ export default function DashboardClient({
           </div>
         </div>
         <DashboardChart data={chartData[period]} />
+      </Card>
+
+      {/* Per-month bars: omsetning / kostnad / fakturert for the whole year */}
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
+            Per måned {thisYear}
+          </h2>
+          <span className="text-xs text-[var(--color-text-muted)]">Omsetning · Kostnad · Fakturert</span>
+        </div>
+        <MonthlyBarChart data={monthlyBuckets} />
       </Card>
 
       <ActiveProjectsList projects={activeProjects} />
