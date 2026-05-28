@@ -80,6 +80,26 @@ export async function POST(request: NextRequest) {
     return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
   }
 
+  // Closed-project gate — once the project is set to anything other than
+  // 'active' (completed / archived), block new submissions so a UE can't
+  // file fresh work against a project that's been wound down. Admin can
+  // re-open the project to allow it again.
+  const sbCheck = getSupabaseAdmin()
+  const { data: proj } = await sbCheck
+    .from('projects')
+    .select('status, deleted')
+    .eq('id', body.project_id)
+    .maybeSingle<{ status: string; deleted: boolean | null }>()
+  if (!proj || proj.deleted) {
+    return NextResponse.json({ error: 'Prosjektet finnes ikke' }, { status: 404 })
+  }
+  if (proj.status !== 'active') {
+    return NextResponse.json(
+      { error: 'Prosjektet er lukket — admin må åpne det igjen for å rapportere' },
+      { status: 409 },
+    )
+  }
+
   // submission_number is per (project, sub, year, week). Compute by count.
   // Race: two concurrent POSTs can read the same count and both write N+1.
   // Mitigation: rely on the parent unique index (if one exists) to bounce the

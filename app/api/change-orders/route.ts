@@ -85,6 +85,25 @@ export async function POST(request: NextRequest) {
     }
 
     const sb = getSupabaseAdmin()
+
+    // Closed-project gate. Same idea as on weekly_reports — once the
+    // project is anything other than 'active', no new EMer can be filed
+    // until admin re-opens it.
+    const { data: proj } = await sb
+      .from('projects')
+      .select('status, deleted')
+      .eq('id', body.project_id)
+      .maybeSingle<{ status: string; deleted: boolean | null }>()
+    if (!proj || proj.deleted) {
+      return NextResponse.json({ error: 'Prosjektet finnes ikke' }, { status: 404 })
+    }
+    if (proj.status !== 'active') {
+      return NextResponse.json(
+        { error: 'Prosjektet er lukket — admin må åpne det igjen for å sende endringsmeldinger' },
+        { status: 409 },
+      )
+    }
+
     // Three targeted lookups instead of full-table reads.
     const [productRes, priceRes, blRes] = await Promise.all([
       sb.from('products').select('customer_price, unit').eq('id', body.product_id).maybeSingle<Pick<Product, 'customer_price' | 'unit'>>(),

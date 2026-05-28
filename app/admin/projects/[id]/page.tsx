@@ -307,6 +307,38 @@ export default function ProjectDetailPage() {
             {` · ${project.customer} · ${project.county}`}
           </p>
         </div>
+        {/* Lukk / Åpne — flips project.status between 'active' and 'completed'.
+            Completed projects fall into 'Avsluttede' on /admin/projects and
+            reject new reports/EMs server-side. Re-opening reverses both. */}
+        <button
+          type="button"
+          onClick={async () => {
+            const closing = project.status === 'active'
+            const next = closing ? 'completed' : 'active'
+            const confirmMsg = closing
+              ? 'Lukk prosjektet? UE-er kan ikke sende nye ukesrapporter eller endringsmeldinger på det. Du kan åpne det igjen når som helst.'
+              : 'Åpne prosjektet på nytt? UE-er får tilbake muligheten til å sende rapporter og EMer.'
+            if (!confirm(confirmMsg)) return
+            const res = await fetch(`/api/projects/${id}`, {
+              method: 'PUT',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ ...project, status: next }),
+            })
+            if (!res.ok) {
+              const d = await res.json().catch(() => ({}))
+              alert(d.error ?? 'Kunne ikke endre status')
+              return
+            }
+            fetchAll()
+          }}
+          className={`text-sm px-3 py-1 rounded border transition-colors ${
+            project.status === 'active'
+              ? 'text-amber-700 border-amber-200 hover:bg-amber-50'
+              : 'text-green-700 border-green-200 hover:bg-green-50'
+          }`}
+        >
+          {project.status === 'active' ? 'Lukk prosjekt' : 'Åpne på nytt'}
+        </button>
         <Link href={`/admin/projects/${id}/edit`} className="text-sm text-gray-600 border border-gray-200 px-3 py-1 rounded hover:bg-gray-50">Rediger</Link>
       </div>
 
