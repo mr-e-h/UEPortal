@@ -312,41 +312,59 @@ export default function OverviewSection({
         </section>
       )}
 
-      {/* Prosjektledere */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Prosjektledere</h2>
-        <ProjectManagersCard projectId={projectId} />
-      </section>
+      {/* PM + UE side by side — they were each taking a full row's worth
+          of vertical space, but they're both compact "who's on this
+          project" lists and read better next to each other. */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        <div>
+          <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Prosjektledere</h3>
+          <ProjectManagersCard projectId={projectId} />
+        </div>
 
-      {/* Underentreprenører */}
-      <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Underentreprenører på prosjektet</h2>
-        <div className="bg-white rounded-lg shadow p-5 space-y-4">
-          <div className="flex gap-2 items-center">
-            <select value={addSubId} onChange={(e) => setAddSubId(e.target.value)} className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500">
-              <option value="">Velg underentreprenør</option>
-              {availableSubs.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
-            </select>
-            <button onClick={() => onAddSub()} disabled={!addSubId} className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-40">Legg til</button>
+        <div>
+          <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Underentreprenører</h3>
+          <div className="bg-white rounded-lg shadow p-3 space-y-2">
+            <div className="flex gap-2 items-center">
+              <select
+                value={addSubId}
+                onChange={(e) => setAddSubId(e.target.value)}
+                className="flex-1 text-sm text-gray-900 border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-blue-500"
+              >
+                <option value="">+ Legg til UE</option>
+                {availableSubs.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
+              </select>
+              <button
+                onClick={() => onAddSub()}
+                disabled={!addSubId}
+                className="px-2.5 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-40"
+              >
+                Legg til
+              </button>
+            </div>
+            {projectSubDetails.length > 0 ? (
+              <ul className="divide-y divide-gray-100">
+                {projectSubDetails.map((s) => {
+                  const link = projectSubs.find((ps) => ps.subcontractor_id === s.id)!
+                  return (
+                    <li key={s.id} className="flex justify-between items-center py-1.5">
+                      <div className="min-w-0 flex-1">
+                        <span className="text-sm font-medium text-gray-900 truncate">{s.company_name}</span>
+                        <span className="text-xs text-gray-500 ml-2 truncate">{s.contact_person}</span>
+                      </div>
+                      <button
+                        onClick={() => onRequestRemoveSub(link.id)}
+                        className="ml-2 text-xs text-red-500 hover:text-red-700 flex-none"
+                      >
+                        Fjern
+                      </button>
+                    </li>
+                  )
+                })}
+              </ul>
+            ) : (
+              <p className="text-xs text-gray-400 py-2">Ingen UE-er tildelt ennå</p>
+            )}
           </div>
-          {projectSubDetails.length > 0 ? (
-            <ul className="space-y-2">
-              {projectSubDetails.map((s) => {
-                const link = projectSubs.find((ps) => ps.subcontractor_id === s.id)!
-                return (
-                  <li key={s.id} className="flex justify-between items-center py-2 border-b border-gray-100 last:border-0">
-                    <div>
-                      <span className="text-sm font-medium text-gray-900">{s.company_name}</span>
-                      <span className="text-xs text-gray-500 ml-2">{s.contact_person} · {s.county}</span>
-                    </div>
-                    <button onClick={() => onRequestRemoveSub(link.id)} className="text-xs text-red-500 hover:text-red-700">Fjern</button>
-                  </li>
-                )
-              })}
-            </ul>
-          ) : (
-            <p className="text-sm text-gray-400">Ingen UE-er tildelt ennå</p>
-          )}
         </div>
       </section>
     </div>
