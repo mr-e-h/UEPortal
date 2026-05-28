@@ -16,6 +16,7 @@ export async function PUT(
       product_id?: string
       requested_quantity?: number
       reason?: string
+      solution?: string
       status?: 'pending' | 'draft'
       lines?: Array<{ product_id: string; requested_quantity: number }>
     }
@@ -62,6 +63,7 @@ export async function PUT(
     // onto change_orders (so list views and project rollups still work).
     if (Array.isArray(body.lines)) {
       const newReason = body.reason ?? order.reason
+      const newSolution = body.solution ?? order.solution ?? ''
       const linesIn = body.lines
       if (linesIn.length === 0) {
         return NextResponse.json({ error: 'En endringsmelding må ha minst én linje' }, { status: 400 })
@@ -139,6 +141,7 @@ export async function PUT(
           total_customer_value: totalCustomer,
           profit: totalCustomer - totalCost,
           reason: newReason,
+          solution: newSolution,
         })
         .eq('id', params.id)
         .select()
@@ -153,6 +156,7 @@ export async function PUT(
           requested_quantity: order.requested_quantity,
           unit: order.unit,
           reason: order.reason,
+          solution: order.solution ?? '',
           product_id: order.product_id,
           total_cost: order.total_cost,
           total_customer_value: order.total_customer_value,
@@ -162,6 +166,7 @@ export async function PUT(
           requested_quantity: firstLine.qty,
           unit: firstLine.unit,
           reason: newReason,
+          solution: newSolution,
           product_id: firstLine.product_id,
           total_cost: totalCost,
           total_customer_value: totalCustomer,
@@ -195,6 +200,7 @@ export async function PUT(
       return NextResponse.json({ error: 'Mengde må være et positivt tall' }, { status: 400 })
     }
     const newReason = body.reason ?? order.reason
+    const newSolution = body.solution ?? order.solution ?? ''
     const newStatus = body.status ?? order.status
 
     let costPriceSnapshot = order.cost_price_snapshot
@@ -233,6 +239,7 @@ export async function PUT(
       requested_quantity: newQuantity,
       unit,
       reason: newReason,
+      solution: newSolution,
       cost_price_snapshot: costPriceSnapshot,
       customer_price_snapshot: customerPriceSnapshot,
       total_cost: costPriceSnapshot * newQuantity,
@@ -259,13 +266,15 @@ export async function PUT(
       const diffs: string[] = []
       if (order.requested_quantity !== newQuantity) diffs.push(`mengde: ${order.requested_quantity} → ${newQuantity}`)
       if (order.product_id !== newProductId) diffs.push('produkt endret')
-      if ((order.reason ?? '') !== (newReason ?? '')) diffs.push('begrunnelse endret')
+      if ((order.reason ?? '') !== (newReason ?? '')) diffs.push('beskrivelse endret')
+      if ((order.solution ?? '') !== (newSolution ?? '')) diffs.push('løsning endret')
       if (diffs.length > 0) {
         const { randomUUID } = await import('crypto')
         const before = {
           requested_quantity: order.requested_quantity,
           unit: order.unit,
           reason: order.reason,
+          solution: order.solution ?? '',
           product_id: order.product_id,
           total_cost: order.total_cost,
           total_customer_value: order.total_customer_value,
@@ -277,6 +286,7 @@ export async function PUT(
           requested_quantity: newQuantity,
           unit,
           reason: newReason,
+          solution: newSolution,
           product_id: newProductId,
           total_cost: costPriceSnapshot * newQuantity,
           total_customer_value: customerPriceSnapshot * newQuantity,

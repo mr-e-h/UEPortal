@@ -202,7 +202,10 @@ export interface ChangeOrder {
   total_cost: number
   total_customer_value: number
   profit: number
+  /** "Beskrivelse" på skjemaet — hva er endringen. */
   reason: string
+  /** "Løsning" — hva blir gjort / hvordan løses det. Tom streng default. */
+  solution: string
   attachment_url: string | null
   status: ChangeOrderStatus
   submitted_at: string | null

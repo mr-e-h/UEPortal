@@ -55,6 +55,7 @@ export default function ChangeOrderDetailPage() {
   const [editing, setEditing] = useState(false)
   const [editLines, setEditLines] = useState<EditLine[]>([])
   const [editReason, setEditReason] = useState('')
+  const [editSolution, setEditSolution] = useState('')
   const [editError, setEditError] = useState<string | null>(null)
   const [editSaving, setEditSaving] = useState(false)
 
@@ -109,6 +110,7 @@ export default function ChangeOrderDetailPage() {
       : [{ tempId: crypto.randomUUID(), product_id: co.product_id, requested_quantity: String(co.requested_quantity) }]
     setEditLines(seed)
     setEditReason(co.reason ?? '')
+    setEditSolution(co.solution ?? '')
     setEditError(null)
     setEditing(true)
   }
@@ -150,7 +152,7 @@ export default function ChangeOrderDetailPage() {
     const res = await fetch(`/api/change-orders/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lines: cleaned, reason: editReason }),
+      body: JSON.stringify({ lines: cleaned, reason: editReason, solution: editSolution }),
     })
     setEditSaving(false)
     if (!res.ok) {
@@ -272,10 +274,11 @@ export default function ChangeOrderDetailPage() {
               </div>
             </div>
 
-            {/* Lines table — shows every product on the EM. Single-line EMs
-                render as a one-row table; multi-line ones get all rows.
-                Kost/Salg/Margin-kolonnene er admin-internt og skjules i PDF +
-                hos UE (samme regel som "Internt"-kortet til høyre). */}
+            {/* Lines table — kun kundevennlige kolonner (Produkt, Mengde,
+                Total). Kost/Margin per linje er fjernet helt fra senterkortet
+                siden dette går til kunde. Admin ser totalt kost + margin i
+                Internt-kortet til høyre. Totalbeløpet sitter som tfoot-rad
+                under produktene istedenfor som egen blå boks. */}
             <div>
               <p className="text-xs text-gray-400 mb-2">Produkter</p>
               <div className="overflow-x-auto rounded border border-gray-200">
@@ -284,9 +287,7 @@ export default function ChangeOrderDetailPage() {
                     <tr>
                       <th className="px-3 py-2 text-left font-medium">Produkt</th>
                       <th className="px-3 py-2 text-right font-medium">Mengde</th>
-                      <th className="px-3 py-2 text-right font-medium print:hidden">Kost</th>
-                      <th className="px-3 py-2 text-right font-medium print:hidden">Salgsverdi</th>
-                      <th className="px-3 py-2 text-right font-medium print:hidden">Margin</th>
+                      <th className="px-3 py-2 text-right font-medium">Total</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -302,11 +303,7 @@ export default function ChangeOrderDetailPage() {
                         } as unknown as ChangeOrderLine]
                     ).map((ln) => {
                       const p = products.find((pp) => pp.id === ln.product_id) ?? null
-                      const lineCost = ln.requested_quantity * (ln.cost_price_snapshot ?? 0)
                       const lineSales = ln.requested_quantity * (ln.customer_price_snapshot ?? 0)
-                      const lineMargin = lineSales > 0
-                        ? Math.round(((lineSales - lineCost) / lineSales) * 100)
-                        : 0
                       return (
                         <tr key={ln.id}>
                           <td className="px-3 py-2">
@@ -315,31 +312,35 @@ export default function ChangeOrderDetailPage() {
                           <td className="px-3 py-2 text-right tabular-nums text-gray-700">
                             {ln.requested_quantity} <span className="text-gray-400">{ln.unit}</span>
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-gray-700 print:hidden">
-                            {fmt(lineCost)}
-                          </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-gray-700 print:hidden">
+                          <td className="px-3 py-2 text-right tabular-nums text-gray-700">
                             {fmt(lineSales)}
-                          </td>
-                          <td className={`px-3 py-2 text-right tabular-nums font-semibold print:hidden ${lineMargin >= 15 ? 'text-green-600' : 'text-orange-500'}`}>
-                            {lineMargin}%
                           </td>
                         </tr>
                       )
                     })}
                   </tbody>
+                  <tfoot className="bg-blue-50 border-t-2 border-blue-200">
+                    <tr>
+                      <td colSpan={2} className="px-3 py-2.5 text-sm font-medium text-blue-900">
+                        Totalbeløp (eks. mva)
+                      </td>
+                      <td className="px-3 py-2.5 text-right tabular-nums text-lg font-bold text-blue-900">
+                        {fmt(co.total_customer_value)}
+                      </td>
+                    </tr>
+                  </tfoot>
                 </table>
               </div>
             </div>
 
             <div>
-              <p className="text-xs text-gray-400 mb-1">Begrunnelse</p>
-              <p className="text-sm text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-line">{co.reason}</p>
+              <p className="text-xs text-gray-400 mb-1">Beskrivelse</p>
+              <p className="text-sm text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-line">{co.reason || '–'}</p>
             </div>
 
-            <div className="rounded-md bg-blue-50 border border-blue-200 p-4 flex items-baseline justify-between">
-              <p className="text-sm font-medium text-blue-900">Totalbeløp (eks. mva)</p>
-              <p className="text-2xl font-bold text-blue-900">{fmt(co.total_customer_value)}</p>
+            <div>
+              <p className="text-xs text-gray-400 mb-1">Løsning</p>
+              <p className="text-sm text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-line">{co.solution || '–'}</p>
             </div>
 
             {/* Inline edit panel — admin only, hidden in print. The product +
@@ -420,11 +421,23 @@ export default function ChangeOrderDetailPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Begrunnelse</label>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Beskrivelse</label>
                   <textarea
                     rows={3}
                     value={editReason}
                     onChange={(e) => setEditReason(e.target.value)}
+                    placeholder="Hva er endringen?"
+                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Løsning</label>
+                  <textarea
+                    rows={3}
+                    value={editSolution}
+                    onChange={(e) => setEditSolution(e.target.value)}
+                    placeholder="Hvordan løses det / hva blir gjort?"
                     className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>

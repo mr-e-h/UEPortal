@@ -62,6 +62,7 @@ export async function POST(request: NextRequest) {
       subcontractor_id: string
       requested_quantity: number
       reason: string
+      solution?: string
       status?: 'pending' | 'draft'
     }
 
@@ -150,6 +151,7 @@ export async function POST(request: NextRequest) {
       total_customer_value: totalCustomerValue,
       profit,
       reason: body.reason,
+      solution: body.solution ?? '',
       attachment_url: null,
       status: isDraft ? 'draft' : 'pending',
       submitted_at: isDraft ? null : now,

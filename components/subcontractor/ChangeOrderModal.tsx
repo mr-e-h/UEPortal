@@ -43,6 +43,7 @@ export default function ChangeOrderModal({
     initialDraft ? String(initialDraft.requested_quantity) : ''
   )
   const [reason, setReason] = useState(initialDraft?.reason ?? '')
+  const [solution, setSolution] = useState(initialDraft?.solution ?? '')
   const [file, setFile] = useState<File | null>(null)
   const [existingAttachmentUrl, setExistingAttachmentUrl] = useState<string | null>(
     initialDraft?.attachment_url ?? null
@@ -146,7 +147,7 @@ export default function ChangeOrderModal({
         return
       }
       if (!reason.trim()) {
-        setError('Begrunnelse er påkrevd.')
+        setError('Beskrivelse er påkrevd.')
         return
       }
     }
@@ -166,6 +167,7 @@ export default function ChangeOrderModal({
             product_id: productId,
             requested_quantity: qty,
             reason: reason.trim(),
+            solution: solution.trim(),
             status: action,
           }),
         })
@@ -187,6 +189,7 @@ export default function ChangeOrderModal({
             product_id: productId,
             requested_quantity: qty,
             reason: reason.trim(),
+            solution: solution.trim(),
             status: action,
           }),
         })
@@ -310,13 +313,26 @@ export default function ChangeOrderModal({
 
           <div>
             <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
-              Begrunnelse <span className="text-danger">*</span>
+              Beskrivelse <span className="text-danger">*</span>
             </label>
             <textarea
               value={reason}
               onChange={(e) => setReason(e.target.value)}
               rows={3}
-              placeholder="Beskriv årsaken til endringsmeldingen..."
+              placeholder="Hva er endringen?"
+              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary resize-none"
+            />
+          </div>
+
+          <div>
+            <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
+              Løsning
+            </label>
+            <textarea
+              value={solution}
+              onChange={(e) => setSolution(e.target.value)}
+              rows={3}
+              placeholder="Hvordan løses det / hva blir gjort?"
               className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary resize-none"
             />
           </div>

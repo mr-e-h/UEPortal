@@ -31,10 +31,11 @@ const MONEY_KEYS = new Set([
 const LABELS: Record<string, string> = {
   requested_quantity: 'Mengde',
   unit: 'Enhet',
-  reason: 'Begrunnelse',
+  reason: 'Beskrivelse',
+  solution: 'Løsning',
   product_id: 'Produkt',
   total_cost: 'Total kostnad',
-  total_customer_value: 'Salgsverdi',
+  total_customer_value: 'Total',
   profit: 'Fortjeneste',
   cost_price_snapshot: 'UE-kostpris',
   customer_price_snapshot: 'Kundepris',
