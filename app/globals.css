@@ -6,6 +6,20 @@ html {
   font-size: 90%;
 }
 
+/* Hide native up/down spinner controls on number inputs everywhere.
+   They visually clash with our compact form fields and add nothing the
+   user can't do with the keyboard. Numeric keypads still work on
+   mobile because inputs use inputMode="decimal" / "numeric". */
+input[type='number']::-webkit-inner-spin-button,
+input[type='number']::-webkit-outer-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+input[type='number'] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
 :root {
   --background: #ffffff;
   --foreground: #171717;
