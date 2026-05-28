@@ -26,11 +26,10 @@ import {
 
 const sections = [
   {
-    label: 'GENERELT',
+    label: 'OVERSIKT',
     links: [
       { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
       { href: '/admin/projects', label: 'Prosjekter', icon: FolderKanban },
-      { href: '/admin/project-types', label: 'Type prosjekt', icon: ClipboardList },
       { href: '/admin/subcontractors', label: 'Underentreprenører', icon: Users },
       { href: '/admin/products', label: 'Produkter', icon: Package },
     ],
@@ -60,13 +59,6 @@ const sections = [
     ],
   },
   {
-    label: 'VERKTØY',
-    links: [
-      { href: '/admin/time-types', label: 'Timetyper', icon: Clock },
-      { href: '/admin/trash', label: 'Papirkurv', icon: Trash2, userAdminOnly: true as const },
-    ],
-  },
-  {
     label: 'INNSTILLINGER',
     // 'Brukere' and 'Tilgangsforespørsler' are admin-only — added per role
     // when we render. Min konto is for everyone.
@@ -74,6 +66,16 @@ const sections = [
       { href: '/admin/users', label: 'Brukere', icon: Users, userAdminOnly: true as const },
       { href: '/admin/access-requests', label: 'Tilgangsforespørsler', icon: UserPlus, badgeKey: 'access-requests' as const, userAdminOnly: true as const },
       { href: '/admin/account', label: 'Min konto', icon: Settings },
+    ],
+  },
+  {
+    // Catch-all for admin/system-level config tables. Sits at the bottom
+    // because these are "set once, look at rarely" pages, not daily work.
+    label: 'GENERELT',
+    links: [
+      { href: '/admin/project-types', label: 'Type prosjekt', icon: ClipboardList, userAdminOnly: true as const },
+      { href: '/admin/time-types', label: 'Timetyper', icon: Clock, userAdminOnly: true as const },
+      { href: '/admin/trash', label: 'Papirkurv', icon: Trash2, userAdminOnly: true as const },
     ],
   },
 ]
