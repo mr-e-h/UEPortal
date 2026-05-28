@@ -3,7 +3,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
-import type { Project } from '@/types'
+import type { Project, ProjectType } from '@/types'
 import { Trash2 } from 'lucide-react'
 
 type Form = {
@@ -15,6 +15,7 @@ type Form = {
   status: string
   start_date: string
   end_date: string
+  project_type_id: string
 }
 
 const STATUS_OPTIONS = [
@@ -27,6 +28,7 @@ export default function EditProjectPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
   const [form, setForm] = useState<Form | null>(null)
+  const [types, setTypes] = useState<ProjectType[]>([])
   const [saving, setSaving] = useState(false)
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false)
 
@@ -43,8 +45,13 @@ export default function EditProjectPage() {
         status: p.status,
         start_date: p.start_date ?? '',
         end_date: p.end_date ?? '',
+        project_type_id: p.project_type_id ?? '',
       })
     })
+    fetch('/api/project-types')
+      .then((r) => r.ok ? r.json() : [])
+      .then((data: ProjectType[]) => Array.isArray(data) && setTypes(data))
+      .catch(() => {})
   }, [id])
 
   function set(key: keyof Form, value: string) {
@@ -58,7 +65,11 @@ export default function EditProjectPage() {
     await fetch(`/api/projects/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(form),
+      body: JSON.stringify({
+        ...form,
+        // Empty select = null in DB so the optional FK stays unset.
+        project_type_id: form.project_type_id || null,
+      }),
     })
     router.push(`/admin/projects/${id}`)
   }
@@ -138,6 +149,23 @@ export default function EditProjectPage() {
               <option key={o.value} value={o.value}>{o.label}</option>
             ))}
           </select>
+        </div>
+
+        <div>
+          <label className="block text-sm font-medium text-gray-700 mb-1">Type prosjekt</label>
+          <select
+            value={form.project_type_id}
+            onChange={(e) => set('project_type_id', e.target.value)}
+            className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+          >
+            <option value="">– Ingen type –</option>
+            {types.map((t) => (
+              <option key={t.id} value={t.id}>{t.name}</option>
+            ))}
+          </select>
+          <p className="mt-1 text-xs text-gray-500">
+            Brukes til å generere standard sjekkliste på prosjektet. Endre type påvirker ikke eksisterende sjekkliste — generer den på nytt fra Sjekkliste-fanen.
+          </p>
         </div>
 
         <div className="grid grid-cols-2 gap-4">

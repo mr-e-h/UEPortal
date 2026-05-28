@@ -95,6 +95,41 @@ export interface Project {
   end_date: string | null
   deleted: boolean
   deleted_at: string | null
+  project_type_id: string | null
+}
+
+/**
+ * Admin-managed registry of project categories ("Fiber FTTH", "Strøm",
+ * "Veiarbeid", …). Each type owns a checklist template via
+ * project_type_checklist_items; when a project is assigned this type, the
+ * template is copied into project_checklist_items so per-project edits
+ * don't affect the template.
+ */
+export interface ProjectType {
+  id: string
+  name: string
+  description: string | null
+  created_at: string
+}
+
+export interface ProjectTypeChecklistItem {
+  id: string
+  project_type_id: string
+  label: string
+  sort_order: number
+  created_at: string
+}
+
+export interface ProjectChecklistItem {
+  id: string
+  project_id: string
+  label: string
+  sort_order: number
+  /** ISO string when ticked; null while open. */
+  completed_at: string | null
+  /** Display name of the user who ticked it. */
+  completed_by: string | null
+  created_at: string
 }
 
 export interface ProjectSubcontractor {

@@ -21,10 +21,12 @@ import BudgetLinesSection from './BudgetLinesSection'
 import FremdriftsplanSection from './FremdriftsplanSection'
 import KostSection from './KostSection'
 import ProjectStatusHero from './ProjectStatusHero'
+import ChecklistSection from './ChecklistSection'
 
 const TABS = [
   { id: 'oversikt', label: 'Oversikt' },
   { id: 'budsjett', label: 'Budsjett' },
+  { id: 'sjekkliste', label: 'Sjekkliste' },
   { id: 'fremdriftsplan', label: 'Fremdriftsplan' },
   { id: 'kost', label: 'Kost' },
   { id: 'prognose', label: 'Prognose' },
@@ -435,6 +437,14 @@ export default function ProjectDetailPage() {
           budgetVersions={budgetVersions}
           dragOver={dragOver}
           setDragOver={setDragOver}
+        />
+      )}
+
+      {/* ── SJEKKLISTE ───────────────────────────────────────────────── */}
+      {activeTab === 'sjekkliste' && (
+        <ChecklistSection
+          projectId={id}
+          projectTypeId={project.project_type_id ?? null}
         />
       )}
 
