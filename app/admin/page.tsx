@@ -319,21 +319,13 @@ export default async function AdminDashboard() {
 
   return (
     <div className="p-6 space-y-6">
-      <div className="flex items-end justify-between">
-        <div>
-          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Dashboard</h1>
-          <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
-            {totalPending === 0
-              ? 'Ingen oppgaver venter på godkjenning'
-              : `${totalPending} ${totalPending === 1 ? 'oppgave venter' : 'oppgaver venter'} på godkjenning`}
-          </p>
-        </div>
-        <Link
-          href="/admin/totalokonomi"
-          className="text-sm text-primary hover:underline font-medium"
-        >
-          Se totaløkonomi →
-        </Link>
+      <div>
+        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Dashboard</h1>
+        <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
+          {totalPending === 0
+            ? 'Ingen oppgaver venter på godkjenning'
+            : `${totalPending} ${totalPending === 1 ? 'oppgave venter' : 'oppgaver venter'} på godkjenning`}
+        </p>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
