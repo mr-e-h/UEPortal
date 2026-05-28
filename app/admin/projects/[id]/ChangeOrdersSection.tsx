@@ -4,15 +4,14 @@ import { useState } from 'react'
 import Link from 'next/link'
 import type { ChangeOrder, Product, Subcontractor } from '@/types'
 import SortableTable from '@/components/SortableTable'
-import { fmtNOK as fmt } from '@/lib/format'
+import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 import { changeOrderStatus } from '@/lib/statuses'
 
 type CORow = {
   id: string
   status: string
   sub_name: string
-  product_code: string
-  product_name: string
+  product_label: string
   quantity_str: string
   total_cost: number
   total_customer_value: number
@@ -46,8 +45,7 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
       id: co.id,
       status: co.status,
       sub_name: sub?.company_name ?? '–',
-      product_code: prod?.description ?? '–',
-      product_name: prod?.name ?? '–',
+      product_label: fmtProductLabel(prod),
       quantity_str: `${co.requested_quantity} ${co.unit}`,
       total_cost: co.total_cost,
       total_customer_value: co.total_customer_value,
@@ -72,8 +70,7 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
       render: (row: CORow) => (
         <div>
           <div className="text-xs text-gray-500 truncate" title={row.sub_name}>{row.sub_name}</div>
-          <div className="truncate" title={row.product_name}>{row.product_name}</div>
-          <div className="text-xs text-gray-400">{row.product_code}</div>
+          <div className="truncate" title={row.product_label}>{row.product_label}</div>
         </div>
       ),
     },

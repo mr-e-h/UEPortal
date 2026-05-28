@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readJson } from '@/lib/data'
 import { getSession } from '@/lib/auth'
 import { isAdmin } from '@/lib/api-guard'
+import { fmtProductLabel } from '@/lib/format'
 import type {
   Project,
   ProjectBudgetLine,
@@ -114,7 +115,7 @@ export async function GET(request: NextRequest) {
       report_line_id: line.id,
       project_id: bl.project_id,
       project_name: proj.name,
-      product_name: product?.name ?? '–',
+      product_name: fmtProductLabel(product),
       unit: product?.unit ?? '–',
       quantity: line.reported_quantity,
       cost_price: bl.subcontractor_cost_price_snapshot,
@@ -133,7 +134,7 @@ export async function GET(request: NextRequest) {
       change_order_id: co.id,
       project_id: co.project_id,
       project_name: proj.name,
-      product_name: product?.name ?? '–',
+      product_name: fmtProductLabel(product),
       unit: co.unit,
       quantity: co.requested_quantity,
       cost_price: co.cost_price_snapshot,

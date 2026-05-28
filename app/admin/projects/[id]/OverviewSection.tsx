@@ -2,7 +2,7 @@
 
 import { useMemo, useState, type RefObject } from 'react'
 import { Download } from 'lucide-react'
-import { fmtNOK as fmt } from '@/lib/format'
+import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 import GanttSection from './GanttSection'
 import ProjectManagersCard from './ProjectManagersCard'
 import type {
@@ -148,7 +148,7 @@ export default function OverviewSection({
           .reduce((s, l) => s + l.reported_quantity, 0)
         return {
           id: bl.id,
-          name: product?.name ?? '–',
+          name: fmtProductLabel(product),
           unit: product?.unit ?? '–',
           budgetQty: bl.budget_quantity,
           reportedQty: reportedForLine,

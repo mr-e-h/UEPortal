@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readJson } from '@/lib/data'
 import { getSession } from '@/lib/auth'
 import { isAdmin, isSub } from '@/lib/api-guard'
+import { fmtProductLabel } from '@/lib/format'
 import type { WeeklyReport, WeeklyReportLine, ProjectBudgetLine, Product } from '@/types'
 
 export async function GET(request: NextRequest) {
@@ -55,7 +56,7 @@ export async function GET(request: NextRequest) {
 
     const existing = byBudgetLine.get(line.project_budget_line_id) ?? {
       project_budget_line_id: line.project_budget_line_id,
-      product_name: product?.name ?? '–',
+      product_name: fmtProductLabel(product),
       product_code: product?.id ?? '–',
       unit: product?.unit ?? '–',
       total_reported: 0,

@@ -224,7 +224,6 @@ export default function AdminWeeklyReportPage() {
       <div className="bg-white rounded-lg shadow">
         <SortableTable
           columns={[
-            { key: 'product_description', label: 'Kode', sortable: true },
             { key: 'product_name', label: 'Produkt', sortable: true },
             { key: 'unit', label: 'Enhet' },
             { key: 'reported_quantity', label: 'Mengde', sortable: true },

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { isAdmin } from '@/lib/api-guard'
+import { fmtProductLabel } from '@/lib/format'
 import type {
   Project,
   ProjectSubcontractor,
@@ -140,7 +141,11 @@ export async function GET(request: NextRequest) {
         return {
           id: bl.id,
           product_id: bl.product_id,
-          product_name: product?.name ?? '',
+          // product_name carries the canonical 'CODE - Name' label so the
+          // sub UI doesn't need to special-case description vs name. The
+          // separate product_description field stays as the raw code for
+          // any callers that still want them apart.
+          product_name: fmtProductLabel(product),
           product_description: product?.description ?? '',
           unit: product?.unit ?? '',
           budget_quantity: bl.budget_quantity,

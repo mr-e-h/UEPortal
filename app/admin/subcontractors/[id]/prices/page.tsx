@@ -7,7 +7,7 @@ import { Copy, Percent, Plus } from 'lucide-react'
 import type { Product, Subcontractor, SubcontractorProductPrice } from '@/types'
 import SortableTable from '@/components/SortableTable'
 import NumberInput from '@/components/NumberInput'
-import { fmtNOK as fmt } from '@/lib/format'
+import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 
 type PreviewRow = {
   productId: string
@@ -89,7 +89,7 @@ export default function SubcontractorPricesPage() {
           : Math.round((current + val) * 100) / 100
         return {
           productId: p.id,
-          name: p.name,
+          name: fmtProductLabel(p),
           unit: p.unit,
           oldPrice: current,
           newPrice,

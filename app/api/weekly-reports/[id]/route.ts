@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { isAdmin, isSub } from '@/lib/api-guard'
+import { fmtProductLabel } from '@/lib/format'
 import type { WeeklyReport, WeeklyReportLine, ProjectBudgetLine, Product } from '@/types'
 
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
@@ -54,7 +55,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     const product = bl ? productMap.get(bl.product_id) : undefined
     const base = {
       ...line,
-      product_name: product?.name ?? '–',
+      product_name: fmtProductLabel(product),
       product_description: product?.description ?? '–',
       unit: product?.unit ?? '–',
       subcontractor_cost_price_snapshot: bl?.subcontractor_cost_price_snapshot ?? 0,

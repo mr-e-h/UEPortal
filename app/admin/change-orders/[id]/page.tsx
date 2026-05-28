@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Pencil, X, Save, Printer, History, Plus, Trash2 } from 'lucide-react'
 import type { ChangeOrder, ChangeOrderLine, Project, Product, Subcontractor, ActivityEntry } from '@/types'
-import { fmtNOK as fmt } from '@/lib/format'
+import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 import { activityActionLabel } from '@/lib/activity-actions'
 import { useMe } from '@/lib/useMe'
 import VersionDiffModal from '@/components/admin/VersionDiffModal'
@@ -288,10 +288,7 @@ export default function ChangeOrderDetailPage() {
                       return (
                         <tr key={ln.id}>
                           <td className="px-3 py-2">
-                            <p className="font-medium text-gray-900">{p?.name ?? '–'}</p>
-                            {p?.description && (
-                              <p className="text-[10px] text-gray-500 mt-0.5">{p.description}</p>
-                            )}
+                            <p className="font-medium text-gray-900">{fmtProductLabel(p)}</p>
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-gray-700">
                             {ln.requested_quantity} <span className="text-gray-400">{ln.unit}</span>
@@ -355,7 +352,7 @@ export default function ChangeOrderDetailPage() {
                               >
                                 <option value="">Velg produkt...</option>
                                 {products.map((p) => (
-                                  <option key={p.id} value={p.id}>{p.name}{p.description ? ` · ${p.description}` : ''}</option>
+                                  <option key={p.id} value={p.id}>{fmtProductLabel(p)}</option>
                                 ))}
                               </select>
                             </td>
@@ -576,7 +573,10 @@ export default function ChangeOrderDetailPage() {
 
       <VersionDiffModal
         entry={diffEntry}
-        productNameLookup={(id) => products.find((p) => p.id === id)?.name ?? id}
+        productNameLookup={(id) => {
+          const p = products.find((pp) => pp.id === id)
+          return p ? fmtProductLabel(p) : id
+        }}
         onClose={() => setDiffEntry(null)}
       />
     </div>

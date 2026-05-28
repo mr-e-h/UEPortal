@@ -5,7 +5,7 @@ import dynamic from 'next/dynamic'
 import { Download } from 'lucide-react'
 import SortableTable from '@/components/SortableTable'
 import NumberInput from '@/components/NumberInput'
-import { fmtNOK as fmt } from '@/lib/format'
+import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 import { lineTypeLabel } from '@/lib/line-types'
 import type { ProjectBudgetLine, Product, Subcontractor, ChangeOrder, Project, BudgetVersion } from '@/types'
 
@@ -378,7 +378,7 @@ export default function BudgetLinesSection({
               className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
             >
               <option value="">Velg produkt</option>
-              {allProducts.map((p) => <option key={p.id} value={p.id}>{p.name} — {p.unit}</option>)}
+              {allProducts.map((p) => <option key={p.id} value={p.id}>{fmtProductLabel(p)} — {p.unit}</option>)}
             </select>
           </div>
           <div>

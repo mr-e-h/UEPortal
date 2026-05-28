@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { isAdmin } from '@/lib/api-guard'
+import { fmtProductLabel } from '@/lib/format'
 import type {
   Project,
   ProjectSubcontractor,
@@ -68,7 +69,7 @@ export async function GET(request: NextRequest) {
     sb.from('weekly_reports').select('id, project_id, subcontractor_id, year, week_number, status, submitted_at, submission_number').eq('subcontractor_id', subId),
     sb.from('weekly_report_lines').select('id, weekly_report_id, project_budget_line_id, reported_quantity, status'),
     sb.from('ue_invoices').select('id, subcontractor_id, amount').eq('subcontractor_id', subId),
-    sb.from('products').select('id, name'),
+    sb.from('products').select('id, name, description'),
     sb.from('project_managers').select('project_id, user_id'),
     sb.from('users').select('id, full_name, email, active').eq('active', true),
   ])
@@ -80,13 +81,15 @@ export async function GET(request: NextRequest) {
   const myReports = ((wrRes.data ?? []) as WeeklyReport[])
   const allReportLines = ((wrlRes.data ?? []) as WeeklyReportLine[])
   const myInvoices = ((invRes.data ?? []) as UEInvoice[])
-  const products = ((prodRes.data ?? []) as Pick<Product, 'id' | 'name'>[])
+  const products = ((prodRes.data ?? []) as Pick<Product, 'id' | 'name' | 'description'>[])
   const pmLinks = ((pmRes.data ?? []) as Array<{ project_id: string; user_id: string }>)
   const users = ((usersRes.data ?? []) as Array<{ id: string; full_name: string; email: string }>)
 
   const projectIds = new Set(links.map((l) => l.project_id))
   const projectMap = new Map(projects.map((p) => [p.id, p]))
-  const productMap = new Map(products.map((p) => [p.id, p.name]))
+  // Format products as "<code> - <name>" centrally so every consumer
+  // (admin lists, sub views, PDF) renders the same string.
+  const productMap = new Map(products.map((p) => [p.id, fmtProductLabel(p)]))
   const blMap = new Map(allBudgetLines.map((bl) => [bl.id, bl]))
 
   // Lines this UE was assigned (cost view from their side, excluding non-sub line types)

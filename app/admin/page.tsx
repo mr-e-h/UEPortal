@@ -7,6 +7,7 @@ import { getProjectScope } from '@/lib/api-guard'
 import { ADMIN_ROLES } from '@/lib/roles'
 import { formatWeekLabel } from '@/lib/utils/weeks'
 import { osloYearMonth } from '@/lib/utils/dates'
+import { fmtProductLabel } from '@/lib/format'
 import type { MonthBucket } from '@/components/admin/MonthlyBarChart'
 import MonthlyChartWithPmFilter from '@/components/admin/MonthlyChartWithPmFilter'
 import type {
@@ -62,7 +63,7 @@ export default async function AdminDashboard() {
   ] = await Promise.all([
     sb.from('projects').select('id, name, project_number').neq('deleted', true),
     sb.from('subcontractors').select('id, company_name'),
-    sb.from('products').select('id, name'),
+    sb.from('products').select('id, name, description'),
     sb.from('weekly_reports').select('id, project_id, subcontractor_id, year, week_number, status, submitted_at, submission_number')
       // 'partially_approved' is still NOT done — some lines need re-review,
       // so keep it on the dashboard until the rest is approved or rejected.
@@ -119,10 +120,10 @@ export default async function AdminDashboard() {
 
   const projects = ((projectsRes.data ?? []) as Pick<Project, 'id' | 'name' | 'project_number'>[])
   const subs = ((subsRes.data ?? []) as Pick<Subcontractor, 'id' | 'company_name'>[])
-  const products = ((prodsRes.data ?? []) as Pick<Product, 'id' | 'name'>[])
+  const products = ((prodsRes.data ?? []) as Pick<Product, 'id' | 'name' | 'description'>[])
   const projectMap = new Map(projects.map((p) => [p.id, p]))
   const subMap = new Map(subs.map((s) => [s.id, s.company_name]))
-  const productMap = new Map(products.map((p) => [p.id, p.name]))
+  const productMap = new Map(products.map((p) => [p.id, p]))
   const blMap = new Map(budgetLines.map((bl) => [bl.id, bl]))
 
   // Group report lines for cost computation
@@ -158,7 +159,7 @@ export default async function AdminDashboard() {
     project_name: projectMap.get(co.project_id)?.name ?? '–',
     project_number: projectMap.get(co.project_id)?.project_number ?? '',
     sub_name: subMap.get(co.subcontractor_id) ?? '–',
-    product_name: productMap.get(co.product_id) ?? '–',
+    product_name: fmtProductLabel(productMap.get(co.product_id)),
     quantity: co.requested_quantity,
     unit: co.unit,
     total_cost: co.total_cost,

@@ -480,7 +480,6 @@ export default function SubcontractorProjectPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted">
-                  <th className="px-4 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-24">Kode</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Produkt</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-28">Godkjent / Total</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-40">Fremdrift</th>
@@ -522,13 +521,6 @@ export default function SubcontractorProjectPage() {
                       onClick={() => setExpandedBudgetId(isExpanded ? null : bl.id)}
                       className="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer"
                     >
-                      <td className="px-4 py-2.5">
-                        {bl.product_description ? (
-                          <span className="text-xs font-mono font-medium bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">{bl.product_description}</span>
-                        ) : (
-                          <span className="text-[var(--color-text-muted)]">–</span>
-                        )}
-                      </td>
                       <td className="px-3 py-2.5">
                         <span className="font-medium text-[var(--color-text-primary)]">{bl.product_name}</span>
                       </td>
@@ -567,10 +559,9 @@ export default function SubcontractorProjectPage() {
                   if (isExpanded) {
                     rows.push(
                       <tr key={`${bl.id}-chart`} className="bg-muted/30">
-                        <td colSpan={6} className="px-0 py-0">
+                        <td colSpan={5} className="px-0 py-0">
                           <BudgetLineChart
                             productName={bl.product_name}
-                            productCode={bl.product_description}
                             unit={bl.unit}
                             importQty={bl.budget_quantity - coTotal}
                             projectStart={project.start_date}
@@ -656,7 +647,6 @@ export default function SubcontractorProjectPage() {
                         <tr key={bl.id} className="border-b border-border last:border-0 hover:bg-muted/50">
                           <td className="px-3 py-2">
                             <div className="font-medium text-[var(--color-text-primary)]">{bl.product_name}</div>
-                            {bl.product_description && <div className="text-xs text-[var(--color-text-muted)]">{bl.product_description}</div>}
                           </td>
                           <td className="px-3 py-2 text-[var(--color-text-secondary)]">{bl.unit}</td>
                           <td className="px-3 py-2 text-right text-[var(--color-text-secondary)]">{bl.budget_quantity}</td>

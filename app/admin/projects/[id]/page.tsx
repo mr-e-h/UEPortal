@@ -6,6 +6,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useProjectData } from './useProjectData'
 import type { Product } from '@/types'
+import { fmtProductLabel } from '@/lib/format'
 import ConfirmDialog from '@/components/ConfirmDialog'
 
 // Tab content lazy-loaded — most users land on the default tab and don't
@@ -168,7 +169,8 @@ export default function ProjectDetailPage() {
       const productNames = failures.map((f) => {
         const bl = budgetLines.find((b) => b.id === f.lineId)
         const p = bl ? allProducts.find((pp) => pp.id === bl.product_id) : null
-        return `${p?.name ?? bl?.product_id ?? f.lineId}: ${f.error}`
+        const label = p ? fmtProductLabel(p) : (bl?.product_id ?? f.lineId)
+        return `${label}: ${f.error}`
       })
       setBulkError(`${failures.length} av ${selected.length} feilet — ${productNames.slice(0, 3).join(' · ')}${productNames.length > 3 ? ` …` : ''}`)
     }
@@ -275,7 +277,7 @@ export default function ProjectDetailPage() {
               {missingPriceDialog.products.map((p) => (
                 <li key={p.id} className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-orange-400 flex-shrink-0" />
-                  {p.name}
+                  {fmtProductLabel(p)}
                 </li>
               ))}
             </ul>
