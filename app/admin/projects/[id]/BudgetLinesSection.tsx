@@ -2,11 +2,12 @@
 
 import { type RefObject } from 'react'
 import dynamic from 'next/dynamic'
+import { Download } from 'lucide-react'
 import SortableTable from '@/components/SortableTable'
 import NumberInput from '@/components/NumberInput'
 import { fmtNOK as fmt } from '@/lib/format'
 import { lineTypeLabel } from '@/lib/line-types'
-import type { ProjectBudgetLine, Product, Subcontractor, ChangeOrder, Project } from '@/types'
+import type { ProjectBudgetLine, Product, Subcontractor, ChangeOrder, Project, BudgetVersion } from '@/types'
 
 // BudgetLineChart is lazy-loaded — only mounts when a row is expanded.
 const BudgetLineChart = dynamic(() => import('@/components/BudgetLineChart'), { ssr: false })
@@ -68,6 +69,12 @@ interface Props {
   importing: boolean
   importMsg: string
   onImport: (file: File) => void
+
+  // Budsjettversjon-historikk + Excel-import (drag/drop) — moved here
+  // from Oversikt so all budget-related material lives in one tab.
+  budgetVersions: BudgetVersion[]
+  dragOver: boolean
+  setDragOver: (v: boolean) => void
 }
 
 /**
@@ -95,6 +102,7 @@ export default function BudgetLinesSection({
   lineTypeFilter, setLineTypeFilter,
   chartLineId, setChartLineId,
   importFileRef, importing, importMsg, onImport,
+  budgetVersions, dragOver, setDragOver,
 }: Props) {
 
   const buildBLRows = (lines: ProjectBudgetLine[]): BLRow[] => lines.map((bl) => {
@@ -226,9 +234,108 @@ export default function BudgetLinesSection({
     : allRows.filter((r) => r.line_type === lineTypeFilter)
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-6">
+      {/* Budsjettversjonhistorikk + drag/drop Excel-import — moved here from
+          Oversikt so all budget-related material lives on the same tab. */}
+      <div className="grid grid-cols-3 gap-4">
+        <div className="col-span-2 bg-white rounded-xl shadow border border-gray-100 overflow-hidden">
+          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
+            <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Budsjettversjonhistorikk</h3>
+          </div>
+          {budgetVersions.length === 0 ? (
+            <div className="px-5 py-6 text-sm text-gray-400 text-center">Ingen budsjettfiler lastet opp ennå.</div>
+          ) : (
+            <div className="overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="border-b border-gray-100">
+                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-left">Versjon</th>
+                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Salgsverdi</th>
+                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Kostnad</th>
+                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Fortjeneste</th>
+                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Endring</th>
+                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-left">Lastet opp</th>
+                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-center">Fil</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {budgetVersions.map((bver, idx) => {
+                    const prev = idx > 0 ? budgetVersions[idx - 1] : null
+                    const delta = prev != null ? bver.total_sales_value - prev.total_sales_value : null
+                    const profit = bver.total_sales_value - bver.total_cost_value
+                    const isLatest = idx === budgetVersions.length - 1
+                    const label = bver.version === 0 ? 'Originalbudsjett' : `V${bver.version}`
+                    const dateStr = new Date(bver.uploaded_at).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
+                    const timeStr = new Date(bver.uploaded_at).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
+                    return (
+                      <tr key={bver.id} className={`border-b border-gray-100 ${isLatest ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                        <td className="px-5 py-3">
+                          <span className={`font-medium ${isLatest ? 'text-blue-700' : 'text-gray-900'}`}>{label}</span>
+                          {isLatest && <span className="ml-2 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-medium">Gjeldende</span>}
+                        </td>
+                        <td className="px-5 py-3 text-right text-gray-700">{fmt(bver.total_sales_value)}</td>
+                        <td className="px-5 py-3 text-right text-gray-700">{fmt(bver.total_cost_value)}</td>
+                        <td className={`px-5 py-3 text-right font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(profit)}</td>
+                        <td className="px-5 py-3 text-right">
+                          {delta == null ? (
+                            <span className="text-gray-300">—</span>
+                          ) : (
+                            <span className={`font-medium text-xs ${delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                              {delta > 0 ? '+' : ''}{fmt(delta)}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-5 py-3">
+                          <div className="text-gray-700">{bver.uploaded_by}</div>
+                          <div className="text-xs text-gray-400">{dateStr} {timeStr}</div>
+                        </td>
+                        <td className="px-5 py-3 text-center">
+                          {bver.file_name ? (
+                            <a href={`/api/budget-versions/${bver.id}/file`} download title="Last ned Excel-fil" className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-green-100 text-green-600 hover:text-green-700 transition-colors">
+                              <Download size={14} />
+                            </a>
+                          ) : (
+                            <span className="text-gray-300 text-xs">–</span>
+                          )}
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </div>
+
+        {/* Drag-and-drop Excel-import card */}
+        <div
+          onClick={() => !importing && importFileRef.current?.click()}
+          onDragOver={(e) => { e.preventDefault(); setDragOver(true) }}
+          onDragEnter={(e) => { e.preventDefault(); setDragOver(true) }}
+          onDragLeave={() => setDragOver(false)}
+          onDrop={(e) => {
+            e.preventDefault(); setDragOver(false)
+            const file = e.dataTransfer.files?.[0]
+            if (file) onImport(file)
+          }}
+          className={`rounded-xl p-6 flex flex-col items-center justify-center text-center gap-4 cursor-pointer transition-colors border-2 border-dashed select-none ${dragOver ? 'bg-blue-100 border-blue-500' : importing ? 'bg-blue-50 border-blue-200 cursor-default' : 'bg-blue-50 border-blue-300 hover:bg-blue-100 hover:border-blue-400'}`}
+        >
+          <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${dragOver ? 'bg-blue-200' : 'bg-blue-100'}`}>
+            <svg xmlns="http://www.w3.org/2000/svg" className={`w-7 h-7 transition-colors ${dragOver ? 'text-blue-700' : 'text-blue-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+              <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4m0 0L8 8m4-4l4 4" />
+            </svg>
+          </div>
+          <div>
+            <p className="font-semibold text-blue-900 text-base">{importing ? 'Importerer...' : dragOver ? 'Slipp filen her' : 'Last inn oppdatert budsjettfil'}</p>
+            <p className="text-sm text-blue-700 mt-1 max-w-xs">{importing ? 'Behandler Excel-filen…' : 'Dra og slipp en .xlsx-fil hit, eller klikk for å velge'}</p>
+          </div>
+          {!importing && <span className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg shadow-sm pointer-events-none">Velg fil</span>}
+          {importMsg && <p className={`text-xs font-medium ${importMsg.toLowerCase().includes('feil') ? 'text-red-600' : 'text-green-600'}`}>{importMsg}</p>}
+        </div>
+      </div>
+
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-900">Budsjettlinjer</h2>
+        <h2 className="text-lg font-semibold text-gray-900">Budsjett</h2>
         <div className="flex gap-2 items-center">
           {/* handlePostImport builds messages like "3 nye linjer · 1 oppdatert" on success,
               or "<error>"/"Import feilet" on failure — pick color by "feil" substring. */}

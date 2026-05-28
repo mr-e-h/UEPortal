@@ -18,11 +18,15 @@ import MaterialSection from './MaterialSection'
 import ForecastSection from './ForecastSection'
 import OverviewSection from './OverviewSection'
 import BudgetLinesSection from './BudgetLinesSection'
+import FremdriftsplanSection from './FremdriftsplanSection'
+import KostSection from './KostSection'
 import ProjectStatusHero from './ProjectStatusHero'
 
 const TABS = [
   { id: 'oversikt', label: 'Oversikt' },
-  { id: 'budsjettlinjer', label: 'Budsjettlinjer' },
+  { id: 'budsjett', label: 'Budsjett' },
+  { id: 'fremdriftsplan', label: 'Fremdriftsplan' },
+  { id: 'kost', label: 'Kost' },
   { id: 'prognose', label: 'Prognose' },
   { id: 'interne', label: 'Interne kostnader' },
   { id: 'materiell', label: 'Materiell' },
@@ -363,8 +367,8 @@ export default function ProjectDetailPage() {
           onImport={handlePostImport}
         />
       )}
-      {/* ── BUDSJETTLINJER ───────────────────────────────────────────── */}
-      {activeTab === 'budsjettlinjer' && (
+      {/* ── BUDSJETT ─────────────────────────────────────────────────── */}
+      {activeTab === 'budsjett' && (
         <BudgetLinesSection
           project={project}
           budgetLines={budgetLines}
@@ -395,6 +399,38 @@ export default function ProjectDetailPage() {
           importing={importing}
           importMsg={importMsg}
           onImport={handlePostImport}
+          // Budsjettversjonhistorikk + Excel-import has moved here from Oversikt
+          budgetVersions={budgetVersions}
+          dragOver={dragOver}
+          setDragOver={setDragOver}
+        />
+      )}
+
+      {/* ── FREMDRIFTSPLAN ───────────────────────────────────────────── */}
+      {activeTab === 'fremdriftsplan' && project.start_date && project.end_date && (
+        <FremdriftsplanSection
+          projectId={id}
+          projectStart={project.start_date}
+          projectEnd={project.end_date}
+          milestones={milestones}
+          allSubs={allSubs}
+          projectSubIds={projectSubs.map((ps) => ps.subcontractor_id)}
+          monthPlans={monthPlans}
+          onRefresh={fetchAll}
+        />
+      )}
+      {activeTab === 'fremdriftsplan' && (!project.start_date || !project.end_date) && (
+        <div className="bg-card border border-border rounded-lg p-8 text-center text-sm text-[var(--color-text-muted)]">
+          Sett start- og sluttdato på prosjektet for å aktivere fremdriftsplanen.
+        </div>
+      )}
+
+      {/* ── KOST ─────────────────────────────────────────────────────── */}
+      {activeTab === 'kost' && (
+        <KostSection
+          totalSales={totalSales}
+          totalCost={totalCost}
+          totalInternalCost={totalInternalCost}
         />
       )}
 
@@ -433,7 +469,7 @@ export default function ProjectDetailPage() {
           changeOrders={changeOrders}
           chartLineId={chartLineId}
           setChartLineId={setChartLineId}
-          onGoToBudgetLines={() => setActiveTab('budsjettlinjer')}
+          onGoToBudgetLines={() => setActiveTab('budsjett')}
         />
       )}
 
