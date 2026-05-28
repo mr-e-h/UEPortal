@@ -624,8 +624,41 @@ export default function ChangeOrderDetailPage() {
           )}
         </section>
 
-        {/* RIGHT — Internt (top) + Versjonslogg (bottom). Both print:hidden. */}
+        {/* RIGHT — Avsender (top), Internt (mid), Versjonslogg (bottom).
+            Alle tre print:hidden. Avsender-kortet er admin-rask-info som
+            svarer "hvem sendte denne inn og når" uten å måtte scrolle ned
+            til Versjonsloggen. */}
         <aside className="lg:col-span-3 print:hidden space-y-4">
+          <div className="bg-white rounded-lg shadow p-5 space-y-2">
+            <h2 className="text-sm font-semibold text-gray-900">Avsender</h2>
+            <dl className="space-y-1.5 text-sm">
+              <div className="flex justify-between gap-2">
+                <dt className="text-gray-500 flex-none">Navn</dt>
+                <dd className="font-medium text-gray-900 truncate text-right">{co.submitted_by ?? '–'}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-gray-500 flex-none">Firma</dt>
+                <dd className="font-medium text-gray-900 truncate text-right">{sub?.company_name ?? '–'}</dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-gray-500 flex-none">Dato</dt>
+                <dd className="font-medium text-gray-900 tabular-nums text-right">
+                  {co.submitted_at
+                    ? new Date(co.submitted_at).toLocaleDateString('nb-NO', { timeZone: 'Europe/Oslo' })
+                    : '–'}
+                </dd>
+              </div>
+              <div className="flex justify-between gap-2">
+                <dt className="text-gray-500 flex-none">Klokkeslett</dt>
+                <dd className="font-medium text-gray-900 tabular-nums text-right">
+                  {co.submitted_at
+                    ? new Date(co.submitted_at).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Oslo' })
+                    : '–'}
+                </dd>
+              </div>
+            </dl>
+          </div>
+
           <div className="bg-white rounded-lg shadow p-5 space-y-3">
             <h2 className="text-sm font-semibold text-gray-900">Internt — økonomi</h2>
             <p className="text-[10px] text-gray-500 -mt-2">Skjules i PDF og hos UE</p>
