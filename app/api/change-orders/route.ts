@@ -154,6 +154,7 @@ export async function POST(request: NextRequest) {
       reviewed_by: null,
       admin_comment: null,
       created_at: now,
+      sent_to_customer_at: null,
     }
     const { error } = await sb.from('change_orders').insert(newOrder)
     if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })

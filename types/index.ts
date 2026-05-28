@@ -186,6 +186,14 @@ export interface ChangeOrder {
   admin_comment: string | null
   /** Insert time; DB default = now(). Set after migration `change_orders_created_at`. */
   created_at: string
+  /**
+   * Stamped when admin clicks 'Eksporter PDF' to forward the EM to the end
+   * customer. The status remains 'pending' but the UI pill flips from
+   * 'Ubehandlet' to 'Til behandling' so admin can tell at a glance which
+   * pending EMs are awaiting the customer's response vs untouched. Cleared
+   * on revert/approve/reject so we never carry stale state.
+   */
+  sent_to_customer_at: string | null
 }
 
 export interface ReportLine {
@@ -366,7 +374,7 @@ export interface ActivityEntry {
   id: string
   entity_type: 'weekly_report' | 'change_order'
   entity_id: string
-  action: 'approved' | 'rejected' | 'reverted' | 'commented'
+  action: 'approved' | 'rejected' | 'reverted' | 'commented' | 'edited' | 'sent_to_customer'
   actor: string
   comment?: string
   created_at: string

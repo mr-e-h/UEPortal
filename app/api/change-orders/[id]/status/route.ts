@@ -69,6 +69,8 @@ export async function POST(
         admin_comment: null,
         reviewed_at: null,
         reviewed_by: null,
+        // Reverting wipes the customer-review state too — admin starts fresh.
+        sent_to_customer_at: null,
       })
       .eq('id', params.id)
       .select()
@@ -108,6 +110,8 @@ export async function POST(
       admin_comment: admin_comment ?? null,
       reviewed_at: now,
       reviewed_by: actor,
+      // Once approved/rejected the sent-to-customer flag is meaningless.
+      sent_to_customer_at: null,
     })
     .eq('id', params.id)
     .select()

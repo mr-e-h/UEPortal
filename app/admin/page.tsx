@@ -68,7 +68,7 @@ export default async function AdminDashboard() {
       // so keep it on the dashboard until the rest is approved or rejected.
       .in('status', ['submitted', 'partially_approved'])
       .order('submitted_at', { ascending: false }),
-    sb.from('change_orders').select('id, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, reason, status, submitted_at')
+    sb.from('change_orders').select('id, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, reason, status, sent_to_customer_at, submitted_at')
       .eq('status', 'pending')
       .order('submitted_at', { ascending: false }),
     // For the monthly bar chart — approved reports submitted in current year.
@@ -166,6 +166,7 @@ export default async function AdminDashboard() {
     reason: co.reason ?? '',
     submitted_at: co.submitted_at ? co.submitted_at.split('T')[0] : '–',
     status: co.status,
+    sent_to_customer: !!co.sent_to_customer_at,
   }))
 
   const totalPending = reportRows.length + coRows.length
@@ -372,8 +373,14 @@ export default async function AdminDashboard() {
                         {co.reason && (
                           <p className="text-xs text-[var(--color-text-secondary)] truncate mt-1 italic">«{co.reason}»</p>
                         )}
-                        <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">
-                          Ubehandlet
+                        <span
+                          className={`inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                            co.sent_to_customer
+                              ? 'bg-blue-50 text-blue-700'
+                              : 'bg-amber-50 text-amber-700'
+                          }`}
+                        >
+                          {co.sent_to_customer ? 'Til behandling' : 'Ubehandlet'}
                         </span>
                       </div>
                       <div className="text-right flex-none">

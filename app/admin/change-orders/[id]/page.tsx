@@ -1,30 +1,43 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Pencil, X, Save, Printer, History } from 'lucide-react'
+import { Pencil, X, Save, Printer, History, Send } from 'lucide-react'
 import type { ChangeOrder, Project, Product, Subcontractor, ActivityEntry } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
-import { changeOrderStatus } from '@/lib/statuses'
 import { activityActionLabel } from '@/lib/activity-actions'
 import { useMe } from '@/lib/useMe'
 
 /**
  * Admin EM-detail layout — three columns:
  *
- *   LEFT  (Versjonslogg)  Cost change history + status changes. Visible to
- *                         admin/PM and to sub on their mirror page. Hidden
- *                         in print/PDF output.
- *   CENTER (Kundedel)     The customer-facing slice: project, product,
- *                         qty, reason, attachment, salgsverdi. This is
- *                         what 'Eksporter PDF' actually outputs — admin
- *                         can print/save this directly and forward to
- *                         the end customer without leaking cost or
- *                         margin numbers.
- *   RIGHT (Internt)       Cost + customer-price + profit + margin. Visible
- *                         to admin only; hidden in print.
+ *   LEFT  (col-span-3)  Chat — comments thread between admin/PM and UE.
+ *                       Polls /api/activity so new messages from the other
+ *                       side land within seconds. Hidden in print.
+ *
+ *   CENTER (col-span-6) Kundedel — the customer-facing slice (project,
+ *                       product, qty, reason, attachment, salgsverdi).
+ *                       Rediger + Eksporter PDF buttons sit IN this card
+ *                       so they're discoverable next to the content they
+ *                       affect. THIS card is what the PDF outputs.
+ *
+ *   RIGHT (col-span-3)  Stacked:
+ *                         • Internt — kost + salgs + fortjeneste + margin
+ *                         • Versjonslogg — diff trail of edits + status
+ *                           changes (also visible to the UE on their side,
+ *                           but the UE never sees customer-prices).
+ *                       Both print:hidden.
+ *
+ * Eksporter PDF first POSTs to /mark-sent which stamps
+ * change_orders.sent_to_customer_at = now and writes an audit row. The
+ * status stays 'pending' but the dashboard pill flips from yellow
+ * 'Ubehandlet' to blue 'Til behandling' so admin can see which pending
+ * EMs are out at the customer.
  */
+
+const POLL_INTERVAL_MS = 8_000
+
 export default function ChangeOrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { me } = useMe()
@@ -38,14 +51,17 @@ export default function ChangeOrderDetailPage() {
   const [newComment, setNewComment] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+  const [exporting, setExporting] = useState(false)
 
   // Inline edit for qty + reason. Allowed for draft + pending (admin).
-  // approved/rejected must be reverted ('Angre') first.
   const [editing, setEditing] = useState(false)
   const [editQty, setEditQty] = useState('')
   const [editReason, setEditReason] = useState('')
   const [editError, setEditError] = useState<string | null>(null)
   const [editSaving, setEditSaving] = useState(false)
+
+  // Chat — auto-scroll to newest on update.
+  const chatEndRef = useRef<HTMLDivElement>(null)
 
   const load = useCallback(async () => {
     const [orders, projects, products, subs, activityData] = await Promise.all([
@@ -67,7 +83,25 @@ export default function ChangeOrderDetailPage() {
     setLoading(false)
   }, [id])
 
+  // Polling — picks up messages from the UE side without a refresh.
+  // Stops cleanly when the component unmounts.
+  const loadActivityOnly = useCallback(async () => {
+    try {
+      const a = await fetch(`/api/activity?entity_id=${id}&entity_type=change_order`).then((r) => r.json())
+      if (Array.isArray(a)) setActivity(a)
+    } catch { /* swallow — next tick will retry */ }
+  }, [id])
+
   useEffect(() => { load() }, [load])
+  useEffect(() => {
+    const t = setInterval(loadActivityOnly, POLL_INTERVAL_MS)
+    return () => clearInterval(t)
+  }, [loadActivityOnly])
+
+  // Auto-scroll the chat to the latest entry whenever new activity arrives.
+  useEffect(() => {
+    chatEndRef.current?.scrollIntoView({ behavior: 'smooth', block: 'end' })
+  }, [activity.length])
 
   async function handleStatus(status: 'approved' | 'rejected' | 'pending') {
     setSubmitting(true)
@@ -112,6 +146,23 @@ export default function ChangeOrderDetailPage() {
     await load()
   }
 
+  async function exportPDF() {
+    // Mark-as-sent first, THEN print. If the user cancels the print
+    // dialog the flag still stays — that's fine, exporting at all is
+    // strong enough signal that admin sent it out.
+    setExporting(true)
+    if (co?.status === 'pending' && !co.sent_to_customer_at) {
+      try {
+        await fetch(`/api/change-orders/${id}/mark-sent`, { method: 'POST' })
+        await load()
+      } catch { /* still allow print even if flagging fails */ }
+    }
+    setExporting(false)
+    // setTimeout so the state update (sent_to_customer_at) has a tick to
+    // flow into the rendered PDF before print fires.
+    setTimeout(() => window.print(), 50)
+  }
+
   async function submitComment(e: React.FormEvent) {
     e.preventDefault()
     if (!newComment.trim()) return
@@ -127,27 +178,40 @@ export default function ChangeOrderDetailPage() {
       }),
     })
     setNewComment('')
-    await load()
+    await loadActivityOnly()
   }
 
   if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500">Laster...</div>
   if (!co) return <div className="min-h-screen flex items-center justify-center text-gray-500">Endringsmelding ikke funnet</div>
 
-  const statusMeta = changeOrderStatus(co.status)
   const isReviewed = co.status !== 'pending'
+  const sentToCustomer = co.status === 'pending' && !!co.sent_to_customer_at
   const margin = co.total_customer_value > 0
     ? Math.round((co.profit / co.total_customer_value) * 100)
     : 0
 
-  // Versjonslogg events: edits + status changes + reverts. Skip plain comments
-  // (those have their own UI). Newest first.
+  // Status pill — three states for a pending EM (untouched, sent-to-customer,
+  // mid-review), plus the existing approved/rejected.
+  const statusPill: { label: string; cls: string } = (() => {
+    if (co.status === 'approved') return { label: 'Godkjent', cls: 'bg-green-100 text-green-700' }
+    if (co.status === 'rejected') return { label: 'Avslått', cls: 'bg-red-100 text-red-700' }
+    if (co.status === 'draft') return { label: 'Kladd', cls: 'bg-gray-100 text-gray-500' }
+    if (sentToCustomer) return { label: 'Til behandling', cls: 'bg-blue-50 text-blue-700' }
+    return { label: 'Ubehandlet', cls: 'bg-amber-50 text-amber-700' }
+  })()
+
+  // Versjonslogg events — every non-comment activity entry. Newest first.
   const versionEvents = activity
     .filter((a) => a.action !== 'commented')
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
 
+  // Chat entries — comments only, oldest first so newest sits at the bottom.
+  const chatEntries = activity
+    .filter((a) => a.action === 'commented')
+    .sort((a, b) => a.created_at.localeCompare(b.created_at))
+
   return (
     <div className="min-h-screen bg-gray-50 print:bg-white">
-      {/* Print stylesheet — hides nav, sidebars, action panels, header chrome */}
       <style jsx global>{`
         @media print {
           .print\\:hidden { display: none !important; }
@@ -163,25 +227,7 @@ export default function ChangeOrderDetailPage() {
             <p className="text-sm text-gray-500">{project?.name ?? '–'} · {sub?.company_name ?? '–'}</p>
           </div>
           <div className="ml-auto flex items-center gap-2 flex-wrap">
-            <span className={`text-xs px-2 py-0.5 rounded ${statusMeta.cls}`}>
-              {statusMeta.label}
-            </span>
-            <button
-              onClick={() => window.print()}
-              className="inline-flex items-center gap-1 px-3 py-1 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50"
-              title="Skriv ut eller lagre som PDF — kun kundedel"
-            >
-              <Printer size={12} /> Eksporter PDF
-            </button>
-            {!isReviewed && !editing && (
-              <button
-                onClick={startEdit}
-                disabled={submitting}
-                className="inline-flex items-center gap-1 px-3 py-1 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
-              >
-                <Pencil size={12} /> Rediger
-              </button>
-            )}
+            <span className={`text-xs px-2 py-0.5 rounded ${statusPill.cls}`}>{statusPill.label}</span>
             {isReviewed && (
               <button
                 onClick={() => handleStatus('pending')}
@@ -196,44 +242,92 @@ export default function ChangeOrderDetailPage() {
       </header>
 
       <main className="px-4 sm:px-6 py-8 grid grid-cols-1 lg:grid-cols-12 gap-6">
-        {/* LEFT — Versjonslogg */}
+        {/* LEFT — Chat */}
         <aside className="lg:col-span-3 print:hidden">
-          <div className="bg-white rounded-lg shadow p-5 space-y-3">
-            <div className="flex items-center gap-2">
-              <History size={14} className="text-gray-500" />
-              <h2 className="text-sm font-semibold text-gray-900">Versjonslogg</h2>
+          <div className="bg-white rounded-lg shadow flex flex-col h-[calc(100vh-9rem)] lg:sticky lg:top-4">
+            <div className="px-5 py-3 border-b border-gray-100">
+              <h2 className="text-sm font-semibold text-gray-900">Chat</h2>
+              <p className="text-[10px] text-gray-500 mt-0.5">Synlig for admin og UE — oppdateres automatisk</p>
             </div>
-            {versionEvents.length === 0 ? (
-              <p className="text-xs text-gray-400">Ingen endringer ennå</p>
-            ) : (
-              <ol className="space-y-3">
-                {versionEvents.map((ev) => (
-                  <li key={ev.id} className="text-xs space-y-0.5 border-l-2 border-gray-200 pl-2.5">
-                    <p className="font-medium text-gray-900">{activityActionLabel(ev.action)}</p>
-                    {ev.comment && (
-                      <p className="text-gray-600">{ev.comment}</p>
-                    )}
-                    <p className="text-gray-400">
-                      {ev.actor} · {new Date(ev.created_at).toLocaleString('nb-NO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </li>
-                ))}
-              </ol>
-            )}
+            <div className="flex-1 overflow-y-auto px-4 py-3 space-y-2">
+              {chatEntries.length === 0 ? (
+                <p className="text-xs text-gray-400 text-center mt-8">Ingen meldinger ennå</p>
+              ) : (
+                chatEntries.map((ev) => {
+                  const mine = ev.actor === adminName
+                  return (
+                    <div key={ev.id} className={`flex ${mine ? 'justify-end' : 'justify-start'}`}>
+                      <div
+                        className={`max-w-[85%] rounded-lg px-3 py-2 text-xs space-y-0.5 ${
+                          mine ? 'bg-primary text-white' : 'bg-gray-100 text-gray-800'
+                        }`}
+                      >
+                        {!mine && (
+                          <p className={`text-[10px] font-semibold ${mine ? 'text-white/80' : 'text-gray-500'}`}>{ev.actor}</p>
+                        )}
+                        <p className="whitespace-pre-line">{ev.comment}</p>
+                        <p className={`text-[9px] ${mine ? 'text-white/70' : 'text-gray-400'}`}>
+                          {new Date(ev.created_at).toLocaleString('nb-NO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </div>
+                    </div>
+                  )
+                })
+              )}
+              <div ref={chatEndRef} />
+            </div>
+            <form onSubmit={submitComment} className="p-3 border-t border-gray-100 flex gap-2">
+              <input
+                type="text"
+                value={newComment}
+                onChange={(e) => setNewComment(e.target.value)}
+                placeholder="Skriv melding..."
+                className="flex-1 px-3 py-2 text-xs border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+              />
+              <button
+                type="submit"
+                disabled={!newComment.trim()}
+                className="px-3 py-2 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50 inline-flex items-center gap-1"
+              >
+                <Send size={12} />
+              </button>
+            </form>
           </div>
         </aside>
 
-        {/* CENTER — Kundedel (printable as PDF) */}
+        {/* CENTER — Kundedel (printable) */}
         <section className="lg:col-span-6 space-y-6">
-          {/* Customer-facing summary card — this is the part the PDF renders. */}
           <div className="bg-white rounded-lg shadow p-6 space-y-5">
-            <div className="border-b border-gray-100 pb-3">
-              <p className="text-xs text-gray-400">Endringsmelding</p>
-              <h2 className="text-lg font-bold text-gray-900">{project?.name ?? '–'}</h2>
-              <p className="text-xs text-gray-500">
-                Prosjektnummer: {project?.project_number ?? '–'}
-                {co.submitted_at && ` · Innsendt ${co.submitted_at.split('T')[0]}`}
-              </p>
+            <div className="border-b border-gray-100 pb-3 flex items-start justify-between gap-3">
+              <div>
+                <p className="text-xs text-gray-400">Endringsmelding</p>
+                <h2 className="text-lg font-bold text-gray-900">{project?.name ?? '–'}</h2>
+                <p className="text-xs text-gray-500">
+                  Prosjektnummer: {project?.project_number ?? '–'}
+                  {co.submitted_at && ` · Innsendt ${co.submitted_at.split('T')[0]}`}
+                </p>
+              </div>
+              {/* Action buttons live INSIDE the card so they're near the content
+                  they affect. Hidden in print. */}
+              <div className="flex items-center gap-2 print:hidden flex-none">
+                {!isReviewed && !editing && (
+                  <button
+                    onClick={startEdit}
+                    disabled={submitting}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <Pencil size={12} /> Rediger
+                  </button>
+                )}
+                <button
+                  onClick={exportPDF}
+                  disabled={exporting || co.status === 'draft'}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
+                  title="Markeres som 'Til behandling' og åpner print-dialog"
+                >
+                  <Printer size={12} /> {exporting ? 'Markerer...' : 'Eksporter PDF'}
+                </button>
+              </div>
             </div>
 
             <div className="grid grid-cols-2 gap-4 text-sm">
@@ -254,15 +348,67 @@ export default function ChangeOrderDetailPage() {
               </div>
             </div>
 
-            {/* The single number that goes on the invoice to the end customer. */}
             <div className="rounded-md bg-blue-50 border border-blue-200 p-4 flex items-baseline justify-between">
               <p className="text-sm font-medium text-blue-900">Totalbeløp (eks. mva)</p>
               <p className="text-2xl font-bold text-blue-900">{fmt(co.total_customer_value)}</p>
             </div>
+
+            {/* Inline edit panel — admin only, hidden in print */}
+            {editing && (
+              <div className="print:hidden border-2 border-primary bg-primary-soft rounded-lg p-4 space-y-3">
+                <p className="text-sm font-semibold text-primary">Rediger endringsmelding</p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div>
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Mengde ({co.unit})</label>
+                    <input
+                      type="number"
+                      inputMode="decimal"
+                      step="0.01"
+                      min="0"
+                      value={editQty}
+                      onChange={(e) => setEditQty(e.target.value)}
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+                  <div className="sm:col-span-2">
+                    <label className="block text-xs font-medium text-gray-700 mb-1">Begrunnelse</label>
+                    <textarea
+                      rows={3}
+                      value={editReason}
+                      onChange={(e) => setEditReason(e.target.value)}
+                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                    />
+                  </div>
+                </div>
+                {editError && (
+                  <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">{editError}</p>
+                )}
+                <p className="text-[10px] text-gray-500">
+                  Endringer logges i versjonsloggen og bruker opprinnelige pris-snapshots. UE som har sendt EM-en ser samme oppdaterte verdier på sin side, men aldri kundepris eller fortjeneste.
+                </p>
+                <div className="flex gap-2 justify-end">
+                  <button
+                    type="button"
+                    onClick={() => setEditing(false)}
+                    disabled={editSaving}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
+                  >
+                    <X size={12} /> Avbryt
+                  </button>
+                  <button
+                    type="button"
+                    onClick={saveEdit}
+                    disabled={editSaving}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
+                  >
+                    <Save size={12} /> {editSaving ? 'Lagrer...' : 'Lagre'}
+                  </button>
+                </div>
+              </div>
+            )}
           </div>
 
-          {/* Attachment — visible in print so contractor signatures or
-              drawings ride along with the PDF. */}
+          {/* Attachment — rides along in the PDF. */}
           {co.attachment_url && (
             <div className="bg-white rounded-lg shadow p-6">
               <p className="text-sm font-medium text-gray-700 mb-3">Vedlegg</p>
@@ -278,60 +424,6 @@ export default function ChangeOrderDetailPage() {
                   className="max-w-full rounded border border-gray-200"
                 />
               </a>
-            </div>
-          )}
-
-          {/* Inline edit panel — admin only, hidden in print */}
-          {editing && (
-            <div className="print:hidden border-2 border-primary bg-primary-soft rounded-lg p-4 space-y-3">
-              <p className="text-sm font-semibold text-primary">Rediger endringsmelding</p>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Mengde ({co.unit})</label>
-                  <input
-                    type="number"
-                    inputMode="decimal"
-                    step="0.01"
-                    min="0"
-                    value={editQty}
-                    onChange={(e) => setEditQty(e.target.value)}
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-                <div className="sm:col-span-2">
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Begrunnelse</label>
-                  <textarea
-                    rows={3}
-                    value={editReason}
-                    onChange={(e) => setEditReason(e.target.value)}
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
-                  />
-                </div>
-              </div>
-              {editError && (
-                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">{editError}</p>
-              )}
-              <p className="text-[10px] text-gray-500">
-                Endringer logges i versjonsloggen og bruker opprinnelige pris-snapshots. UE som har sendt EM-en ser samme oppdaterte verdier på sin side, men aldri kundepris eller fortjeneste.
-              </p>
-              <div className="flex gap-2 justify-end">
-                <button
-                  type="button"
-                  onClick={() => setEditing(false)}
-                  disabled={editSaving}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
-                >
-                  <X size={12} /> Avbryt
-                </button>
-                <button
-                  type="button"
-                  onClick={saveEdit}
-                  disabled={editSaving}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
-                >
-                  <Save size={12} /> {editSaving ? 'Lagrer...' : 'Lagre'}
-                </button>
-              </div>
             </div>
           )}
 
@@ -381,46 +473,11 @@ export default function ChangeOrderDetailPage() {
               )}
             </div>
           )}
-
-          {/* Comments thread — admin-side, hidden in print */}
-          <div className="print:hidden bg-white rounded-lg shadow p-6 space-y-4">
-            <h2 className="text-sm font-semibold text-gray-900">Kommentarer</h2>
-            {activity.filter((a) => a.action === 'commented').length === 0 ? (
-              <p className="text-sm text-gray-400">Ingen kommentarer ennå</p>
-            ) : (
-              <ul className="space-y-2">
-                {activity.filter((a) => a.action === 'commented').map((ev) => (
-                  <li key={ev.id} className="text-sm border-l-2 border-blue-200 pl-3 py-1">
-                    <p className="text-gray-700">{ev.comment}</p>
-                    <p className="text-xs text-gray-400 mt-0.5">
-                      {ev.actor} · {new Date(ev.created_at).toLocaleString('nb-NO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </li>
-                ))}
-              </ul>
-            )}
-            <form onSubmit={submitComment} className="flex gap-2">
-              <input
-                type="text"
-                value={newComment}
-                onChange={(e) => setNewComment(e.target.value)}
-                placeholder="Skriv kommentar..."
-                className="flex-1 px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
-              />
-              <button
-                type="submit"
-                disabled={!newComment.trim()}
-                className="px-4 py-2 text-sm bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
-              >
-                Send
-              </button>
-            </form>
-          </div>
         </section>
 
-        {/* RIGHT — Intern økonomi (admin only, hidden in print) */}
-        <aside className="lg:col-span-3 print:hidden">
-          <div className="bg-white rounded-lg shadow p-5 space-y-4 sticky top-4">
+        {/* RIGHT — Internt (top) + Versjonslogg (bottom). Both print:hidden. */}
+        <aside className="lg:col-span-3 print:hidden space-y-4">
+          <div className="bg-white rounded-lg shadow p-5 space-y-3">
             <h2 className="text-sm font-semibold text-gray-900">Internt — økonomi</h2>
             <p className="text-[10px] text-gray-500 -mt-2">Skjules i PDF og hos UE</p>
 
@@ -450,6 +507,30 @@ export default function ChangeOrderDetailPage() {
                 <dd className={`font-semibold tabular-nums ${margin >= 15 ? 'text-green-600' : 'text-orange-500'}`}>{margin}%</dd>
               </div>
             </dl>
+          </div>
+
+          <div className="bg-white rounded-lg shadow p-5 space-y-3">
+            <div className="flex items-center gap-2">
+              <History size={14} className="text-gray-500" />
+              <h2 className="text-sm font-semibold text-gray-900">Versjonslogg</h2>
+            </div>
+            {versionEvents.length === 0 ? (
+              <p className="text-xs text-gray-400">Ingen endringer ennå</p>
+            ) : (
+              <ol className="space-y-3">
+                {versionEvents.map((ev) => (
+                  <li key={ev.id} className="text-xs space-y-0.5 border-l-2 border-gray-200 pl-2.5">
+                    <p className="font-medium text-gray-900">{activityActionLabel(ev.action)}</p>
+                    {ev.comment && (
+                      <p className="text-gray-600">{ev.comment}</p>
+                    )}
+                    <p className="text-gray-400">
+                      {ev.actor} · {new Date(ev.created_at).toLocaleString('nb-NO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                    </p>
+                  </li>
+                ))}
+              </ol>
+            )}
           </div>
         </aside>
       </main>
