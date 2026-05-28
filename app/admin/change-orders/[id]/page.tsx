@@ -3,6 +3,7 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
+import { Pencil, X, Save } from 'lucide-react'
 import type { ChangeOrder, Project, Product, Subcontractor, ActivityEntry } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
 import { changeOrderStatus } from '@/lib/statuses'
@@ -22,6 +23,14 @@ export default function ChangeOrderDetailPage() {
   const [newComment, setNewComment] = useState('')
   const [loading, setLoading] = useState(true)
   const [submitting, setSubmitting] = useState(false)
+
+  // Inline edit (admin-side) for the qty + reason on draft + pending EMs.
+  // Editing an approved/rejected EM is blocked server-side — must 'Angre' first.
+  const [editing, setEditing] = useState(false)
+  const [editQty, setEditQty] = useState('')
+  const [editReason, setEditReason] = useState('')
+  const [editError, setEditError] = useState<string | null>(null)
+  const [editSaving, setEditSaving] = useState(false)
 
   const load = useCallback(async () => {
     const [orders, projects, products, subs, activityData] = await Promise.all([
@@ -54,6 +63,38 @@ export default function ChangeOrderDetailPage() {
     })
     await load()
     setSubmitting(false)
+  }
+
+  function startEdit() {
+    if (!co) return
+    setEditQty(String(co.requested_quantity))
+    setEditReason(co.reason ?? '')
+    setEditError(null)
+    setEditing(true)
+  }
+
+  async function saveEdit() {
+    setEditSaving(true)
+    setEditError(null)
+    const qty = Number(editQty)
+    if (!Number.isFinite(qty) || qty <= 0) {
+      setEditError('Mengde må være et positivt tall')
+      setEditSaving(false)
+      return
+    }
+    const res = await fetch(`/api/change-orders/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requested_quantity: qty, reason: editReason }),
+    })
+    setEditSaving(false)
+    if (!res.ok) {
+      const data = await res.json().catch(() => ({}))
+      setEditError(data.error ?? 'Lagring feilet')
+      return
+    }
+    setEditing(false)
+    await load()
   }
 
   async function submitComment(e: React.FormEvent) {
@@ -93,6 +134,17 @@ export default function ChangeOrderDetailPage() {
             <span className={`text-xs px-2 py-0.5 rounded ${statusMeta.cls}`}>
               {statusMeta.label}
             </span>
+            {/* Edit allowed for draft + pending. Approved/rejected must be
+                reverted via Angre first (status reset → pending → editable). */}
+            {!isReviewed && !editing && (
+              <button
+                onClick={startEdit}
+                disabled={submitting}
+                className="inline-flex items-center gap-1 px-3 py-1 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
+              >
+                <Pencil size={12} /> Rediger
+              </button>
+            )}
             {isReviewed && (
               <button
                 onClick={() => handleStatus('pending')}
@@ -128,6 +180,63 @@ export default function ChangeOrderDetailPage() {
             <p className="text-xs text-gray-400 mb-1">Begrunnelse</p>
             <p className="text-sm text-gray-700 bg-gray-50 rounded p-3">{co.reason}</p>
           </div>
+
+          {/* Inline edit panel for admins. Re-uses the existing PUT endpoint;
+              server recomputes total_cost / total_customer_value / profit from
+              the kept price-snapshots so revisions stay internally consistent
+              with whatever pricing was locked when the EM was originally filed. */}
+          {editing && (
+            <div className="border-2 border-primary bg-primary-soft rounded-lg p-4 space-y-3">
+              <p className="text-sm font-semibold text-primary">Rediger endringsmelding</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                <div>
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Mengde ({co.unit})</label>
+                  <input
+                    type="number"
+                    inputMode="decimal"
+                    step="0.01"
+                    min="0"
+                    value={editQty}
+                    onChange={(e) => setEditQty(e.target.value)}
+                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+                <div className="sm:col-span-2">
+                  <label className="block text-xs font-medium text-gray-700 mb-1">Begrunnelse</label>
+                  <textarea
+                    rows={3}
+                    value={editReason}
+                    onChange={(e) => setEditReason(e.target.value)}
+                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                  />
+                </div>
+              </div>
+              {editError && (
+                <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">{editError}</p>
+              )}
+              <p className="text-[10px] text-gray-500">
+                Endringer logges i activity-loggen og brukes med opprinnelige pris-snapshots (kostnads- og salgspris låst ved innsending).
+              </p>
+              <div className="flex gap-2 justify-end">
+                <button
+                  type="button"
+                  onClick={() => setEditing(false)}
+                  disabled={editSaving}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
+                >
+                  <X size={12} /> Avbryt
+                </button>
+                <button
+                  type="button"
+                  onClick={saveEdit}
+                  disabled={editSaving}
+                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
+                >
+                  <Save size={12} /> {editSaving ? 'Lagrer...' : 'Lagre'}
+                </button>
+              </div>
+            </div>
+          )}
         </div>
 
         {/* Attachment — uses the stable proxy endpoint that 302's to a fresh

@@ -32,12 +32,19 @@ export async function PUT(
       if (order.subcontractor_id !== session.subcontractor_id) {
         return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
       }
-    } else if (!isAdmin(session)) {
+      // Subs can only touch their own drafts.
+      if (order.status !== 'draft') {
+        return NextResponse.json({ error: 'Kan kun redigere kladder' }, { status: 409 })
+      }
+    } else if (isAdmin(session)) {
+      // Admins can edit drafts AND pending EMs (audit-trailed). Once an EM
+      // is approved or rejected they must hit 'Angre' first so review state
+      // is reset alongside.
+      if (order.status !== 'draft' && order.status !== 'pending') {
+        return NextResponse.json({ error: 'Behandlede endringsmeldinger må angres før de kan redigeres' }, { status: 409 })
+      }
+    } else {
       return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
-    }
-
-    if (order.status !== 'draft') {
-      return NextResponse.json({ error: 'Kan kun redigere kladder' }, { status: 409 })
     }
 
     // PM write-side gate (admin path only — UE was already filtered above).
@@ -109,6 +116,27 @@ export async function PUT(
       .maybeSingle<ChangeOrder>()
     if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
     if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    // Audit-trail admin edits to non-draft EMs — sub-editing their own draft
+    // pre-submission is routine and would just be noise in the activity log.
+    if (isAdmin(session) && order.status === 'pending') {
+      const diffs: string[] = []
+      if (order.requested_quantity !== newQuantity) diffs.push(`mengde: ${order.requested_quantity} → ${newQuantity}`)
+      if (order.product_id !== newProductId) diffs.push('produkt endret')
+      if ((order.reason ?? '') !== (newReason ?? '')) diffs.push('begrunnelse endret')
+      if (diffs.length > 0) {
+        const { randomUUID } = await import('crypto')
+        await sb.from('activity_log').insert({
+          id: randomUUID(),
+          entity_type: 'change_order',
+          entity_id: params.id,
+          action: 'edited',
+          actor: session.full_name,
+          comment: diffs.join(' · '),
+          created_at: now,
+        })
+      }
+    }
 
     if (isSub(session)) {
       const { customer_price_snapshot: _cp, total_customer_value: _tcv, profit: _p, ...rest } = data
