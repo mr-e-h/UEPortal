@@ -95,6 +95,17 @@ function fmtDate(s: string | null | undefined): string {
   return new Date(s).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
 }
 
+// Brukes for EM-er på dashboardet der admin ønsker å se klokkeslett, ikke
+// bare dato. Oslo-TZ, kort format. Eksempel: "28.05.2026 14:32".
+function fmtDateTime(s: string | null | undefined): string {
+  if (!s) return '—'
+  return new Date(s).toLocaleString('nb-NO', {
+    dateStyle: 'short',
+    timeStyle: 'short',
+    timeZone: 'Europe/Oslo',
+  })
+}
+
 function daysUntil(s: string | null | undefined): number | null {
   if (!s) return null
   const ms = new Date(s).getTime() - new Date().getTime()
@@ -268,7 +279,7 @@ export default function SubcontractorPage() {
                             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${t.cls}`}>{t.label}</span>
                           </div>
                           <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-                            {fmt(co.total_cost)} · {co.submitted_at ? new Date(co.submitted_at).toLocaleDateString('nb-NO') : '–'}
+                            {fmt(co.total_cost)} · {fmtDateTime(co.submitted_at)}
                           </p>
                           {co.admin_comment && (
                             <p className="text-xs text-orange-800 bg-orange-50 border border-orange-200 rounded p-2 mt-2 whitespace-pre-line">
@@ -321,7 +332,7 @@ export default function SubcontractorPage() {
                             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${t.cls}`}>{t.label}</span>
                           </div>
                           <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-                            {fmt(co.total_cost)} · {fmtDate(co.submitted_at)}
+                            {fmt(co.total_cost)} · {fmtDateTime(co.submitted_at)}
                           </p>
                         </div>
                         <div className="text-right flex-none">

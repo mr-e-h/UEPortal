@@ -165,7 +165,16 @@ export default async function AdminDashboard() {
     total_cost: co.total_cost,
     total_customer_value: co.total_customer_value,
     profit: co.profit,
-    submitted_at: co.submitted_at ? co.submitted_at.split('T')[0] : '–',
+    // Vis både dato og klokkeslett (Oslo) — admin trenger ofte å se
+    // 'kom dette inn rett før møtet eller etterpå?'. Eksempel:
+    // "28.05.2026 14:32".
+    submitted_at: co.submitted_at
+      ? new Date(co.submitted_at).toLocaleString('nb-NO', {
+          dateStyle: 'short',
+          timeStyle: 'short',
+          timeZone: 'Europe/Oslo',
+        })
+      : '–',
     status: co.status,
     sent_to_customer: !!co.sent_to_customer_at,
   }))
