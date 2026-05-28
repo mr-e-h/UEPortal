@@ -8,6 +8,7 @@ import ProjectPickerModal from '@/components/subcontractor/ProjectPickerModal'
 import Card from '@/components/ui/Card'
 import EmptyState from '@/components/ui/EmptyState'
 import { fmtNOK as fmt } from '@/lib/format'
+import { changeOrderType, changeOrderStatus } from '@/lib/statuses'
 import { useMe } from '@/lib/useMe'
 
 interface ProjectManager { id: string; full_name: string; email: string }
@@ -48,11 +49,10 @@ interface DashboardPayload {
     project_number: string
     em_title: string
     change_order_number: number
-    product_name: string
-    quantity: number
-    unit: string
+    em_type: string
     total_cost: number
     submitted_at: string | null
+    status: string
   }>
   revisionChangeOrders: Array<{
     id: string
@@ -61,12 +61,11 @@ interface DashboardPayload {
     project_number: string
     em_title: string
     change_order_number: number
-    product_name: string
-    quantity: number
-    unit: string
+    em_type: string
     total_cost: number
     admin_comment: string
     submitted_at: string | null
+    status: string
   }>
   pendingWeeklyReports: Array<{
     id: string
@@ -252,7 +251,9 @@ export default function SubcontractorPage() {
                 </span>
               </div>
               <ul className="divide-y divide-orange-100">
-                {dashboard.revisionChangeOrders.map((co) => (
+                {dashboard.revisionChangeOrders.map((co) => {
+                  const t = changeOrderType(co.em_type)
+                  return (
                   <li key={co.id}>
                     <Link
                       href={`/subcontractor/projects/${co.project_id}`}
@@ -260,11 +261,14 @@ export default function SubcontractorPage() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                            {co.em_title}
-                          </p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                              {co.em_title}
+                            </p>
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${t.cls}`}>{t.label}</span>
+                          </div>
                           <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-                            {co.product_name} · {co.quantity} {co.unit}
+                            {fmt(co.total_cost)} · {co.submitted_at ? new Date(co.submitted_at).toLocaleDateString('nb-NO') : '–'}
                           </p>
                           {co.admin_comment && (
                             <p className="text-xs text-orange-800 bg-orange-50 border border-orange-200 rounded p-2 mt-2 whitespace-pre-line">
@@ -273,12 +277,15 @@ export default function SubcontractorPage() {
                           )}
                         </div>
                         <div className="text-right flex-none">
-                          <p className="text-[10px] text-orange-700 font-semibold uppercase tracking-wide">Åpne →</p>
+                          <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                            Trenger revisjon
+                          </span>
                         </div>
                       </div>
                     </Link>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             </Card>
           )}
@@ -296,7 +303,10 @@ export default function SubcontractorPage() {
               <EmptyState title="Ingen til behandling" description="Alle dine endringsmeldinger er behandlet." />
             ) : (
               <ul className="divide-y divide-border">
-                {dashboard.pendingChangeOrders.map((co) => (
+                {dashboard.pendingChangeOrders.map((co) => {
+                  const t = changeOrderType(co.em_type)
+                  const s = changeOrderStatus(co.status)
+                  return (
                   <li key={co.id}>
                     <Link
                       href={`/subcontractor/projects/${co.project_id}`}
@@ -304,21 +314,26 @@ export default function SubcontractorPage() {
                     >
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                            {co.em_title}
-                          </p>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                              {co.em_title}
+                            </p>
+                            <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${t.cls}`}>{t.label}</span>
+                          </div>
                           <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-                            {co.product_name} · {co.quantity} {co.unit}
+                            {fmt(co.total_cost)} · {fmtDate(co.submitted_at)}
                           </p>
                         </div>
                         <div className="text-right flex-none">
-                          <p className="text-sm font-semibold text-[var(--color-text-primary)]">{fmt(co.total_cost)}</p>
-                          <p className="text-[10px] text-[var(--color-text-muted)] mt-0.5">{fmtDate(co.submitted_at)}</p>
+                          <span className={`inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full ${s.cls}`}>
+                            {s.label}
+                          </span>
                         </div>
                       </div>
                     </Link>
                   </li>
-                ))}
+                  )
+                })}
               </ul>
             )}
           </Card>

@@ -147,11 +147,10 @@ export async function GET(request: NextRequest) {
         project_number: proj?.project_number ?? '',
         em_title: fmtChangeOrderTitle(co.change_order_number, proj?.name),
         change_order_number: co.change_order_number,
-        product_name: productMap.get(co.product_id) ?? '–',
-        quantity: co.requested_quantity,
-        unit: co.unit,
+        em_type: co.em_type,
         total_cost: co.total_cost,
         submitted_at: co.submitted_at ?? null,
+        status: co.status,
       }
     })
 
@@ -170,12 +169,11 @@ export async function GET(request: NextRequest) {
         project_number: proj?.project_number ?? '',
         em_title: fmtChangeOrderTitle(co.change_order_number, proj?.name),
         change_order_number: co.change_order_number,
-        product_name: productMap.get(co.product_id) ?? '–',
-        quantity: co.requested_quantity,
-        unit: co.unit,
+        em_type: co.em_type,
         total_cost: co.total_cost,
         admin_comment: co.admin_comment ?? '',
         submitted_at: co.submitted_at ?? null,
+        status: co.status,
       }
     })
 

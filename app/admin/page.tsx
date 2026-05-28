@@ -8,6 +8,7 @@ import { ADMIN_ROLES } from '@/lib/roles'
 import { formatWeekLabel } from '@/lib/utils/weeks'
 import { osloYearMonth } from '@/lib/utils/dates'
 import { fmtProductLabel, fmtChangeOrderTitle } from '@/lib/format'
+import { changeOrderType } from '@/lib/statuses'
 import type { MonthBucket } from '@/components/admin/MonthlyBarChart'
 import MonthlyChartWithPmFilter from '@/components/admin/MonthlyChartWithPmFilter'
 import type {
@@ -69,7 +70,7 @@ export default async function AdminDashboard() {
       // so keep it on the dashboard until the rest is approved or rejected.
       .in('status', ['submitted', 'partially_approved'])
       .order('submitted_at', { ascending: false }),
-    sb.from('change_orders').select('id, change_order_number, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, reason, status, sent_to_customer_at, submitted_at')
+    sb.from('change_orders').select('id, change_order_number, em_type, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, profit, reason, status, sent_to_customer_at, submitted_at')
       .eq('status', 'pending')
       .order('submitted_at', { ascending: false }),
     // For the monthly bar chart — approved reports submitted in current year.
@@ -160,12 +161,10 @@ export default async function AdminDashboard() {
     project_name: projectMap.get(co.project_id)?.name ?? '–',
     project_number: projectMap.get(co.project_id)?.project_number ?? '',
     sub_name: subMap.get(co.subcontractor_id) ?? '–',
-    product_name: fmtProductLabel(productMap.get(co.product_id)),
-    quantity: co.requested_quantity,
-    unit: co.unit,
+    em_type: co.em_type,
     total_cost: co.total_cost,
     total_customer_value: co.total_customer_value,
-    reason: co.reason ?? '',
+    profit: co.profit,
     submitted_at: co.submitted_at ? co.submitted_at.split('T')[0] : '–',
     status: co.status,
     sent_to_customer: !!co.sent_to_customer_at,
@@ -358,7 +357,9 @@ export default async function AdminDashboard() {
             </div>
           ) : (
             <ul className="divide-y divide-border">
-              {coRows.map((co) => (
+              {coRows.map((co) => {
+                const t = changeOrderType(co.em_type)
+                return (
                 <li key={co.id}>
                   <Link
                     href={`/admin/change-orders/${co.id}`}
@@ -366,17 +367,27 @@ export default async function AdminDashboard() {
                   >
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                          {co.em_title}
-                        </p>
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                            {co.em_title}
+                          </p>
+                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${t.cls}`}>{t.label}</span>
+                        </div>
                         <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-                          {co.product_name} × {co.quantity} {co.unit} · {co.sub_name}
+                          Innsender: {co.sub_name} · {co.submitted_at}
                         </p>
-                        {co.reason && (
-                          <p className="text-xs text-[var(--color-text-secondary)] truncate mt-1 italic">«{co.reason}»</p>
-                        )}
+                        {/* Kost / Salg / Fortjeneste — kun for admin + PM. UE
+                            ser denne listen aldri (de er på /subcontractor).
+                            Layout: 3 kompakte tall ved siden av hverandre. */}
+                        <div className="flex gap-4 mt-1.5 text-xs">
+                          <span className="text-[var(--color-text-muted)]">Kost <span className="font-medium text-[var(--color-text-primary)] tabular-nums">{fmt(co.total_cost)}</span></span>
+                          <span className="text-[var(--color-text-muted)]">Salg <span className="font-medium text-[var(--color-text-primary)] tabular-nums">{fmt(co.total_customer_value)}</span></span>
+                          <span className="text-[var(--color-text-muted)]">Fortj. <span className={`font-medium tabular-nums ${co.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(co.profit)}</span></span>
+                        </div>
+                      </div>
+                      <div className="text-right flex-none">
                         <span
-                          className={`inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                          className={`inline-flex items-center text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
                             co.sent_to_customer
                               ? 'bg-blue-50 text-blue-700'
                               : 'bg-amber-50 text-amber-700'
@@ -385,15 +396,11 @@ export default async function AdminDashboard() {
                           {co.sent_to_customer ? 'Til behandling' : 'Ubehandlet'}
                         </span>
                       </div>
-                      <div className="text-right flex-none">
-                        <p className="text-sm font-semibold text-[var(--color-text-primary)]">{fmt(co.total_customer_value)}</p>
-                        <p className="text-xs text-[var(--color-text-muted)]">Salgsverdi</p>
-                        <p className="text-[10px] text-[var(--color-text-muted)] mt-1">{co.submitted_at}</p>
-                      </div>
                     </div>
                   </Link>
                 </li>
-              ))}
+                )
+              })}
             </ul>
           )}
         </section>
