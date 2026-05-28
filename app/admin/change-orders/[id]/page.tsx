@@ -8,6 +8,7 @@ import type { ChangeOrder, Project, Product, Subcontractor, ActivityEntry } from
 import { fmtNOK as fmt } from '@/lib/format'
 import { activityActionLabel } from '@/lib/activity-actions'
 import { useMe } from '@/lib/useMe'
+import VersionDiffModal from '@/components/admin/VersionDiffModal'
 
 /**
  * Admin EM-detail layout — two columns:
@@ -53,6 +54,10 @@ export default function ChangeOrderDetailPage() {
   const [editError, setEditError] = useState<string | null>(null)
   const [editSaving, setEditSaving] = useState(false)
 
+  // Versjonslogg diff popup
+  const [diffEntry, setDiffEntry] = useState<ActivityEntry | null>(null)
+  const [products, setProducts] = useState<Product[]>([])
+
   const load = useCallback(async () => {
     const [orders, projects, products, subs, activityData] = await Promise.all([
       fetch(`/api/change-orders?id=${id}`).then((r) => r.json()),
@@ -63,6 +68,7 @@ export default function ChangeOrderDetailPage() {
     ])
     const found: ChangeOrder = orders[0] ?? null
     setCo(found)
+    setProducts(Array.isArray(products) ? (products as Product[]) : [])
     if (found) {
       setProject((projects as Project[]).find((p) => p.id === found.project_id) ?? null)
       setProduct((products as Product[]).find((p) => p.id === found.product_id) ?? null)
@@ -466,23 +472,47 @@ export default function ChangeOrderDetailPage() {
             {versionEvents.length === 0 ? (
               <p className="text-xs text-gray-400">Ingen endringer ennå</p>
             ) : (
-              <ol className="space-y-3">
-                {versionEvents.map((ev) => (
-                  <li key={ev.id} className="text-xs space-y-0.5 border-l-2 border-gray-200 pl-2.5">
-                    <p className="font-medium text-gray-900">{activityActionLabel(ev.action)}</p>
-                    {ev.comment && (
-                      <p className="text-gray-600">{ev.comment}</p>
-                    )}
-                    <p className="text-gray-400">
-                      {ev.actor} · {new Date(ev.created_at).toLocaleString('nb-NO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
-                    </p>
-                  </li>
-                ))}
+              <ol className="space-y-2">
+                {versionEvents.map((ev) => {
+                  const hasDiff = !!ev.metadata?.before || !!ev.metadata?.after
+                  return (
+                    <li key={ev.id}>
+                      <button
+                        type="button"
+                        onClick={() => hasDiff && setDiffEntry(ev)}
+                        disabled={!hasDiff}
+                        className={`w-full text-left text-xs space-y-0.5 border-l-2 pl-2.5 py-1 rounded-r transition-colors ${
+                          hasDiff
+                            ? 'border-primary/40 hover:bg-primary-soft cursor-pointer'
+                            : 'border-gray-200 cursor-default'
+                        }`}
+                        title={hasDiff ? 'Klikk for å se gammel vs ny' : undefined}
+                      >
+                        <p className="font-medium text-gray-900 flex items-center justify-between gap-2">
+                          <span>{activityActionLabel(ev.action)}</span>
+                          {hasDiff && <span className="text-[10px] text-primary">Se diff →</span>}
+                        </p>
+                        {ev.comment && (
+                          <p className="text-gray-600">{ev.comment}</p>
+                        )}
+                        <p className="text-gray-400">
+                          {ev.actor} · {new Date(ev.created_at).toLocaleString('nb-NO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
+                        </p>
+                      </button>
+                    </li>
+                  )
+                })}
               </ol>
             )}
           </div>
         </aside>
       </main>
+
+      <VersionDiffModal
+        entry={diffEntry}
+        productNameLookup={(id) => products.find((p) => p.id === id)?.name ?? id}
+        onClose={() => setDiffEntry(null)}
+      />
     </div>
   )
 }

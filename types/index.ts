@@ -375,6 +375,16 @@ export interface ActivityEntry {
   entity_type: 'weekly_report' | 'change_order'
   entity_id: string
   action: 'approved' | 'rejected' | 'reverted' | 'commented' | 'edited' | 'sent_to_customer'
+  /**
+   * Optional structured snapshot. For 'edited' rows: { before, after } with
+   * the values at the moment of change. The activity GET endpoint strips
+   * customer-pricing keys from this when the requester is a sub, so UE-side
+   * popups never leak Salgsverdi / Kundepris / Fortjeneste.
+   */
+  metadata?: {
+    before?: Record<string, unknown>
+    after?: Record<string, unknown>
+  } | null
   actor: string
   comment?: string
   created_at: string

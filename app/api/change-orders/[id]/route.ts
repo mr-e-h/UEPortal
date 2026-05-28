@@ -119,6 +119,8 @@ export async function PUT(
 
     // Audit-trail admin edits to non-draft EMs — sub-editing their own draft
     // pre-submission is routine and would just be noise in the activity log.
+    // metadata captures the FULL before/after so the Versjonslogg popup can
+    // render a side-by-side diff without needing to reconstruct from text.
     if (isAdmin(session) && order.status === 'pending') {
       const diffs: string[] = []
       if (order.requested_quantity !== newQuantity) diffs.push(`mengde: ${order.requested_quantity} → ${newQuantity}`)
@@ -126,6 +128,28 @@ export async function PUT(
       if ((order.reason ?? '') !== (newReason ?? '')) diffs.push('begrunnelse endret')
       if (diffs.length > 0) {
         const { randomUUID } = await import('crypto')
+        const before = {
+          requested_quantity: order.requested_quantity,
+          unit: order.unit,
+          reason: order.reason,
+          product_id: order.product_id,
+          total_cost: order.total_cost,
+          total_customer_value: order.total_customer_value,
+          profit: order.profit,
+          cost_price_snapshot: order.cost_price_snapshot,
+          customer_price_snapshot: order.customer_price_snapshot,
+        }
+        const after = {
+          requested_quantity: newQuantity,
+          unit,
+          reason: newReason,
+          product_id: newProductId,
+          total_cost: costPriceSnapshot * newQuantity,
+          total_customer_value: customerPriceSnapshot * newQuantity,
+          profit: (customerPriceSnapshot - costPriceSnapshot) * newQuantity,
+          cost_price_snapshot: costPriceSnapshot,
+          customer_price_snapshot: customerPriceSnapshot,
+        }
         await sb.from('activity_log').insert({
           id: randomUUID(),
           entity_type: 'change_order',
@@ -134,6 +158,7 @@ export async function PUT(
           actor: session.full_name,
           comment: diffs.join(' · '),
           created_at: now,
+          metadata: { before, after },
         })
       }
     }
