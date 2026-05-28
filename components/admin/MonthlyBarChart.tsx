@@ -39,18 +39,18 @@ function MonthlyBarChart({ data }: { data: MonthBucket[] }) {
         <CartesianGrid stroke={CHART_BORDER} vertical={false} strokeDasharray="3 3" />
         <XAxis
           dataKey="label"
-          tick={{ fontSize: 11, fill: CHART_AXIS_TICK }}
+          tick={CHART_AXIS_TICK}
           axisLine={{ stroke: CHART_BORDER }}
           tickLine={false}
         />
         <YAxis
           tickFormatter={fmtAxis}
-          tick={{ fontSize: 11, fill: CHART_AXIS_TICK }}
+          tick={CHART_AXIS_TICK}
           axisLine={{ stroke: CHART_BORDER }}
           tickLine={false}
         />
         <Tooltip
-          formatter={(value: number, name) => [fmtTooltip(value), name]}
+          formatter={(value, name) => [fmtTooltip(Number(value) || 0), name as string]}
           contentStyle={{ borderColor: CHART_BORDER, borderRadius: 8, fontSize: 12 }}
           labelStyle={{ color: CHART_TEXT_SECONDARY, fontWeight: 600 }}
           cursor={{ fill: 'rgba(0,0,0,0.04)' }}
