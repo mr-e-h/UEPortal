@@ -249,24 +249,76 @@ export default function ChangeOrderDetailPage() {
               <p className="text-2xl font-bold text-blue-900">{fmt(co.total_customer_value)}</p>
             </div>
 
-            {/* Inline edit panel — admin only, hidden in print */}
-            {editing && (
-              <div className="print:hidden border-2 border-primary bg-primary-soft rounded-lg p-4 space-y-3">
-                <p className="text-sm font-semibold text-primary">Rediger endringsmelding</p>
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div>
-                    <label className="block text-xs font-medium text-gray-700 mb-1">Mengde ({co.unit})</label>
-                    <input
-                      type="number"
-                      inputMode="decimal"
-                      step="0.01"
-                      min="0"
-                      value={editQty}
-                      onChange={(e) => setEditQty(e.target.value)}
-                      className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
-                    />
+            {/* Inline edit panel — admin only, hidden in print. The product +
+                quantity sit in a 'gammel → ny' table so the change is
+                explicit at a glance. */}
+            {editing && (() => {
+              const newQty = Number(editQty)
+              const diff = Number.isFinite(newQty) ? newQty - co.requested_quantity : 0
+              const diffPct = co.requested_quantity > 0
+                ? Math.round((diff / co.requested_quantity) * 1000) / 10
+                : 0
+              return (
+                <div className="print:hidden border-2 border-primary bg-primary-soft rounded-lg p-4 space-y-4">
+                  <p className="text-sm font-semibold text-primary">Rediger endringsmelding</p>
+
+                  {/* Product + quantity comparison table */}
+                  <div className="overflow-x-auto bg-white rounded border border-primary/30">
+                    <table className="w-full text-xs">
+                      <thead className="bg-gray-50">
+                        <tr>
+                          <th className="px-3 py-2 text-left font-semibold text-gray-600">Produkt</th>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-600">Gammel</th>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-600">Ny</th>
+                          <th className="px-3 py-2 text-right font-semibold text-gray-600">Differanse</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        <tr>
+                          <td className="px-3 py-3">
+                            <p className="font-medium text-gray-900">{product?.name ?? '–'}</p>
+                            {product?.description && (
+                              <p className="text-[10px] text-gray-500 mt-0.5">{product.description}</p>
+                            )}
+                          </td>
+                          <td className="px-3 py-3 text-right tabular-nums text-gray-700">
+                            {co.requested_quantity} <span className="text-gray-400">{co.unit}</span>
+                          </td>
+                          <td className="px-3 py-3 text-right">
+                            <div className="inline-flex items-center justify-end gap-1.5">
+                              <input
+                                type="number"
+                                inputMode="decimal"
+                                step="0.01"
+                                min="0"
+                                value={editQty}
+                                onChange={(e) => setEditQty(e.target.value)}
+                                autoFocus
+                                className="w-24 px-2 py-1 text-right text-sm font-semibold border border-primary rounded focus:outline-none focus:ring-1 focus:ring-primary tabular-nums"
+                              />
+                              <span className="text-gray-400 text-xs">{co.unit}</span>
+                            </div>
+                          </td>
+                          <td className={`px-3 py-3 text-right tabular-nums font-medium ${
+                            diff === 0
+                              ? 'text-gray-400'
+                              : diff > 0
+                                ? 'text-green-600'
+                                : 'text-red-600'
+                          }`}>
+                            {diff > 0 ? '+' : ''}{Number.isFinite(diff) ? diff : 0} {co.unit}
+                            {co.requested_quantity > 0 && diff !== 0 && (
+                              <span className="text-[10px] block text-gray-500">
+                                {diff > 0 ? '+' : ''}{diffPct}%
+                              </span>
+                            )}
+                          </td>
+                        </tr>
+                      </tbody>
+                    </table>
                   </div>
-                  <div className="sm:col-span-2">
+
+                  <div>
                     <label className="block text-xs font-medium text-gray-700 mb-1">Begrunnelse</label>
                     <textarea
                       rows={3}
@@ -275,33 +327,34 @@ export default function ChangeOrderDetailPage() {
                       className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
                     />
                   </div>
+
+                  {editError && (
+                    <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">{editError}</p>
+                  )}
+                  <p className="text-[10px] text-gray-500">
+                    Pris-snapshots er låst (kostpris {fmt(co.cost_price_snapshot)}/{co.unit}, kundepris {fmt(co.customer_price_snapshot)}/{co.unit}). Total kostnad, salgsverdi og fortjeneste regnes ut på nytt fra de samme prisene. Endringen logges i versjonsloggen, og UE ser sin oppdaterte versjon — uten kundepris eller fortjeneste.
+                  </p>
+                  <div className="flex gap-2 justify-end">
+                    <button
+                      type="button"
+                      onClick={() => setEditing(false)}
+                      disabled={editSaving}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
+                    >
+                      <X size={12} /> Avbryt
+                    </button>
+                    <button
+                      type="button"
+                      onClick={saveEdit}
+                      disabled={editSaving}
+                      className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
+                    >
+                      <Save size={12} /> {editSaving ? 'Lagrer...' : 'Lagre'}
+                    </button>
+                  </div>
                 </div>
-                {editError && (
-                  <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">{editError}</p>
-                )}
-                <p className="text-[10px] text-gray-500">
-                  Endringer logges i versjonsloggen og bruker opprinnelige pris-snapshots. UE som har sendt EM-en ser samme oppdaterte verdier på sin side, men aldri kundepris eller fortjeneste.
-                </p>
-                <div className="flex gap-2 justify-end">
-                  <button
-                    type="button"
-                    onClick={() => setEditing(false)}
-                    disabled={editSaving}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
-                  >
-                    <X size={12} /> Avbryt
-                  </button>
-                  <button
-                    type="button"
-                    onClick={saveEdit}
-                    disabled={editSaving}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
-                  >
-                    <Save size={12} /> {editSaving ? 'Lagrer...' : 'Lagre'}
-                  </button>
-                </div>
-              </div>
-            )}
+              )
+            })()}
           </div>
 
           {/* Attachment — rides along in the PDF. */}
