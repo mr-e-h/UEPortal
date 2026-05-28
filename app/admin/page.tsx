@@ -6,6 +6,9 @@ import { getSession } from '@/lib/auth'
 import { getProjectScope } from '@/lib/api-guard'
 import { ADMIN_ROLES } from '@/lib/roles'
 import { formatWeekLabel } from '@/lib/utils/weeks'
+import { osloYearMonth } from '@/lib/utils/dates'
+import Card from '@/components/ui/Card'
+import MonthlyBarChart, { type MonthBucket } from '@/components/admin/MonthlyBarChart'
 import type {
   Project,
   ProjectBudgetLine,
@@ -40,8 +43,21 @@ export default async function AdminDashboard() {
 
   const sb = getSupabaseAdmin()
   const scope = await getProjectScope(me)
+  const thisYear = new Date().getFullYear()
+  const yearStart = `${thisYear}-01-01`
+  const yearEnd = `${thisYear}-12-31`
 
-  const [projectsRes, subsRes, prodsRes, pendingReportsRes, pendingCORes] = await Promise.all([
+  const [
+    projectsRes,
+    subsRes,
+    prodsRes,
+    pendingReportsRes,
+    pendingCORes,
+    approvedReportsRes,
+    approvedCORes,
+    yearBudgetLinesRes,
+    yearInvoicesRes,
+  ] = await Promise.all([
     sb.from('projects').select('id, name, project_number').neq('deleted', true),
     sb.from('subcontractors').select('id, company_name'),
     sb.from('products').select('id, name'),
@@ -51,6 +67,22 @@ export default async function AdminDashboard() {
     sb.from('change_orders').select('id, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, reason, submitted_at')
       .eq('status', 'pending')
       .order('submitted_at', { ascending: false }),
+    // For the monthly bar chart — approved reports submitted in current year.
+    sb.from('weekly_reports')
+      .select('id, project_id, status, submitted_at')
+      .in('status', ['approved', 'partially_approved'])
+      .eq('year', thisYear),
+    // Approved change orders reviewed in current year (or submitted as fallback).
+    sb.from('change_orders')
+      .select('id, project_id, status, total_cost, total_customer_value, reviewed_at, submitted_at')
+      .eq('status', 'approved')
+      .gte('submitted_at', yearStart),
+    sb.from('project_budget_lines')
+      .select('id, project_id, customer_price_snapshot, subcontractor_cost_price_snapshot'),
+    sb.from('project_invoices')
+      .select('project_id, amount, invoice_date')
+      .gte('invoice_date', yearStart)
+      .lte('invoice_date', yearEnd),
   ])
 
   let pendingReports = ((pendingReportsRes.data ?? []) as WeeklyReport[])
@@ -128,6 +160,80 @@ export default async function AdminDashboard() {
   }))
 
   const totalPending = reportRows.length + coRows.length
+
+  // ── Monthly bar chart bucketing ──────────────────────────────────────
+  // Apply PM scope to all three time-series sources, then bucket by Oslo
+  // month. Mirrors the same logic on /admin/totalokonomi so the two pages
+  // agree on whatever single month you compare.
+  const approvedReports = ((approvedReportsRes.data ?? []) as Array<{
+    id: string; project_id: string; status: string; submitted_at: string | null
+  }>).filter((r) => !scope || scope.has(r.project_id))
+  const approvedCOs = ((approvedCORes.data ?? []) as Array<{
+    id: string; project_id: string; total_cost: number; total_customer_value: number
+    reviewed_at: string | null; submitted_at: string | null
+  }>).filter((co) => !scope || scope.has(co.project_id))
+  const yearBudgetLines = ((yearBudgetLinesRes.data ?? []) as Array<{
+    id: string; customer_price_snapshot: number; subcontractor_cost_price_snapshot: number
+  }>)
+  const yearInvoices = ((yearInvoicesRes.data ?? []) as Array<{
+    project_id: string; amount: number; invoice_date: string
+  }>).filter((inv) => !scope || scope.has(inv.project_id))
+
+  // Need the report LINES for approved reports to compute revenue/cost.
+  const approvedReportIds = approvedReports.map((r) => r.id)
+  const approvedLinesRes = approvedReportIds.length > 0
+    ? await sb.from('weekly_report_lines')
+        .select('id, weekly_report_id, project_budget_line_id, reported_quantity, status')
+        .in('weekly_report_id', approvedReportIds)
+        .eq('status', 'approved')
+    : { data: [] as WeeklyReportLine[] }
+  const approvedLines = (approvedLinesRes.data ?? []) as WeeklyReportLine[]
+  const yearBlMap = new Map(yearBudgetLines.map((bl) => [bl.id, bl]))
+  const reportMap = new Map(approvedReports.map((r) => [r.id, r]))
+
+  const monthlyBuckets: MonthBucket[] = Array.from({ length: 12 }, (_, i) => ({
+    month: i + 1,
+    label: new Date(thisYear, i, 1).toLocaleDateString('nb-NO', { month: 'short' }),
+    omsetning: 0,
+    kostnad: 0,
+    fakturert: 0,
+  }))
+
+  for (const line of approvedLines) {
+    const report = reportMap.get(line.weekly_report_id)
+    if (!report) continue
+    const bucket = osloYearMonth(report.submitted_at)
+    if (!bucket) continue
+    const [y, m] = bucket.split('-').map((s) => parseInt(s, 10))
+    if (y !== thisYear) continue
+    const slot = monthlyBuckets[m - 1]
+    if (!slot) continue
+    const bl = yearBlMap.get(line.project_budget_line_id)
+    if (!bl) continue
+    slot.omsetning += line.reported_quantity * bl.customer_price_snapshot
+    slot.kostnad += line.reported_quantity * bl.subcontractor_cost_price_snapshot
+  }
+
+  for (const co of approvedCOs) {
+    const bucket = osloYearMonth(co.reviewed_at ?? co.submitted_at)
+    if (!bucket) continue
+    const [y, m] = bucket.split('-').map((s) => parseInt(s, 10))
+    if (y !== thisYear) continue
+    const slot = monthlyBuckets[m - 1]
+    if (!slot) continue
+    slot.omsetning += co.total_customer_value
+    slot.kostnad += co.total_cost
+  }
+
+  for (const inv of yearInvoices) {
+    const bucket = osloYearMonth(inv.invoice_date)
+    if (!bucket) continue
+    const [y, m] = bucket.split('-').map((s) => parseInt(s, 10))
+    if (y !== thisYear) continue
+    const slot = monthlyBuckets[m - 1]
+    if (!slot) continue
+    slot.fakturert += inv.amount
+  }
 
   return (
     <div className="p-6 space-y-6">
@@ -256,6 +362,19 @@ export default async function AdminDashboard() {
           )}
         </section>
       </div>
+
+      {/* Per-month bars: same data + bucketing as /admin/totalokonomi,
+          mounted here so admins triaging the inbox can also see the
+          year's economic shape at a glance. */}
+      <Card className="p-6">
+        <div className="flex items-center justify-between mb-4">
+          <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
+            Per måned {thisYear}
+          </h2>
+          <span className="text-xs text-[var(--color-text-muted)]">Omsetning · Kostnad · Fakturert</span>
+        </div>
+        <MonthlyBarChart data={monthlyBuckets} />
+      </Card>
     </div>
   )
 }
