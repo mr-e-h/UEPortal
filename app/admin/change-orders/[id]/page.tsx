@@ -99,6 +99,16 @@ export default function ChangeOrderDetailPage() {
     setSubmitting(false)
   }
 
+  // Markerer EM som "til behandling" hos kunden uten å eksportere PDF.
+  // Brukes når EMen er sendt ut via annen kanal (e-post, telefon) og
+  // admin vil sette pillen til blå "Til behandling".
+  async function markAsSent() {
+    setSubmitting(true)
+    await fetch(`/api/change-orders/${id}/mark-sent`, { method: 'POST' })
+    await load()
+    setSubmitting(false)
+  }
+
   function startEdit() {
     if (!co) return
     const seed: EditLine[] = lines.length > 0
@@ -503,7 +513,7 @@ export default function ChangeOrderDetailPage() {
                   placeholder="Legg til en kommentar til underentreprenøren..."
                 />
               </div>
-              <div className="flex gap-3 justify-end">
+              <div className="flex gap-3 justify-end flex-wrap">
                 <button
                   onClick={() => handleStatus('rejected')}
                   disabled={submitting}
@@ -511,6 +521,16 @@ export default function ChangeOrderDetailPage() {
                 >
                   Avvis
                 </button>
+                {!sentToCustomer && (
+                  <button
+                    onClick={markAsSent}
+                    disabled={submitting}
+                    className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
+                    title="Markerer EM som sendt til kunde — pillen flippes fra 'Ubehandlet' til 'Til behandling'. Bruk når EMen er sendt ut via annen kanal enn Eksporter PDF."
+                  >
+                    Til behandling
+                  </button>
+                )}
                 <button
                   onClick={() => handleStatus('approved')}
                   disabled={submitting}
