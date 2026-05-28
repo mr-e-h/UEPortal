@@ -7,7 +7,7 @@ import { getProjectScope } from '@/lib/api-guard'
 import { ADMIN_ROLES } from '@/lib/roles'
 import { formatWeekLabel } from '@/lib/utils/weeks'
 import { osloYearMonth } from '@/lib/utils/dates'
-import { fmtProductLabel } from '@/lib/format'
+import { fmtProductLabel, fmtChangeOrderTitle } from '@/lib/format'
 import type { MonthBucket } from '@/components/admin/MonthlyBarChart'
 import MonthlyChartWithPmFilter from '@/components/admin/MonthlyChartWithPmFilter'
 import type {
@@ -69,7 +69,7 @@ export default async function AdminDashboard() {
       // so keep it on the dashboard until the rest is approved or rejected.
       .in('status', ['submitted', 'partially_approved'])
       .order('submitted_at', { ascending: false }),
-    sb.from('change_orders').select('id, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, reason, status, sent_to_customer_at, submitted_at')
+    sb.from('change_orders').select('id, change_order_number, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, reason, status, sent_to_customer_at, submitted_at')
       .eq('status', 'pending')
       .order('submitted_at', { ascending: false }),
     // For the monthly bar chart — approved reports submitted in current year.
@@ -156,6 +156,7 @@ export default async function AdminDashboard() {
 
   const coRows = pendingCOs.map((co) => ({
     id: co.id,
+    em_title: fmtChangeOrderTitle(co.change_order_number, projectMap.get(co.project_id)?.name),
     project_name: projectMap.get(co.project_id)?.name ?? '–',
     project_number: projectMap.get(co.project_id)?.project_number ?? '',
     sub_name: subMap.get(co.subcontractor_id) ?? '–',
@@ -366,10 +367,10 @@ export default async function AdminDashboard() {
                     <div className="flex items-start justify-between gap-3">
                       <div className="min-w-0 flex-1">
                         <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                          {co.product_name} <span className="text-[var(--color-text-muted)] font-normal">× {co.quantity} {co.unit}</span>
+                          {co.em_title}
                         </p>
                         <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-                          {co.project_name} · {co.sub_name}
+                          {co.product_name} × {co.quantity} {co.unit} · {co.sub_name}
                         </p>
                         {co.reason && (
                           <p className="text-xs text-[var(--color-text-secondary)] truncate mt-1 italic">«{co.reason}»</p>

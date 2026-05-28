@@ -8,7 +8,7 @@ import Badge from '@/components/ui/Badge'
 import Card from '@/components/ui/Card'
 import SortableTable from '@/components/SortableTable'
 import type { Column } from '@/components/SortableTable'
-import { fmtNOK as fmt } from '@/lib/format'
+import { fmtNOK as fmt, fmtChangeOrderTitle } from '@/lib/format'
 import { useMe } from '@/lib/useMe'
 
 type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'>
@@ -34,7 +34,7 @@ type ProjectWithLines = {
 type EMRow = {
   id: string
   project_id: string
-  project_name: string
+  em_title: string
   product_name: string
   requested_quantity: number
   unit: string
@@ -83,7 +83,7 @@ export default function SubcontractorChangeOrdersPage() {
     .map((co) => ({
       id: co.id,
       project_id: co.project_id,
-      project_name: projectMap.get(co.project_id) ?? '–',
+      em_title: fmtChangeOrderTitle(co.change_order_number, projectMap.get(co.project_id)),
       product_name: productNameMap.get(co.product_id) ?? '–',
       requested_quantity: co.requested_quantity,
       unit: co.unit,
@@ -94,7 +94,7 @@ export default function SubcontractorChangeOrdersPage() {
     }))
 
   const columns: Column<EMRow>[] = [
-    { key: 'project_name', label: 'Prosjekt', sortable: true },
+    { key: 'em_title', label: 'Endringsmelding', sortable: true },
     { key: 'product_name', label: 'Produkt', sortable: true },
     {
       key: 'requested_quantity',

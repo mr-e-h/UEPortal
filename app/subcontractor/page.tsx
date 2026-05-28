@@ -46,6 +46,8 @@ interface DashboardPayload {
     project_id: string
     project_name: string
     project_number: string
+    em_title: string
+    change_order_number: number
     product_name: string
     quantity: number
     unit: string
@@ -245,10 +247,10 @@ export default function SubcontractorPage() {
                       <div className="flex items-start justify-between gap-3">
                         <div className="min-w-0 flex-1">
                           <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                            {co.product_name}
+                            {co.em_title}
                           </p>
                           <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-                            {co.project_name} · {co.quantity} {co.unit}
+                            {co.product_name} · {co.quantity} {co.unit}
                           </p>
                         </div>
                         <div className="text-right flex-none">

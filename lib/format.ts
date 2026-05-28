@@ -46,3 +46,19 @@ export function parseNorwegianNumber(input: string): number {
   const n = parseFloat(input.replace(/\s/g, '').replace(',', '.'))
   return isNaN(n) ? 0 : n
 }
+
+/**
+ * Kanonisk EM-tittel: "Endringsmelding 7 - Sentrumsgården".
+ *
+ * Nummeret er prosjekt-scopet (se assign_change_order_number-trigger), så
+ * samme prosjekt får 1, 2, 3, ... uavhengig av UE. Brukes i admin- og
+ * UE-lister, EM-detalj-header, PDF-eksport og varsler.
+ */
+export function fmtChangeOrderTitle(
+  number: number | null | undefined,
+  projectName: string | null | undefined,
+): string {
+  const n = number ?? '?'
+  const proj = projectName?.trim() || '–'
+  return `Endringsmelding ${n} - ${proj}`
+}

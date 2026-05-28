@@ -134,7 +134,10 @@ export async function POST(request: NextRequest) {
 
     const isDraft = body.status === 'draft'
     const now = new Date().toISOString()
-    const newOrder: ChangeOrder = {
+    // change_order_number er utelatt her — Postgres-trigger
+    // assign_change_order_number() tildeler neste ledige nummer i prosjektets
+    // serie. Vi leser det tilbake via .select() etter insert.
+    const newOrderInsert: Omit<ChangeOrder, 'change_order_number'> = {
       id: randomUUID(),
       project_id: body.project_id,
       product_id: body.product_id,
@@ -156,8 +159,13 @@ export async function POST(request: NextRequest) {
       created_at: now,
       sent_to_customer_at: null,
     }
-    const { error } = await sb.from('change_orders').insert(newOrder)
-    if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+    const { data: inserted, error } = await sb
+      .from('change_orders')
+      .insert(newOrderInsert)
+      .select('*')
+      .single<ChangeOrder>()
+    if (error || !inserted) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+    const newOrder = inserted
 
     // Also write the first line into change_order_lines — admin can later
     // add more lines via the edit form; that table is the source of truth

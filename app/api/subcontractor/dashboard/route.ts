@@ -4,7 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { isAdmin } from '@/lib/api-guard'
-import { fmtProductLabel } from '@/lib/format'
+import { fmtProductLabel, fmtChangeOrderTitle } from '@/lib/format'
 import type {
   Project,
   ProjectSubcontractor,
@@ -145,6 +145,8 @@ export async function GET(request: NextRequest) {
         project_id: co.project_id,
         project_name: proj?.name ?? '–',
         project_number: proj?.project_number ?? '',
+        em_title: fmtChangeOrderTitle(co.change_order_number, proj?.name),
+        change_order_number: co.change_order_number,
         product_name: productMap.get(co.product_id) ?? '–',
         quantity: co.requested_quantity,
         unit: co.unit,

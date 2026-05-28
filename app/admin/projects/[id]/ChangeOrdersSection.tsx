@@ -9,6 +9,7 @@ import { changeOrderStatus } from '@/lib/statuses'
 
 type CORow = {
   id: string
+  number: number
   status: string
   sub_name: string
   product_label: string
@@ -43,6 +44,7 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
     const sub = allSubs.find((s) => s.id === co.subcontractor_id)
     return {
       id: co.id,
+      number: co.change_order_number,
       status: co.status,
       sub_name: sub?.company_name ?? '–',
       product_label: fmtProductLabel(prod),
@@ -54,6 +56,12 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
   })
 
   const coColumns = [
+    {
+      key: 'number',
+      label: 'Nr',
+      sortable: true,
+      render: (row: CORow) => <span className="font-semibold tabular-nums text-gray-700">#{row.number}</span>,
+    },
     {
       key: 'status',
       label: 'Status',

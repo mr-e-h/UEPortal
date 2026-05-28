@@ -870,6 +870,7 @@ export default function SubcontractorProjectPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-border bg-muted">
+                  <th className="px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-12">Nr</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Produkt</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Mengde</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Kostnad</th>
@@ -893,6 +894,9 @@ export default function SubcontractorProjectPage() {
                         : undefined
                     }
                   >
+                    <td className="px-3 py-2 font-semibold tabular-nums text-[var(--color-text-secondary)]">
+                      #{co.change_order_number}
+                    </td>
                     <td className="px-3 py-2 font-medium text-[var(--color-text-primary)]">
                       {productNameMap.get(co.product_id) ?? '–'}
                     </td>

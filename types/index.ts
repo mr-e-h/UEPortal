@@ -185,6 +185,13 @@ export interface ChangeOrderLine {
 
 export interface ChangeOrder {
   id: string
+  /**
+   * Per-prosjekt løpenummer. Tildeles av Postgres-trigger ved INSERT — stiger
+   * 1, 2, 3, ... innen samme project_id uavhengig av hvilken UE som er
+   * avsender. Brukes til å bygge tittel-strenger som
+   * "Endringsmelding 7 - Sentrumsgården".
+   */
+  change_order_number: number
   project_id: string
   product_id: string
   subcontractor_id: string

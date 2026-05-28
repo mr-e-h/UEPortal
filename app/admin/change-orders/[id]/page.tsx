@@ -5,7 +5,7 @@ import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Pencil, X, Save, Printer, History, Plus, Trash2 } from 'lucide-react'
 import type { ChangeOrder, ChangeOrderLine, Project, Product, Subcontractor, ActivityEntry } from '@/types'
-import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
+import { fmtNOK as fmt, fmtProductLabel, fmtChangeOrderTitle } from '@/lib/format'
 import { activityActionLabel } from '@/lib/activity-actions'
 import { useMe } from '@/lib/useMe'
 import VersionDiffModal from '@/components/admin/VersionDiffModal'
@@ -216,8 +216,10 @@ export default function ChangeOrderDetailPage() {
         <div className="px-4 sm:px-6 py-4 flex items-center gap-3 flex-wrap">
           <Link href="/admin" className="text-gray-400 hover:text-gray-600 text-sm">← Dashboard</Link>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">Endringsmelding</h1>
-            <p className="text-sm text-gray-500">{project?.name ?? '–'} · {sub?.company_name ?? '–'}</p>
+            <h1 className="text-xl font-bold text-gray-900">
+              {fmtChangeOrderTitle(co.change_order_number, project?.name)}
+            </h1>
+            <p className="text-sm text-gray-500">{sub?.company_name ?? '–'}</p>
           </div>
           <div className="ml-auto flex items-center gap-2 flex-wrap">
             <span className={`text-xs px-2 py-0.5 rounded ${statusPill.cls}`}>{statusPill.label}</span>
@@ -240,7 +242,7 @@ export default function ChangeOrderDetailPage() {
           <div className="bg-white rounded-lg shadow p-6 space-y-5">
             <div className="border-b border-gray-100 pb-3 flex items-start justify-between gap-3">
               <div>
-                <p className="text-xs text-gray-400">Endringsmelding</p>
+                <p className="text-xs text-gray-400">Endringsmelding {co.change_order_number}</p>
                 <h2 className="text-lg font-bold text-gray-900">{project?.name ?? '–'}</h2>
                 <p className="text-xs text-gray-500">
                   Prosjektnummer: {project?.project_number ?? '–'}

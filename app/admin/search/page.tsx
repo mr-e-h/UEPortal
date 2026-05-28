@@ -6,6 +6,7 @@ import { getProjectScope } from '@/lib/api-guard'
 import { ADMIN_ROLES } from '@/lib/roles'
 import type { Project, WeeklyReport, ChangeOrder, Subcontractor } from '@/types'
 import { formatWeekLabel } from '@/lib/utils/weeks'
+import { fmtChangeOrderTitle } from '@/lib/format'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 
@@ -220,9 +221,11 @@ export default async function SearchPage({ searchParams }: { searchParams: { q?:
               >
                 <div>
                   <p className="text-sm font-medium text-[var(--color-text-primary)]">
-                    {projMap.get(o.project_id)?.name ?? '–'} — {subMap.get(o.subcontractor_id)?.company_name ?? '–'}
+                    {fmtChangeOrderTitle(o.change_order_number, projMap.get(o.project_id)?.name)}
                   </p>
-                  <p className="text-xs text-[var(--color-text-muted)]">{o.submitted_at?.split('T')[0] ?? '–'}</p>
+                  <p className="text-xs text-[var(--color-text-muted)]">
+                    {subMap.get(o.subcontractor_id)?.company_name ?? '–'} · {o.submitted_at?.split('T')[0] ?? '–'}
+                  </p>
                 </div>
                 <Badge status={o.status === 'approved' ? 'approved' : o.status === 'rejected' ? 'rejected' : 'pending'} />
               </Link>
