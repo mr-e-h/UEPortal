@@ -63,10 +63,12 @@ export default async function AdminDashboard() {
     sb.from('projects').select('id, name, project_number').neq('deleted', true),
     sb.from('subcontractors').select('id, company_name'),
     sb.from('products').select('id, name'),
-    sb.from('weekly_reports').select('id, project_id, subcontractor_id, year, week_number, submitted_at, submission_number')
-      .eq('status', 'submitted')
+    sb.from('weekly_reports').select('id, project_id, subcontractor_id, year, week_number, status, submitted_at, submission_number')
+      // 'partially_approved' is still NOT done — some lines need re-review,
+      // so keep it on the dashboard until the rest is approved or rejected.
+      .in('status', ['submitted', 'partially_approved'])
       .order('submitted_at', { ascending: false }),
-    sb.from('change_orders').select('id, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, reason, submitted_at')
+    sb.from('change_orders').select('id, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, reason, status, submitted_at')
       .eq('status', 'pending')
       .order('submitted_at', { ascending: false }),
     // For the monthly bar chart — approved reports submitted in current year.
@@ -147,6 +149,7 @@ export default async function AdminDashboard() {
       line_count: lines.length,
       total_cost: totalCost,
       submitted_at: wr.submitted_at ? wr.submitted_at.split('T')[0] : '–',
+      status: wr.status,
     }
   })
 
@@ -162,6 +165,7 @@ export default async function AdminDashboard() {
     total_customer_value: co.total_customer_value,
     reason: co.reason ?? '',
     submitted_at: co.submitted_at ? co.submitted_at.split('T')[0] : '–',
+    status: co.status,
   }))
 
   const totalPending = reportRows.length + coRows.length
@@ -368,6 +372,9 @@ export default async function AdminDashboard() {
                         {co.reason && (
                           <p className="text-xs text-[var(--color-text-secondary)] truncate mt-1 italic">«{co.reason}»</p>
                         )}
+                        <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-amber-50 text-amber-700">
+                          Ubehandlet
+                        </span>
                       </div>
                       <div className="text-right flex-none">
                         <p className="text-sm font-semibold text-[var(--color-text-primary)]">{fmt(co.total_customer_value)}</p>
@@ -404,34 +411,46 @@ export default async function AdminDashboard() {
             </div>
           ) : (
             <ul className="divide-y divide-border">
-              {reportRows.map((wr) => (
-                <li key={wr.id}>
-                  <Link
-                    href={`/admin/weekly-reports/${wr.id}`}
-                    className="block px-5 py-3 hover:bg-muted transition-colors"
-                  >
-                    <div className="flex items-start justify-between gap-3">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                          {wr.week_label}
-                          {wr.submission_number > 1 && <span className="text-[var(--color-text-muted)] font-normal"> · innsending #{wr.submission_number}</span>}
-                        </p>
-                        <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-                          {wr.project_name} · {wr.sub_name}
-                        </p>
-                        <p className="text-xs text-[var(--color-text-secondary)] mt-1">
-                          {wr.line_count} {wr.line_count === 1 ? 'linje' : 'linjer'}
-                        </p>
+              {reportRows.map((wr) => {
+                const isPartial = wr.status === 'partially_approved'
+                return (
+                  <li key={wr.id}>
+                    <Link
+                      href={`/admin/weekly-reports/${wr.id}`}
+                      className="block px-5 py-3 hover:bg-muted transition-colors"
+                    >
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0 flex-1">
+                          <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
+                            {wr.week_label}
+                            {wr.submission_number > 1 && <span className="text-[var(--color-text-muted)] font-normal"> · innsending #{wr.submission_number}</span>}
+                          </p>
+                          <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
+                            {wr.project_name} · {wr.sub_name}
+                          </p>
+                          <p className="text-xs text-[var(--color-text-secondary)] mt-1">
+                            {wr.line_count} {wr.line_count === 1 ? 'linje' : 'linjer'}
+                          </p>
+                          <span
+                            className={`inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                              isPartial
+                                ? 'bg-blue-50 text-blue-700'
+                                : 'bg-amber-50 text-amber-700'
+                            }`}
+                          >
+                            {isPartial ? 'Til behandling' : 'Ubehandlet'}
+                          </span>
+                        </div>
+                        <div className="text-right flex-none">
+                          <p className="text-sm font-semibold text-[var(--color-text-primary)]">{fmt(wr.total_cost)}</p>
+                          <p className="text-xs text-[var(--color-text-muted)]">Kostnad</p>
+                          <p className="text-[10px] text-[var(--color-text-muted)] mt-1">{wr.submitted_at}</p>
+                        </div>
                       </div>
-                      <div className="text-right flex-none">
-                        <p className="text-sm font-semibold text-[var(--color-text-primary)]">{fmt(wr.total_cost)}</p>
-                        <p className="text-xs text-[var(--color-text-muted)]">Kostnad</p>
-                        <p className="text-[10px] text-[var(--color-text-muted)] mt-1">{wr.submitted_at}</p>
-                      </div>
-                    </div>
-                  </Link>
-                </li>
-              ))}
+                    </Link>
+                  </li>
+                )
+              })}
             </ul>
           )}
         </section>
