@@ -7,8 +7,8 @@ import { getProjectScope } from '@/lib/api-guard'
 import { ADMIN_ROLES } from '@/lib/roles'
 import { formatWeekLabel } from '@/lib/utils/weeks'
 import { osloYearMonth } from '@/lib/utils/dates'
-import Card from '@/components/ui/Card'
-import MonthlyBarChart, { type MonthBucket } from '@/components/admin/MonthlyBarChart'
+import type { MonthBucket } from '@/components/admin/MonthlyBarChart'
+import MonthlyChartWithPmFilter from '@/components/admin/MonthlyChartWithPmFilter'
 import type {
   Project,
   ProjectBudgetLine,
@@ -57,6 +57,8 @@ export default async function AdminDashboard() {
     approvedCORes,
     yearBudgetLinesRes,
     yearInvoicesRes,
+    pmLinksRes,
+    pmUsersRes,
   ] = await Promise.all([
     sb.from('projects').select('id, name, project_number').neq('deleted', true),
     sb.from('subcontractors').select('id, company_name'),
@@ -83,6 +85,9 @@ export default async function AdminDashboard() {
       .select('project_id, amount, invoice_date')
       .gte('invoice_date', yearStart)
       .lte('invoice_date', yearEnd),
+    // PM filter on the bar chart needs project → PM linkage and PM names.
+    sb.from('project_managers').select('project_id, user_id'),
+    sb.from('users').select('id, full_name, role').eq('role', 'project_manager').eq('active', true),
   ])
 
   let pendingReports = ((pendingReportsRes.data ?? []) as WeeklyReport[])
@@ -225,6 +230,70 @@ export default async function AdminDashboard() {
     slot.kostnad += co.total_cost
   }
 
+  // ── Per-PM filter prep ────────────────────────────────────────────────
+  const pmLinks = (pmLinksRes.data ?? []) as Array<{ project_id: string; user_id: string }>
+  const pmUsers = (pmUsersRes.data ?? []) as Array<{ id: string; full_name: string }>
+  const pmInfo = pmUsers.map((u) => ({ id: u.id, name: u.full_name })).sort((a, b) => a.name.localeCompare(b.name, 'nb'))
+
+  // Project → set of assigned PM-ids. A project can have multiple PMs;
+  // when filtering by PM A, ALL of A's projects' numbers attribute to A.
+  // Different PMs can therefore each see "their" view of a shared project.
+  const projectPms = new Map<string, Set<string>>()
+  for (const link of pmLinks) {
+    const set = projectPms.get(link.project_id) ?? new Set<string>()
+    set.add(link.user_id)
+    projectPms.set(link.project_id, set)
+  }
+
+  // Per-PM clones of monthlyBuckets, all starting at zero.
+  function emptyYearBuckets(): MonthBucket[] {
+    return Array.from({ length: 12 }, (_, i) => ({
+      month: i + 1,
+      label: new Date(thisYear, i, 1).toLocaleDateString('nb-NO', { month: 'short' }),
+      omsetning: 0,
+      kostnad: 0,
+      fakturert: 0,
+    }))
+  }
+  const byPmBuckets = new Map<string, MonthBucket[]>(
+    pmInfo.map((pm) => [pm.id, emptyYearBuckets()]),
+  )
+
+  // Replay the same bucketing into the matching PM buckets.
+  for (const line of approvedLines) {
+    const report = reportMap.get(line.weekly_report_id)
+    if (!report) continue
+    const bucket = osloYearMonth(report.submitted_at)
+    if (!bucket) continue
+    const [y, m] = bucket.split('-').map((s) => parseInt(s, 10))
+    if (y !== thisYear) continue
+    const bl = yearBlMap.get(line.project_budget_line_id)
+    if (!bl) continue
+    const rev = line.reported_quantity * bl.customer_price_snapshot
+    const cost = line.reported_quantity * bl.subcontractor_cost_price_snapshot
+    const pmSet = projectPms.get(report.project_id)
+    if (!pmSet) continue
+    for (const pmId of Array.from(pmSet)) {
+      const arr = byPmBuckets.get(pmId)
+      if (!arr) continue
+      arr[m - 1].omsetning += rev
+      arr[m - 1].kostnad += cost
+    }
+  }
+  for (const co of approvedCOs) {
+    const bucket = osloYearMonth(co.reviewed_at ?? co.submitted_at)
+    if (!bucket) continue
+    const [y, m] = bucket.split('-').map((s) => parseInt(s, 10))
+    if (y !== thisYear) continue
+    const pmSet = projectPms.get(co.project_id)
+    if (!pmSet) continue
+    for (const pmId of Array.from(pmSet)) {
+      const arr = byPmBuckets.get(pmId)
+      if (!arr) continue
+      arr[m - 1].omsetning += co.total_customer_value
+      arr[m - 1].kostnad += co.total_cost
+    }
+  }
   for (const inv of yearInvoices) {
     const bucket = osloYearMonth(inv.invoice_date)
     if (!bucket) continue
@@ -233,7 +302,20 @@ export default async function AdminDashboard() {
     const slot = monthlyBuckets[m - 1]
     if (!slot) continue
     slot.fakturert += inv.amount
+    // Same multi-PM attribution for invoiced amount.
+    const pmSet = projectPms.get(inv.project_id)
+    if (!pmSet) continue
+    for (const pmId of Array.from(pmSet)) {
+      const arr = byPmBuckets.get(pmId)
+      if (!arr) continue
+      arr[m - 1].fakturert += inv.amount
+    }
   }
+
+  // Materialize the byPm map as a plain object for serialization to the
+  // client component.
+  const byPm: Record<string, MonthBucket[]> = {}
+  for (const [k, v] of Array.from(byPmBuckets)) byPm[k] = v
 
   return (
     <div className="p-6 space-y-6">
@@ -365,16 +447,14 @@ export default async function AdminDashboard() {
 
       {/* Per-month bars: same data + bucketing as /admin/totalokonomi,
           mounted here so admins triaging the inbox can also see the
-          year's economic shape at a glance. */}
-      <Card className="p-6">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
-            Per måned {thisYear}
-          </h2>
-          <span className="text-xs text-[var(--color-text-muted)]">Omsetning · Kostnad · Fakturert</span>
-        </div>
-        <MonthlyBarChart data={monthlyBuckets} />
-      </Card>
+          year's economic shape at a glance. PM dropdown filters into
+          per-PM views computed server-side. */}
+      <MonthlyChartWithPmFilter
+        year={thisYear}
+        all={monthlyBuckets}
+        byPm={byPm}
+        pmList={pmInfo}
+      />
     </div>
   )
 }
