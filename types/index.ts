@@ -230,6 +230,10 @@ export interface ChangeOrder {
   attachment_url: string | null
   status: ChangeOrderStatus
   submitted_at: string | null
+  /** Full navn på personen som sendte inn EMen — settes fra session.full_name
+   *  i POST-endepunktet. Nullable: historiske rader fra før denne kolonnen
+   *  ble lagt til kan være tomme. */
+  submitted_by: string | null
   reviewed_at: string | null
   reviewed_by: string | null
   admin_comment: string | null

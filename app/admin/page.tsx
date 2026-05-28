@@ -70,7 +70,7 @@ export default async function AdminDashboard() {
       // so keep it on the dashboard until the rest is approved or rejected.
       .in('status', ['submitted', 'partially_approved'])
       .order('submitted_at', { ascending: false }),
-    sb.from('change_orders').select('id, change_order_number, em_type, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, profit, reason, status, sent_to_customer_at, submitted_at')
+    sb.from('change_orders').select('id, change_order_number, em_type, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, profit, reason, status, sent_to_customer_at, submitted_at, submitted_by')
       .eq('status', 'pending')
       .order('submitted_at', { ascending: false }),
     // For the monthly bar chart — approved reports submitted in current year.
@@ -165,6 +165,7 @@ export default async function AdminDashboard() {
     total_cost: co.total_cost,
     total_customer_value: co.total_customer_value,
     profit: co.profit,
+    submitted_by: co.submitted_by ?? null,
     // Vis både dato og klokkeslett (Oslo) — admin trenger ofte å se
     // 'kom dette inn rett før møtet eller etterpå?'. Eksempel:
     // "28.05.2026 14:32".
@@ -392,7 +393,7 @@ export default async function AdminDashboard() {
                             {co.sent_to_customer ? 'Til behandling' : 'Ubehandlet'}
                           </span>
                           <span className="text-[10px] text-[var(--color-text-muted)] truncate">
-                            {co.sub_name} · {co.submitted_at}
+                            {co.submitted_by ? `${co.submitted_by}, ${co.sub_name}` : co.sub_name} · {co.submitted_at}
                           </span>
                         </div>
                       </div>

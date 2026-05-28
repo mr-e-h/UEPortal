@@ -161,6 +161,7 @@ export async function POST(request: NextRequest) {
       attachment_url: null,
       status: isDraft ? 'draft' : 'pending',
       submitted_at: isDraft ? null : now,
+      submitted_by: session.full_name,
       reviewed_at: null,
       reviewed_by: null,
       admin_comment: null,

@@ -150,6 +150,7 @@ export async function GET(request: NextRequest) {
         em_type: co.em_type,
         total_cost: co.total_cost,
         submitted_at: co.submitted_at ?? null,
+        submitted_by: co.submitted_by ?? null,
         status: co.status,
       }
     })
@@ -173,6 +174,7 @@ export async function GET(request: NextRequest) {
         total_cost: co.total_cost,
         admin_comment: co.admin_comment ?? '',
         submitted_at: co.submitted_at ?? null,
+        submitted_by: co.submitted_by ?? null,
         status: co.status,
       }
     })
