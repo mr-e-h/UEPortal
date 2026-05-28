@@ -271,7 +271,9 @@ export default function ChangeOrderDetailPage() {
             </div>
 
             {/* Lines table — shows every product on the EM. Single-line EMs
-                render as a one-row table; multi-line ones get all rows. */}
+                render as a one-row table; multi-line ones get all rows.
+                Kost/Salg/Margin-kolonnene er admin-internt og skjules i PDF +
+                hos UE (samme regel som "Internt"-kortet til høyre). */}
             <div>
               <p className="text-xs text-gray-400 mb-2">Produkter</p>
               <div className="overflow-x-auto rounded border border-gray-200">
@@ -280,11 +282,29 @@ export default function ChangeOrderDetailPage() {
                     <tr>
                       <th className="px-3 py-2 text-left font-medium">Produkt</th>
                       <th className="px-3 py-2 text-right font-medium">Mengde</th>
+                      <th className="px-3 py-2 text-right font-medium print:hidden">Kost</th>
+                      <th className="px-3 py-2 text-right font-medium print:hidden">Salgsverdi</th>
+                      <th className="px-3 py-2 text-right font-medium print:hidden">Margin</th>
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
-                    {(lines.length > 0 ? lines : [{ id: co.id, product_id: co.product_id, requested_quantity: co.requested_quantity, unit: co.unit } as unknown as ChangeOrderLine]).map((ln) => {
+                    {(lines.length > 0
+                      ? lines
+                      : [{
+                          id: co.id,
+                          product_id: co.product_id,
+                          requested_quantity: co.requested_quantity,
+                          unit: co.unit,
+                          cost_price_snapshot: co.cost_price_snapshot,
+                          customer_price_snapshot: co.customer_price_snapshot,
+                        } as unknown as ChangeOrderLine]
+                    ).map((ln) => {
                       const p = products.find((pp) => pp.id === ln.product_id) ?? null
+                      const lineCost = ln.requested_quantity * (ln.cost_price_snapshot ?? 0)
+                      const lineSales = ln.requested_quantity * (ln.customer_price_snapshot ?? 0)
+                      const lineMargin = lineSales > 0
+                        ? Math.round(((lineSales - lineCost) / lineSales) * 100)
+                        : 0
                       return (
                         <tr key={ln.id}>
                           <td className="px-3 py-2">
@@ -292,6 +312,15 @@ export default function ChangeOrderDetailPage() {
                           </td>
                           <td className="px-3 py-2 text-right tabular-nums text-gray-700">
                             {ln.requested_quantity} <span className="text-gray-400">{ln.unit}</span>
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-gray-700 print:hidden">
+                            {fmt(lineCost)}
+                          </td>
+                          <td className="px-3 py-2 text-right tabular-nums text-gray-700 print:hidden">
+                            {fmt(lineSales)}
+                          </td>
+                          <td className={`px-3 py-2 text-right tabular-nums font-semibold print:hidden ${lineMargin >= 15 ? 'text-green-600' : 'text-orange-500'}`}>
+                            {lineMargin}%
                           </td>
                         </tr>
                       )
