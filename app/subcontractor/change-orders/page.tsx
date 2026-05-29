@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import type { ChangeOrder } from '@/types'
+import type { ChangeOrder, ActivityEntry } from '@/types'
 import type { BadgeStatus } from '@/components/ui/Badge'
 import Badge from '@/components/ui/Badge'
 import Card from '@/components/ui/Card'
@@ -11,8 +11,14 @@ import type { Column } from '@/components/SortableTable'
 import { fmtNOK as fmt, fmtChangeOrderTitle } from '@/lib/format'
 import { changeOrderType } from '@/lib/statuses'
 import { useMe } from '@/lib/useMe'
+import VersionDiffModal from '@/components/admin/VersionDiffModal'
 
-type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'>
+// API legger til has_admin_edits + has_consequence_lines etter UE-strip
+// av kundepris-felter — se app/api/subcontractor/change-orders/route.ts.
+type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'> & {
+  has_admin_edits: boolean
+  has_consequence_lines: boolean
+}
 
 type BudgetLine = {
   id: string
@@ -44,6 +50,8 @@ type EMRow = {
   status: string
   submitted_at: string | null
   attachment_url: string | null
+  has_admin_edits: boolean
+  has_consequence_lines: boolean
 }
 
 export default function SubcontractorChangeOrdersPage() {
@@ -54,6 +62,25 @@ export default function SubcontractorChangeOrdersPage() {
   const [loading, setLoading] = useState(true)
   const [statusFilter, setStatusFilter] = useState('all')
   const [projectFilter, setProjectFilter] = useState('all')
+  // Versjonsdiff-popup når UE klikker 'Se endringer'-link på en EM med
+  // has_admin_edits=true. Henter siste 'edited'-rad fra /api/activity og
+  // sender den til VersionDiffModal. Kundepris-felter er allerede strippet
+  // rekursivt av /api/activity (stripCustomerKeysDeep) før det lander her.
+  const [diffEntry, setDiffEntry] = useState<ActivityEntry | null>(null)
+  const [loadingDiff, setLoadingDiff] = useState<string | null>(null)
+
+  async function openLatestEdit(coId: string) {
+    setLoadingDiff(coId)
+    try {
+      const res = await fetch(`/api/activity?entity_id=${coId}&entity_type=change_order`)
+      if (!res.ok) return
+      const all = (await res.json()) as ActivityEntry[]
+      const lastEdited = [...all].reverse().find((e) => e.action === 'edited')
+      if (lastEdited) setDiffEntry(lastEdited)
+    } finally {
+      setLoadingDiff(null)
+    }
+  }
 
   const fetchAll = useCallback(async (subId: string) => {
     const [proj, cos] = await Promise.all([
@@ -94,10 +121,39 @@ export default function SubcontractorChangeOrdersPage() {
       status: co.status,
       submitted_at: co.submitted_at,
       attachment_url: co.attachment_url,
+      has_admin_edits: co.has_admin_edits,
+      has_consequence_lines: co.has_consequence_lines,
     }))
 
   const columns: Column<EMRow>[] = [
-    { key: 'em_title', label: 'Endringsmelding', sortable: true },
+    {
+      key: 'em_title',
+      label: 'Endringsmelding',
+      sortable: true,
+      render: (row) => (
+        <div className="flex flex-col gap-1">
+          <span className="font-medium text-[var(--color-text-primary)]">{row.em_title}</span>
+          <div className="flex items-center gap-1.5 flex-wrap">
+            {row.has_admin_edits && (
+              <button
+                type="button"
+                onClick={(e) => { e.stopPropagation(); openLatestEdit(row.id) }}
+                disabled={loadingDiff === row.id}
+                className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors disabled:opacity-50"
+                title="Prosjektleder har redigert denne EM-en. Klikk for å se hva som er endret."
+              >
+                Endret av prosjektleder · Se endringer
+              </button>
+            )}
+            {row.has_consequence_lines && (
+              <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200">
+                Har konsekvens ved avslag
+              </span>
+            )}
+          </div>
+        </div>
+      ),
+    },
     {
       key: 'em_type',
       label: 'Type',
@@ -221,6 +277,11 @@ export default function SubcontractorChangeOrdersPage() {
           onRowClick={(row) => router.push(`/subcontractor/projects/${row.project_id}`)}
         />
       </Card>
+
+      {/* Versjonsdiff-popup. /api/activity har allerede strippet
+          customer_price_snapshot, total_customer_value og profit
+          rekursivt fra metadata — UE ser her kun trygge felter. */}
+      <VersionDiffModal entry={diffEntry} onClose={() => setDiffEntry(null)} />
     </div>
   )
 }

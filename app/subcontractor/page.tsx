@@ -54,6 +54,8 @@ interface DashboardPayload {
     submitted_at: string | null
     submitted_by: string | null
     status: string
+    has_admin_edits: boolean
+    has_consequence_lines: boolean
   }>
   revisionChangeOrders: Array<{
     id: string
@@ -68,6 +70,8 @@ interface DashboardPayload {
     submitted_at: string | null
     submitted_by: string | null
     status: string
+    has_admin_edits: boolean
+    has_consequence_lines: boolean
   }>
   pendingWeeklyReports: Array<{
     id: string
@@ -279,6 +283,16 @@ export default function SubcontractorPage() {
                               {co.em_title}
                             </p>
                             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${t.cls}`}>{t.label}</span>
+                            {co.has_admin_edits && (
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+                                Endret av prosjektleder
+                              </span>
+                            )}
+                            {co.has_consequence_lines && (
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200">
+                                Har konsekvens ved avslag
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
                             {fmt(co.total_cost)}{co.submitted_by && ` · ${co.submitted_by}`} · {fmtDateTime(co.submitted_at)}
@@ -332,6 +346,16 @@ export default function SubcontractorPage() {
                               {co.em_title}
                             </p>
                             <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${t.cls}`}>{t.label}</span>
+                            {co.has_admin_edits && (
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700">
+                                Endret av prosjektleder
+                              </span>
+                            )}
+                            {co.has_consequence_lines && (
+                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200">
+                                Har konsekvens ved avslag
+                              </span>
+                            )}
                           </div>
                           <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
                             {fmt(co.total_cost)}{co.submitted_by && ` · ${co.submitted_by}`} · {fmtDateTime(co.submitted_at)}

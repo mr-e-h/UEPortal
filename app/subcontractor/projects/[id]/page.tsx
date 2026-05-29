@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Plus, TrendingUp, CheckCircle, Clock, BarChart3, ChevronDown } from 'lucide-react'
-import type { WeeklyReport, WeeklyReportLine, ChangeOrder, GanttMilestone } from '@/types'
+import type { WeeklyReport, WeeklyReportLine, ChangeOrder, GanttMilestone, ActivityEntry } from '@/types'
 import { getCurrentWeek, formatWeekLabel, prevWeek as prevISOWeek, nextWeek as nextISOWeek } from '@/lib/utils/weeks'
 import { calculateBudgetUsage, type LineWithReportStatus } from '@/lib/utils/budgetUsage'
 import NumberInput from '@/components/NumberInput'
@@ -20,6 +20,7 @@ import { useMe } from '@/lib/useMe'
 const ChangeOrderModal = dynamic(() => import('@/components/subcontractor/ChangeOrderModal'), { ssr: false })
 const BudgetLineChart = dynamic(() => import('@/components/BudgetLineChart'), { ssr: false })
 const GanttView = dynamic(() => import('@/components/subcontractor/GanttView'), { ssr: false })
+const VersionDiffModal = dynamic(() => import('@/components/admin/VersionDiffModal'), { ssr: false })
 import { fmtNOK as fmt } from '@/lib/format'
 import { weeklyReportStatus, weeklyReportLineStatus, changeOrderType } from '@/lib/statuses'
 
@@ -59,7 +60,24 @@ type EnrichedLine = WeeklyReportLine & {
 
 type EnrichedReport = WeeklyReport & { lines: EnrichedLine[] }
 
-type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'>
+// API legger til has_admin_edits + has_consequence_lines etter UE-strip
+// av kundepris-felter. Se app/api/subcontractor/change-orders/route.ts.
+type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'> & {
+  has_admin_edits: boolean
+  has_consequence_lines: boolean
+}
+
+// Konsekvens-linje slik UE ser den fra /api/change-orders/[id]/consequence-lines —
+// customer_price_snapshot er strippet ut av endepunktet. Brukes til read-only
+// rendring i prosjekt-detalj-tabellen og inne i ChangeOrderModal.
+type UEConsequenceLine = {
+  id: string
+  product_id: string
+  quantity: number
+  unit: string
+  cost_price_snapshot: number
+  sort_order: number
+}
 type BudgetLineOption = Pick<BudgetLineWithProduct, 'product_id' | 'product_name' | 'unit'> & { cost_price?: number }
 
 export default function SubcontractorProjectPage() {
@@ -101,6 +119,50 @@ export default function SubcontractorProjectPage() {
   const [milestones, setMilestones] = useState<GanttMilestone[]>([])
   const [budgetSearch, setBudgetSearch] = useState('')
   const [expandedBudgetId, setExpandedBudgetId] = useState<string | null>(null)
+  // Versjonsdiff-popup når UE klikker 'Se endringer'. /api/activity har
+  // allerede strippet customer_price_snapshot, total_customer_value og
+  // profit rekursivt — UE ser kun trygge felter i diff-tabellen.
+  const [diffEntry, setDiffEntry] = useState<ActivityEntry | null>(null)
+  const [loadingDiff, setLoadingDiff] = useState<string | null>(null)
+  // Konsekvens-linjer: lastes lazy per EM når UE klikker 'Vis konsekvens'.
+  // Customer-pris er allerede strippet av /api/change-orders/[id]/consequence-lines.
+  const [expandedConseqId, setExpandedConseqId] = useState<string | null>(null)
+  const [conseqCache, setConseqCache] = useState<Record<string, UEConsequenceLine[]>>({})
+  const [loadingConseq, setLoadingConseq] = useState<string | null>(null)
+
+  async function openLatestEdit(coId: string) {
+    setLoadingDiff(coId)
+    try {
+      const res = await fetch(`/api/activity?entity_id=${coId}&entity_type=change_order`)
+      if (!res.ok) return
+      const all = (await res.json()) as ActivityEntry[]
+      // /api/activity returnerer oldest-first; vi vil ha siste 'edited'.
+      const lastEdited = [...all].reverse().find((e) => e.action === 'edited')
+      if (lastEdited) setDiffEntry(lastEdited)
+    } finally {
+      setLoadingDiff(null)
+    }
+  }
+
+  async function toggleConsequence(coId: string) {
+    if (expandedConseqId === coId) {
+      setExpandedConseqId(null)
+      return
+    }
+    if (!conseqCache[coId]) {
+      setLoadingConseq(coId)
+      try {
+        const res = await fetch(`/api/change-orders/${coId}/consequence-lines`)
+        if (res.ok) {
+          const lines = (await res.json()) as UEConsequenceLine[]
+          setConseqCache((prev) => ({ ...prev, [coId]: lines }))
+        }
+      } finally {
+        setLoadingConseq(null)
+      }
+    }
+    setExpandedConseqId(coId)
+  }
 
   const loadProject = useCallback(async (subId: string) => {
     const projs = await fetch(`/api/subcontractor/projects?subcontractor_id=${subId}`).then((r) => r.json()) as ProjectWithLines[]
@@ -378,6 +440,12 @@ export default function SubcontractorProjectPage() {
           onSuccess={handleEMSuccess}
         />
       )}
+
+      {/* Versjonsdiff-popup — åpnes når UE klikker "Se endringer"-link
+          på en EM. /api/activity strip-er customer_price_snapshot,
+          total_customer_value og profit rekursivt fra metadata før
+          det havner her, så UE ser bare trygge felter. */}
+      <VersionDiffModal entry={diffEntry} onClose={() => setDiffEntry(null)} />
 
       {/* ─── Financial KPI cards ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
@@ -883,9 +951,11 @@ export default function SubcontractorProjectPage() {
                 </tr>
               </thead>
               <tbody>
-                {changeOrders.map((co) => {
+                {changeOrders.flatMap((co) => {
                   const isEditable = co.status === 'draft' || co.status === 'revision_requested'
-                  return (
+                  const expanded = expandedConseqId === co.id
+                  const conseqLines = conseqCache[co.id] ?? []
+                  return [
                   <tr
                     key={co.id}
                     className={`border-b border-border last:border-0 ${
@@ -906,8 +976,40 @@ export default function SubcontractorProjectPage() {
                         return <span className={`text-xs px-2 py-0.5 rounded ${t.cls}`}>{t.label}</span>
                       })()}
                     </td>
-                    <td className="px-3 py-2 font-medium text-[var(--color-text-primary)]">
-                      {productNameMap.get(co.product_id) ?? '–'}
+                    <td className="px-3 py-2">
+                      <div className="font-medium text-[var(--color-text-primary)]">
+                        {productNameMap.get(co.product_id) ?? '–'}
+                      </div>
+                      {/* Endret-/konsekvens-badges. Klikkbare så UE kan
+                          se hva som er endret eller hvilke produkter som
+                          trekkes hvis EMen avvises. Stopper propagation
+                          så raden ikke åpner edit-modal samtidig. */}
+                      {(co.has_admin_edits || co.has_consequence_lines) && (
+                        <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                          {co.has_admin_edits && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); openLatestEdit(co.id) }}
+                              disabled={loadingDiff === co.id}
+                              className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors disabled:opacity-50"
+                              title="Prosjektleder har redigert denne EM-en. Klikk for å se hva som er endret."
+                            >
+                              Endret av prosjektleder · Se endringer
+                            </button>
+                          )}
+                          {co.has_consequence_lines && (
+                            <button
+                              type="button"
+                              onClick={(e) => { e.stopPropagation(); toggleConsequence(co.id) }}
+                              disabled={loadingConseq === co.id}
+                              className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200 hover:bg-orange-100 transition-colors disabled:opacity-50"
+                              title="Klikk for å se hva som trekkes fra prosjektet hvis EMen avvises."
+                            >
+                              Har konsekvens ved avslag {expanded ? '▲' : '▼'}
+                            </button>
+                          )}
+                        </div>
+                      )}
                     </td>
                     <td className="px-3 py-2 text-right text-[var(--color-text-secondary)]">
                       {co.requested_quantity} {co.unit}
@@ -954,8 +1056,45 @@ export default function SubcontractorProjectPage() {
                         <span className="text-[var(--color-text-muted)]">–</span>
                       )}
                     </td>
-                  </tr>
-                  )
+                  </tr>,
+                  /* Ekspandert konsekvens-rad — rendres bare når UE har
+                     klikket "Har konsekvens ved avslag"-badgen og data
+                     er lastet. Read-only, ingen kundepris. */
+                  expanded && (
+                    <tr key={`${co.id}-conseq`} className="bg-orange-50/30">
+                      <td colSpan={10} className="px-6 py-3">
+                        <p className="text-xs font-semibold text-orange-900 mb-1">Konsekvens ved avslag</p>
+                        <p className="text-xs text-orange-700 mb-2">
+                          Dersom endringsmeldingen avslås, kan følgende trekkes ut eller ikke gjennomføres:
+                        </p>
+                        {conseqLines.length === 0 ? (
+                          <p className="text-xs text-[var(--color-text-muted)] italic">Ingen konsekvens-linjer lagt inn.</p>
+                        ) : (
+                          <table className="w-full text-xs">
+                            <thead>
+                              <tr className="text-left text-orange-700">
+                                <th className="py-1 font-medium">Produkt</th>
+                                <th className="py-1 font-medium text-right">Mengde</th>
+                              </tr>
+                            </thead>
+                            <tbody>
+                              {conseqLines.map((cl) => (
+                                <tr key={cl.id}>
+                                  <td className="py-1 text-[var(--color-text-primary)]">
+                                    {productNameMap.get(cl.product_id) ?? cl.product_id}
+                                  </td>
+                                  <td className="py-1 text-right tabular-nums text-[var(--color-text-primary)]">
+                                    − {cl.quantity} <span className="text-[var(--color-text-muted)]">{cl.unit}</span>
+                                  </td>
+                                </tr>
+                              ))}
+                            </tbody>
+                          </table>
+                        )}
+                      </td>
+                    </tr>
+                  ),
+                  ]
                 })}
               </tbody>
             </table>

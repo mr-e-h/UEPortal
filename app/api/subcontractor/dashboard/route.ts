@@ -134,6 +134,23 @@ export async function GET(request: NextRequest) {
   // KPI 4 — gjenstående å fakturere (original order book minus what's billed)
   const gjenstaaende = Math.max(0, ordreverdi - fakturert)
 
+  // Bulk-sjekk hvilke av UEs EM-er har 'edited'-rader fra admin og hvilke
+  // har konsekvens-linjer. Brukes til badges på dashboardet uten N+1.
+  const allMyEmIds = allChangeOrders.map((co) => co.id)
+  let dashEditedSet = new Set<string>()
+  let dashConseqSet = new Set<string>()
+  if (allMyEmIds.length > 0) {
+    const [editedRes, conseqRes] = await Promise.all([
+      sb.from('activity_log').select('entity_id')
+        .eq('entity_type', 'change_order').eq('action', 'edited')
+        .in('entity_id', allMyEmIds),
+      sb.from('change_order_consequence_lines').select('change_order_id')
+        .in('change_order_id', allMyEmIds),
+    ])
+    dashEditedSet = new Set((editedRes.data ?? []).map((r: { entity_id: string }) => r.entity_id))
+    dashConseqSet = new Set((conseqRes.data ?? []).map((r: { change_order_id: string }) => r.change_order_id))
+  }
+
   // Pending change orders, newest first
   const pendingChangeOrders = allChangeOrders
     .filter((co) => co.status === 'pending')
@@ -152,6 +169,8 @@ export async function GET(request: NextRequest) {
         submitted_at: co.submitted_at ?? null,
         submitted_by: co.submitted_by ?? null,
         status: co.status,
+        has_admin_edits: dashEditedSet.has(co.id),
+        has_consequence_lines: dashConseqSet.has(co.id),
       }
     })
 
@@ -176,6 +195,8 @@ export async function GET(request: NextRequest) {
         submitted_at: co.submitted_at ?? null,
         submitted_by: co.submitted_by ?? null,
         status: co.status,
+        has_admin_edits: dashEditedSet.has(co.id),
+        has_consequence_lines: dashConseqSet.has(co.id),
       }
     })
 

@@ -1,12 +1,29 @@
 'use client'
 
 import { useState, useEffect, useRef, useCallback } from 'react'
-import type { ChangeOrder } from '@/types'
+import type { ChangeOrder, ActivityEntry } from '@/types'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import NumberInput from '@/components/NumberInput'
+import VersionDiffModal from '@/components/admin/VersionDiffModal'
 
-type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'>
+// API beriker med has_admin_edits + has_consequence_lines etter UE-strip
+// (se app/api/subcontractor/change-orders/route.ts).
+type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total_customer_value' | 'profit'> & {
+  has_admin_edits?: boolean
+  has_consequence_lines?: boolean
+}
+
+// Konsekvens-linje slik UE ser den — customer_price_snapshot er strippet
+// ut av /api/change-orders/[id]/consequence-lines for UE.
+type UEConsequenceLine = {
+  id: string
+  product_id: string
+  quantity: number
+  unit: string
+  cost_price_snapshot: number
+  sort_order: number
+}
 
 type BudgetLineOption = {
   product_id: string
@@ -55,9 +72,46 @@ export default function ChangeOrderModal({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // Konsekvens-linjer for read-only-visning når EMen åpnes. Lastes lazy
+  // når modal åpnes med en eksisterende EM som har has_consequence_lines.
+  // Customer-pris er strippet ut av endepunktet.
+  const [consequenceLines, setConsequenceLines] = useState<UEConsequenceLine[]>([])
+  // Siste 'edited'-rad fra activity_log for diff-popup når UE klikker
+  // "Se endringer". /api/activity strip-er customer-felter rekursivt.
+  const [diffEntry, setDiffEntry] = useState<ActivityEntry | null>(null)
+  const [loadingDiff, setLoadingDiff] = useState(false)
 
   const fileInputRef = useRef<HTMLInputElement>(null)
   const previewUrlRef = useRef<string | null>(null)
+
+  // Hent konsekvens-linjer når modal åpnes for en eksisterende EM som
+  // har dem. UE skal se hva som vil bli trukket fra prosjektet hvis
+  // EMen avvises — read-only.
+  useEffect(() => {
+    if (!initialDraft?.id || !initialDraft.has_consequence_lines) return
+    let cancelled = false
+    fetch(`/api/change-orders/${initialDraft.id}/consequence-lines`)
+      .then((r) => (r.ok ? r.json() : []))
+      .then((data) => {
+        if (!cancelled) setConsequenceLines(Array.isArray(data) ? data : [])
+      })
+      .catch(() => { /* stille — read-only-blokken vises ikke uten data */ })
+    return () => { cancelled = true }
+  }, [initialDraft?.id, initialDraft?.has_consequence_lines])
+
+  async function openLatestEdit() {
+    if (!initialDraft?.id) return
+    setLoadingDiff(true)
+    try {
+      const res = await fetch(`/api/activity?entity_id=${initialDraft.id}&entity_type=change_order`)
+      if (!res.ok) return
+      const all = (await res.json()) as ActivityEntry[]
+      const lastEdited = [...all].reverse().find((e) => e.action === 'edited')
+      if (lastEdited) setDiffEntry(lastEdited)
+    } finally {
+      setLoadingDiff(false)
+    }
+  }
 
   const applyFile = useCallback((f: File) => {
     if (!f.type.startsWith('image/') && f.type !== 'application/pdf') {
@@ -282,6 +336,67 @@ export default function ChangeOrderModal({
             </div>
           )}
 
+          {/* Endret-av-prosjektleder-banner. Vises når den åpnede EMen har
+              minst én 'edited'-rad i activity_log. Knappen åpner
+              VersionDiffModal med siste edit-snapshot (UE-strippet). */}
+          {initialDraft?.has_admin_edits && (
+            <div className="bg-purple-50 border border-purple-200 rounded-lg p-3 flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <p className="text-xs font-semibold text-purple-900 uppercase tracking-wide mb-1">
+                  Endret av prosjektleder
+                </p>
+                <p className="text-sm text-purple-900">
+                  Denne endringsmeldingen er justert av prosjektleder. Du kan se hva som er endret i versjonsloggen.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={openLatestEdit}
+                disabled={loadingDiff}
+                className="flex-none text-xs font-medium text-purple-700 hover:text-purple-900 underline disabled:opacity-50"
+              >
+                Se endringer
+              </button>
+            </div>
+          )}
+
+          {/* Konsekvens ved avslag — read-only seksjon. Customer-pris er
+              strippet av endepunktet. UE skal kun se hva som vil bli
+              trukket, ikke kunde-/salgsverdier. */}
+          {initialDraft?.has_consequence_lines && consequenceLines.length > 0 && (
+            <div className="bg-orange-50 border border-orange-200 rounded-lg p-3">
+              <p className="text-xs font-semibold text-orange-900 uppercase tracking-wide mb-1">
+                Konsekvens ved avslag
+              </p>
+              <p className="text-xs text-orange-700 mb-2">
+                Dersom endringsmeldingen avslås, kan følgende trekkes ut eller ikke gjennomføres:
+              </p>
+              <table className="w-full text-xs">
+                <thead>
+                  <tr className="text-left text-orange-700">
+                    <th className="py-1 font-medium">Produkt</th>
+                    <th className="py-1 font-medium text-right">Mengde</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {consequenceLines.map((cl) => {
+                    const bl = budgetLines.find((b) => b.product_id === cl.product_id)
+                    return (
+                      <tr key={cl.id}>
+                        <td className="py-1 text-orange-900">
+                          {bl?.product_name ?? cl.product_id}
+                        </td>
+                        <td className="py-1 text-right tabular-nums text-orange-900">
+                          − {cl.quantity} <span className="text-orange-600">{cl.unit}</span>
+                        </td>
+                      </tr>
+                    )
+                  })}
+                </tbody>
+              </table>
+            </div>
+          )}
+
           <div>
             <label className="block text-sm font-medium text-[var(--color-text-primary)] mb-1">
               Type <span className="text-danger">*</span>
@@ -498,6 +613,11 @@ export default function ChangeOrderModal({
           </div>
         </div>
       </Card>
+
+      {/* Versjonsdiff-popup nestet i samme overlay — åpnes når UE
+          klikker "Se endringer". Lukkes med X eller utenfor-klikk uten
+          å lukke selve EM-modalen. */}
+      <VersionDiffModal entry={diffEntry} onClose={() => setDiffEntry(null)} />
     </div>
   )
 }
