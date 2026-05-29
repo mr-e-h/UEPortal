@@ -5,18 +5,31 @@ import { isAdmin, isSub } from '@/lib/api-guard'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import type { ActivityEntry } from '@/types'
 
-// Keys that contain customer-side pricing. Stripped from metadata.before/after
-// when the requester is a UE so their Versjonslogg popup never reveals
-// Kundepris, Salgsverdi or Fortjeneste.
+// Keys that contain customer-side pricing. Stripped fra metadata.before/after
+// rekursivt når requester er UE, så Versjonslogg-popup aldri avslører
+// Kundepris, Salgsverdi eller Fortjeneste — uansett hvor dypt i strukturen
+// de ligger.
+//
+// Strukturen ble nestet i Prioritet 3:
+//   metadata.before = { change_order: {...}, lines: [...], consequence_lines: [...] }
+// så en flat top-level-strip leker dypere kundepriser. stripCustomerKeysDeep
+// traverserer både objekt-trær og arrays.
 const CUSTOMER_PRICING_KEYS = new Set(['customer_price_snapshot', 'total_customer_value', 'profit'])
 
-function stripCustomerKeys(obj: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
-  if (!obj) return obj
-  const out: Record<string, unknown> = {}
-  for (const [k, v] of Object.entries(obj)) {
-    if (!CUSTOMER_PRICING_KEYS.has(k)) out[k] = v
+function stripCustomerKeysDeep(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.map((item) => stripCustomerKeysDeep(item))
   }
-  return out
+  if (value !== null && typeof value === 'object') {
+    const out: Record<string, unknown> = {}
+    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
+      if (!CUSTOMER_PRICING_KEYS.has(k)) {
+        out[k] = stripCustomerKeysDeep(v)
+      }
+    }
+    return out
+  }
+  return value
 }
 
 export async function GET(request: NextRequest) {
@@ -58,16 +71,17 @@ export async function GET(request: NextRequest) {
 
   let rows = (data ?? []) as ActivityEntry[]
 
-  // UE strip: remove customer-pricing keys from the diff snapshots so the
-  // version popup on the sub side never reveals Salgsverdi/Profit.
+  // UE strip: fjern kundepris-keys rekursivt fra diff-snapshots så
+  // Versjonslogg-popup på UE-siden aldri avslører Salgsverdi/Profit —
+  // også dypt i nested change_order/lines/consequence_lines-strukturen.
   if (isSub(session)) {
     rows = rows.map((r) => {
       if (!r.metadata) return r
       return {
         ...r,
         metadata: {
-          before: stripCustomerKeys(r.metadata.before),
-          after: stripCustomerKeys(r.metadata.after),
+          before: stripCustomerKeysDeep(r.metadata.before) as Record<string, unknown> | undefined,
+          after: stripCustomerKeysDeep(r.metadata.after) as Record<string, unknown> | undefined,
         },
       }
     })
