@@ -1,6 +1,7 @@
 import type { ActivityEntry } from '@/types'
 
 export const ACTIVITY_ACTION_LABELS: Record<ActivityEntry['action'], string> = {
+  submitted:          'Sendte inn',
   approved:           'Godkjente',
   rejected:           'Avslo',
   reverted:           'Angret',

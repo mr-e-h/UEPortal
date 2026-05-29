@@ -179,7 +179,7 @@ export async function POST(request: NextRequest) {
     // Also write the first line into change_order_lines — admin can later
     // add more lines via the edit form; that table is the source of truth
     // for product/qty/snapshots while change_orders caches the rollup.
-    await sb.from('change_order_lines').insert({
+    const firstLine = {
       id: randomUUID(),
       change_order_id: newOrder.id,
       product_id: newOrder.product_id,
@@ -188,7 +188,57 @@ export async function POST(request: NextRequest) {
       cost_price_snapshot: newOrder.cost_price_snapshot,
       customer_price_snapshot: newOrder.customer_price_snapshot,
       sort_order: 0,
-    })
+    }
+    await sb.from('change_order_lines').insert(firstLine)
+
+    // Bevar ORIGINAL innsending som en activity_log-rad. Senere
+    // admin-redigeringer skriver 'edited'-rader med før/etter, men
+    // denne 'submitted'-raden er sannheten om hvordan EMen så ut
+    // ved første innsending. VersionDiffModal kan rendre den som
+    // "Opprinnelig innsending" uavhengig av hvor mange edits som
+    // har skjedd etter. Drafts (isDraft=true) får IKKE submitted-rad
+    // — den skrives først ved 'pending'-overgang for å unngå at
+    // halvferdig kladd-innhold blir tatt som "original".
+    if (!isDraft) {
+      await sb.from('activity_log').insert({
+        id: randomUUID(),
+        entity_type: 'change_order',
+        entity_id: newOrder.id,
+        action: 'submitted',
+        actor: session.full_name,
+        created_at: now,
+        metadata: {
+          after: {
+            change_order: {
+              em_type: newOrder.em_type,
+              status: newOrder.status,
+              product_id: newOrder.product_id,
+              requested_quantity: newOrder.requested_quantity,
+              unit: newOrder.unit,
+              reason: newOrder.reason,
+              solution: newOrder.solution,
+              attachment_url: newOrder.attachment_url,
+              cost_price_snapshot: newOrder.cost_price_snapshot,
+              customer_price_snapshot: newOrder.customer_price_snapshot,
+              total_cost: newOrder.total_cost,
+              total_customer_value: newOrder.total_customer_value,
+              profit: newOrder.profit,
+              submitted_by: newOrder.submitted_by,
+              submitted_at: newOrder.submitted_at,
+              change_order_number: newOrder.change_order_number,
+            },
+            lines: [{
+              product_id: firstLine.product_id,
+              requested_quantity: firstLine.requested_quantity,
+              unit: firstLine.unit,
+              cost_price_snapshot: firstLine.cost_price_snapshot,
+              customer_price_snapshot: firstLine.customer_price_snapshot,
+              sort_order: firstLine.sort_order,
+            }],
+          },
+        },
+      })
+    }
 
     return NextResponse.json(userIsSub ? stripForUE(newOrder) : newOrder, { status: 201 })
   } catch (error) {

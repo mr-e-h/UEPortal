@@ -446,7 +446,7 @@ export interface ActivityEntry {
   id: string
   entity_type: 'weekly_report' | 'change_order'
   entity_id: string
-  action: 'approved' | 'rejected' | 'reverted' | 'commented' | 'edited' | 'sent_to_customer' | 'revision_requested' | 'resubmitted'
+  action: 'approved' | 'rejected' | 'reverted' | 'commented' | 'edited' | 'sent_to_customer' | 'revision_requested' | 'resubmitted' | 'submitted'
   /**
    * Optional structured snapshot. For 'edited' rows: { before, after } with
    * the values at the moment of change. The activity GET endpoint strips
