@@ -3,7 +3,104 @@ import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { isAdmin, isSub, ensureProjectWritable } from '@/lib/api-guard'
-import type { ChangeOrder, Product, SubcontractorProductPrice, ProjectBudgetLine } from '@/types'
+import type { ChangeOrder, ChangeOrderLine, ChangeOrderConsequenceLine, Product, SubcontractorProductPrice, ProjectBudgetLine } from '@/types'
+
+/**
+ * Komplett snapshot av en EM på et gitt tidspunkt — brukes som verdi i
+ * activity_log.metadata.before og .after for 'edited'-rader. Strukturen
+ * speiler tabellrelasjonene: hoved + linjer + konsekvens-linjer som
+ * separate arrays slik at VersionDiffModal kan render per-linje-diff
+ * uten å rekonstruere fra rollup-totaler.
+ */
+type ChangeOrderSnapshot = {
+  change_order: Partial<ChangeOrder>
+  lines: Array<Omit<ChangeOrderLine, 'id' | 'change_order_id' | 'created_at'>>
+  consequence_lines: Array<Omit<ChangeOrderConsequenceLine, 'id' | 'change_order_id' | 'created_at'>>
+}
+
+/**
+ * Hent komplett snapshot fra DB. Kjøres én gang før mutasjon (before) og
+ * én gang etter at alle mutasjoner inkludert consequence_lines-replace er
+ * ferdig (after). Vi tar med hovedfelt-cachen på change_orders i tillegg
+ * til den autoritative lines-arrayen — admin-konsumenter trenger
+ * rollup-totaler, og UE-strip-laget i /api/activity tar bort
+ * customer_*-feltene fra metadata før det går til UE.
+ */
+async function captureChangeOrderSnapshot(
+  sb: ReturnType<typeof getSupabaseAdmin>,
+  changeOrderId: string,
+  orderRow: ChangeOrder,
+): Promise<ChangeOrderSnapshot> {
+  const [linesRes, conseqRes] = await Promise.all([
+    sb.from('change_order_lines')
+      .select('product_id, requested_quantity, unit, cost_price_snapshot, customer_price_snapshot, sort_order')
+      .eq('change_order_id', changeOrderId)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true }),
+    sb.from('change_order_consequence_lines')
+      .select('product_id, quantity, unit, cost_price_snapshot, customer_price_snapshot, sort_order')
+      .eq('change_order_id', changeOrderId)
+      .order('sort_order', { ascending: true })
+      .order('created_at', { ascending: true }),
+  ])
+  return {
+    change_order: {
+      em_type: orderRow.em_type,
+      status: orderRow.status,
+      product_id: orderRow.product_id,
+      requested_quantity: orderRow.requested_quantity,
+      unit: orderRow.unit,
+      reason: orderRow.reason,
+      solution: orderRow.solution,
+      cost_price_snapshot: orderRow.cost_price_snapshot,
+      customer_price_snapshot: orderRow.customer_price_snapshot,
+      total_cost: orderRow.total_cost,
+      total_customer_value: orderRow.total_customer_value,
+      profit: orderRow.profit,
+      attachment_url: orderRow.attachment_url,
+    },
+    lines: (linesRes.data ?? []) as ChangeOrderSnapshot['lines'],
+    consequence_lines: (conseqRes.data ?? []) as ChangeOrderSnapshot['consequence_lines'],
+  }
+}
+
+/**
+ * Bygg en kort lesbar oppsummeringstekst basert på diff mellom to
+ * snapshots — vises i activity-feeden uten å åpne VersionDiffModal.
+ * Returnerer null hvis ingenting er endret (caller bruker det som
+ * "ingen audit-rad nødvendig").
+ */
+function buildEditedSummary(before: ChangeOrderSnapshot, after: ChangeOrderSnapshot): string | null {
+  const parts: string[] = []
+  const bco = before.change_order
+  const aco = after.change_order
+  if (bco.reason !== aco.reason) parts.push('beskrivelse endret')
+  if (bco.solution !== aco.solution) parts.push('løsning endret')
+  if (bco.em_type !== aco.em_type) parts.push('type endret')
+  // Per-linje diff: telling av lagt-til/fjernet/endret holder for summary.
+  const beforeLineKeys = new Set(before.lines.map((l) => `${l.product_id}|${l.requested_quantity}`))
+  const afterLineKeys = new Set(after.lines.map((l) => `${l.product_id}|${l.requested_quantity}`))
+  const addedLines = after.lines.filter((l) => !beforeLineKeys.has(`${l.product_id}|${l.requested_quantity}`))
+  const removedLines = before.lines.filter((l) => !afterLineKeys.has(`${l.product_id}|${l.requested_quantity}`))
+  if (before.lines.length !== after.lines.length) {
+    parts.push(`linjer: ${before.lines.length} → ${after.lines.length}`)
+  } else if (addedLines.length > 0 || removedLines.length > 0) {
+    parts.push('linjer endret')
+  }
+  if (before.consequence_lines.length !== after.consequence_lines.length) {
+    parts.push(`konsekvens: ${before.consequence_lines.length} → ${after.consequence_lines.length}`)
+  } else if (JSON.stringify(before.consequence_lines) !== JSON.stringify(after.consequence_lines)) {
+    parts.push('konsekvens endret')
+  }
+  if (parts.length === 0) {
+    // Total-tall kan ha skiftet på grunn av re-priser (sjeldent) — sjekk
+    // som siste skanse så vi ikke logger no-op edits.
+    if (bco.total_cost !== aco.total_cost || bco.total_customer_value !== aco.total_customer_value) {
+      parts.push('priser justert')
+    }
+  }
+  return parts.length > 0 ? parts.join(' · ') : null
+}
 
 /**
  * Replace-all av "konsekvens ved avslag"-linjer for en EM. Tar mot enkle
@@ -138,6 +235,17 @@ export async function PUT(
       if (denied) return denied
     }
 
+    // For admin/PM-edits: fang komplett før-snapshot AV ALT (hovedfelt +
+    // alle linjer + alle konsekvens-linjer) før første mutasjon. Brukes
+    // som metadata.before når vi skriver én samlet 'edited'-rad helt på
+    // slutten av PUT. UE-edits logges ikke som 'edited' — de fanges av
+    // 'submitted' (draft→pending) og 'resubmitted' (revision_requested
+    // →pending) i steden.
+    const willAuditEdit = isAdmin(session)
+    const beforeSnapshot: ChangeOrderSnapshot | null = willAuditEdit
+      ? await captureChangeOrderSnapshot(sb, params.id, order)
+      : null
+
     // ── Multi-line path (admin edit form sends `lines: [...]`) ────────────
     // When the client sends a lines array, we treat it as the authoritative
     // composition of the EM: delete existing lines, insert these, and
@@ -233,48 +341,33 @@ export async function PUT(
         .maybeSingle<ChangeOrder>()
       if (updErr) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
 
-      // Audit log — capture full before/after rollup so the version diff
-      // popup can render it. Per-line diffs are intentionally summarized
-      // (counts) rather than dumped — keeps the popup compact.
-      if (isAdmin(session) && order.status === 'pending') {
-        const before = {
-          requested_quantity: order.requested_quantity,
-          unit: order.unit,
-          reason: order.reason,
-          solution: order.solution ?? '',
-          product_id: order.product_id,
-          total_cost: order.total_cost,
-          total_customer_value: order.total_customer_value,
-          profit: order.profit,
-        }
-        const after = {
-          requested_quantity: firstLine.qty,
-          unit: firstLine.unit,
-          reason: newReason,
-          solution: newSolution,
-          product_id: firstLine.product_id,
-          total_cost: totalCost,
-          total_customer_value: totalCustomer,
-          profit: totalCustomer - totalCost,
-        }
-        const summary = `${snaps.length} ${snaps.length === 1 ? 'linje' : 'linjer'} · totalkost ${order.total_cost} → ${totalCost}`
-        await sb.from('activity_log').insert({
-          id: makeId(),
-          entity_type: 'change_order',
-          entity_id: params.id,
-          action: 'edited',
-          actor: session.full_name,
-          comment: summary,
-          created_at: now2,
-          metadata: { before, after },
-        })
-      }
-
       // Konsekvens-linjer er admin/PM-only. UE har allerede returnert i en
       // tidligere gate, men sjekker eksplisitt for å være på den sikre siden.
+      // Kjøres FØR audit-loggen så etter-snapshot fanger
+      // konsekvens-endringer i samme rad.
       if (Array.isArray(body.consequence_lines) && isAdmin(session) && updatedOrder) {
         const err = await replaceConsequenceLines(sb, updatedOrder, body.consequence_lines)
         if (err) return NextResponse.json({ error: err }, { status: 400 })
+      }
+
+      // Samlet 'edited'-audit (multi-line path). Fang etter-snapshot fra
+      // DB — inkludert lines + consequence_lines — og sammenlign med før.
+      // Skriver kun én rad per request, kun hvis noe faktisk er endret.
+      if (willAuditEdit && beforeSnapshot && updatedOrder) {
+        const afterSnapshot = await captureChangeOrderSnapshot(sb, params.id, updatedOrder)
+        const summary = buildEditedSummary(beforeSnapshot, afterSnapshot)
+        if (summary) {
+          await sb.from('activity_log').insert({
+            id: makeId(),
+            entity_type: 'change_order',
+            entity_id: params.id,
+            action: 'edited',
+            actor: session.full_name,
+            comment: summary,
+            created_at: now2,
+            metadata: { before: beforeSnapshot, after: afterSnapshot },
+          })
+        }
       }
 
       if (isSub(session) && updatedOrder) {
@@ -367,58 +460,65 @@ export async function PUT(
       })
     }
 
-    // Audit-trail admin edits to non-draft EMs — sub-editing their own draft
-    // pre-submission is routine and would just be noise in the activity log.
-    // metadata captures the FULL before/after so the Versjonslogg popup can
-    // render a side-by-side diff without needing to reconstruct from text.
-    if (isAdmin(session) && order.status === 'pending') {
-      const diffs: string[] = []
-      if (order.requested_quantity !== newQuantity) diffs.push(`mengde: ${order.requested_quantity} → ${newQuantity}`)
-      if (order.product_id !== newProductId) diffs.push('produkt endret')
-      if ((order.reason ?? '') !== (newReason ?? '')) diffs.push('beskrivelse endret')
-      if ((order.solution ?? '') !== (newSolution ?? '')) diffs.push('løsning endret')
-      if (diffs.length > 0) {
-        const { randomUUID } = await import('crypto')
-        const before = {
-          requested_quantity: order.requested_quantity,
-          unit: order.unit,
-          reason: order.reason,
-          solution: order.solution ?? '',
-          product_id: order.product_id,
-          total_cost: order.total_cost,
-          total_customer_value: order.total_customer_value,
-          profit: order.profit,
-          cost_price_snapshot: order.cost_price_snapshot,
-          customer_price_snapshot: order.customer_price_snapshot,
-        }
-        const after = {
+    // change_order_lines speilesynk for single-line path: oppdater den
+    // ene eksisterende linjen så lines-tabellen forblir sannheten om
+    // produkt+mengde+snapshots. Hvis EMen hadde flere linjer fra før
+    // (sjelden — admin-edit bruker multi-line path), beholdes de
+    // ekstra linjene urørt. NB: single-line PUT er primært UE-flyten.
+    if (newProductId !== order.product_id || newQuantity !== order.requested_quantity) {
+      await sb.from('change_order_lines')
+        .update({
+          product_id: newProductId,
           requested_quantity: newQuantity,
           unit,
-          reason: newReason,
-          solution: newSolution,
-          product_id: newProductId,
-          total_cost: costPriceSnapshot * newQuantity,
-          total_customer_value: customerPriceSnapshot * newQuantity,
-          profit: (customerPriceSnapshot - costPriceSnapshot) * newQuantity,
           cost_price_snapshot: costPriceSnapshot,
           customer_price_snapshot: customerPriceSnapshot,
-        }
+        })
+        .eq('change_order_id', params.id)
+        .eq('sort_order', 0)
+    }
+
+    // UE som sender inn ny versjon etter revisjon — logg som 'resubmitted'.
+    // Egen handlingstype så Versjonsloggen kan vise "Sendte inn ny versjon"
+    // tydelig adskilt fra første innsending eller en vanlig redigering.
+    // Kjøres FØR consequence_lines siden den ikke endrer disse uansett.
+    if (isSub(session) && order.status === 'revision_requested' && newStatus === 'pending') {
+      await sb.from('activity_log').insert({
+        id: randomUUID(),
+        entity_type: 'change_order',
+        entity_id: params.id,
+        action: 'resubmitted',
+        actor: session.full_name,
+        created_at: now,
+      })
+    }
+
+    // Konsekvens-linjer FØR audit-log slik at etter-snapshot fanger dem.
+    if (Array.isArray(body.consequence_lines) && isAdmin(session)) {
+      const err = await replaceConsequenceLines(sb, data, body.consequence_lines)
+      if (err) return NextResponse.json({ error: err }, { status: 400 })
+    }
+
+    // Samlet 'edited'-audit (single-line path). Identisk struktur som
+    // multi-line path. Skriver kun én rad, og kun hvis snapshots
+    // faktisk er forskjellige. Admin-edits på drafts logges også nå —
+    // den gamle koden filtrerte dem ut som "støy", men brukeren ønsker
+    // full sporbarhet av admin-endringer uansett status.
+    if (willAuditEdit && beforeSnapshot) {
+      const afterSnapshot = await captureChangeOrderSnapshot(sb, params.id, data)
+      const summary = buildEditedSummary(beforeSnapshot, afterSnapshot)
+      if (summary) {
         await sb.from('activity_log').insert({
           id: randomUUID(),
           entity_type: 'change_order',
           entity_id: params.id,
           action: 'edited',
           actor: session.full_name,
-          comment: diffs.join(' · '),
+          comment: summary,
           created_at: now,
-          metadata: { before, after },
+          metadata: { before: beforeSnapshot, after: afterSnapshot },
         })
       }
-    }
-
-    if (Array.isArray(body.consequence_lines) && isAdmin(session)) {
-      const err = await replaceConsequenceLines(sb, data, body.consequence_lines)
-      if (err) return NextResponse.json({ error: err }, { status: 400 })
     }
 
     if (isSub(session)) {
