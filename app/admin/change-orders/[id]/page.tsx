@@ -710,8 +710,12 @@ export default function ChangeOrderDetailPage() {
             </div>
           )}
 
-          {/* Admin action — hidden in print */}
-          {co.status === 'pending' && (
+          {/* Admin action — hidden in print. Vises BÅDE for pending og
+              revision_requested så admin kan handle direkte fra hvilken som
+              helst av disse to "uavklart"-tilstandene. Kontekst-uegnede
+              knapper skjules per status: Be om ny versjon + Til behandling
+              er kun pending-relevant. */}
+          {(co.status === 'pending' || co.status === 'revision_requested') && (
             <div className="print:hidden bg-white rounded-lg shadow p-6 space-y-4">
               <h2 className="text-base font-semibold text-gray-900">Behandle endringsmelding</h2>
               <div>
@@ -732,15 +736,17 @@ export default function ChangeOrderDetailPage() {
                 >
                   Avvis
                 </button>
-                <button
-                  onClick={requestRevision}
-                  disabled={submitting}
-                  className="px-4 py-2 text-sm bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50"
-                  title="Returnerer EMen til UE for revisjon. Kommentaren over blir vist for UE så de vet hva som mangler."
-                >
-                  Be om ny versjon
-                </button>
-                {!sentToCustomer && (
+                {co.status === 'pending' && (
+                  <button
+                    onClick={requestRevision}
+                    disabled={submitting}
+                    className="px-4 py-2 text-sm bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50"
+                    title="Returnerer EMen til UE for revisjon. Kommentaren over blir vist for UE så de vet hva som mangler."
+                  >
+                    Be om ny versjon
+                  </button>
+                )}
+                {co.status === 'pending' && !sentToCustomer && (
                   <button
                     onClick={markAsSent}
                     disabled={submitting}
