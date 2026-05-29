@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
 import { Pencil, X, Save, Printer, History, Plus, Trash2 } from 'lucide-react'
-import type { ChangeOrder, ChangeOrderLine, Project, Product, Subcontractor, ActivityEntry } from '@/types'
+import type { ChangeOrder, ChangeOrderLine, ChangeOrderConsequenceLine, Project, Product, Subcontractor, ActivityEntry } from '@/types'
 import { fmtNOK as fmt, fmtProductLabel, fmtChangeOrderTitle } from '@/lib/format'
 import { changeOrderType } from '@/lib/statuses'
 import { activityActionLabel } from '@/lib/activity-actions'
@@ -50,11 +50,16 @@ export default function ChangeOrderDetailPage() {
 
   // EM lines — source of truth for product + qty in multi-line mode.
   const [lines, setLines] = useState<ChangeOrderLine[]>([])
+  // "Konsekvens ved avslag" — admin/PM-definerte produktlinjer som trekkes
+  // fra budsjettet hvis EMen avvises.
+  const [consequenceLines, setConsequenceLines] = useState<ChangeOrderConsequenceLine[]>([])
   // Inline edit. Allowed for draft + pending (admin).
   // editLines drives the editable table; each row has product_id and qty.
   type EditLine = { tempId: string; product_id: string; requested_quantity: string }
+  type EditConsequenceLine = { tempId: string; product_id: string; quantity: string }
   const [editing, setEditing] = useState(false)
   const [editLines, setEditLines] = useState<EditLine[]>([])
+  const [editConsequenceLines, setEditConsequenceLines] = useState<EditConsequenceLine[]>([])
   const [editReason, setEditReason] = useState('')
   const [editSolution, setEditSolution] = useState('')
   const [editEmType, setEditEmType] = useState<'economic' | 'spec_deviation' | 'time'>('economic')
@@ -66,13 +71,14 @@ export default function ChangeOrderDetailPage() {
   const [products, setProducts] = useState<Product[]>([])
 
   const load = useCallback(async () => {
-    const [orders, projects, products, subs, activityData, linesData] = await Promise.all([
+    const [orders, projects, products, subs, activityData, linesData, consequenceData] = await Promise.all([
       fetch(`/api/change-orders?id=${id}`).then((r) => r.json()),
       fetch('/api/projects').then((r) => r.json()),
       fetch('/api/products').then((r) => r.json()),
       fetch('/api/subcontractors').then((r) => r.json()),
       fetch(`/api/activity?entity_id=${id}&entity_type=change_order`).then((r) => r.json()),
       fetch(`/api/change-orders/${id}/lines`).then((r) => r.json()),
+      fetch(`/api/change-orders/${id}/consequence-lines`).then((r) => r.json()),
     ])
     const found: ChangeOrder = orders[0] ?? null
     setCo(found)
@@ -85,6 +91,7 @@ export default function ChangeOrderDetailPage() {
     }
     setActivity(Array.isArray(activityData) ? activityData : [])
     setLines(Array.isArray(linesData) ? (linesData as ChangeOrderLine[]) : [])
+    setConsequenceLines(Array.isArray(consequenceData) ? (consequenceData as ChangeOrderConsequenceLine[]) : [])
     setLoading(false)
   }, [id])
 
@@ -140,6 +147,14 @@ export default function ChangeOrderDetailPage() {
         }))
       : [{ tempId: crypto.randomUUID(), product_id: co.product_id, requested_quantity: String(co.requested_quantity) }]
     setEditLines(seed)
+    // Seed konsekvens-linjene fra serverstaten — kan være tom liste.
+    setEditConsequenceLines(
+      consequenceLines.map((l) => ({
+        tempId: l.id,
+        product_id: l.product_id,
+        quantity: String(l.quantity),
+      })),
+    )
     setEditReason(co.reason ?? '')
     setEditSolution(co.solution ?? '')
     setEditEmType(co.em_type ?? 'economic')
@@ -162,6 +177,22 @@ export default function ChangeOrderDetailPage() {
     setEditLines((prev) => prev.map((l) => (l.tempId === tempId ? { ...l, ...patch } : l)))
   }
 
+  // Konsekvens-linjer kan starte tom (ingen konsekvens definert).
+  function addConsequenceLine() {
+    setEditConsequenceLines((prev) => [
+      ...prev,
+      { tempId: crypto.randomUUID(), product_id: '', quantity: '' },
+    ])
+  }
+
+  function removeConsequenceLine(tempId: string) {
+    setEditConsequenceLines((prev) => prev.filter((l) => l.tempId !== tempId))
+  }
+
+  function updateConsequenceLine(tempId: string, patch: Partial<EditConsequenceLine>) {
+    setEditConsequenceLines((prev) => prev.map((l) => (l.tempId === tempId ? { ...l, ...patch } : l)))
+  }
+
   async function saveEdit() {
     setEditSaving(true)
     setEditError(null)
@@ -181,10 +212,33 @@ export default function ChangeOrderDetailPage() {
       }
       cleaned.push({ product_id: ln.product_id, requested_quantity: qty })
     }
+    // Konsekvens-linjer kan være tomme (ingen konsekvens definert) — vi
+    // sender alltid arrayet så serveren vet at vi mente å replace-all.
+    const cleanedConsequence: Array<{ product_id: string; quantity: number }> = []
+    for (const ln of editConsequenceLines) {
+      if (!ln.product_id) {
+        setEditError('Velg produkt på alle konsekvens-linjer (eller fjern de tomme)')
+        setEditSaving(false)
+        return
+      }
+      const qty = Number(ln.quantity)
+      if (!Number.isFinite(qty) || qty <= 0) {
+        setEditError('Mengde må være et positivt tall på hver konsekvens-linje')
+        setEditSaving(false)
+        return
+      }
+      cleanedConsequence.push({ product_id: ln.product_id, quantity: qty })
+    }
     const res = await fetch(`/api/change-orders/${id}`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ lines: cleaned, reason: editReason, solution: editSolution, em_type: editEmType }),
+      body: JSON.stringify({
+        lines: cleaned,
+        reason: editReason,
+        solution: editSolution,
+        em_type: editEmType,
+        consequence_lines: cleanedConsequence,
+      }),
     })
     setEditSaving(false)
     if (!res.ok) {
@@ -382,6 +436,44 @@ export default function ChangeOrderDetailPage() {
               <p className="text-sm text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-line">{co.solution || '–'}</p>
             </div>
 
+            {/* Konsekvens ved avslag — PL/admin-definert. Vises også på PDF
+                så kunden ser hva som henger på en avvisning. Hvis ingen
+                konsekvens er lagt inn skjules hele blokken (ikke vis "ingen
+                konsekvens" — det er forvirrende). */}
+            {consequenceLines.length > 0 && (
+              <div>
+                <p className="text-xs text-gray-400 mb-1">Konsekvens ved å avslå</p>
+                <div className="overflow-x-auto rounded border border-orange-200 bg-orange-50/50">
+                  <table className="w-full text-sm">
+                    <thead className="bg-orange-100/50 text-xs text-orange-900 uppercase tracking-wide">
+                      <tr>
+                        <th className="px-3 py-2 text-left font-medium">Produkt</th>
+                        <th className="px-3 py-2 text-right font-medium">Mengde</th>
+                      </tr>
+                    </thead>
+                    <tbody className="divide-y divide-orange-100">
+                      {consequenceLines.map((ln) => {
+                        const p = products.find((pp) => pp.id === ln.product_id) ?? null
+                        return (
+                          <tr key={ln.id}>
+                            <td className="px-3 py-2">
+                              <p className="font-medium text-gray-900">{fmtProductLabel(p)}</p>
+                            </td>
+                            <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+                              − {ln.quantity} <span className="text-gray-400">{ln.unit}</span>
+                            </td>
+                          </tr>
+                        )
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                <p className="mt-1 text-[10px] text-gray-400">
+                  Hvis EM avvises, trekkes disse mengdene automatisk fra prosjektbudsjettet.
+                </p>
+              </div>
+            )}
+
             {/* Inline edit panel — admin only, hidden in print. The product +
                 quantity sit in a 'gammel → ny' table so the change is
                 explicit at a glance. */}
@@ -492,6 +584,83 @@ export default function ChangeOrderDetailPage() {
                     placeholder="Hvordan løses det / hva blir gjort?"
                     className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
                   />
+                </div>
+
+                {/* Konsekvens-tabell — admin/PM legger inn produkt + mengde
+                    som vil bli FJERNET fra prosjektbudsjettet hvis EM
+                    avvises. Tom liste tillatt: ingen konsekvens definert. */}
+                <div className="space-y-2">
+                  <div className="flex items-center justify-between">
+                    <label className="block text-xs font-medium text-gray-700">Konsekvens ved å avslå</label>
+                    <button
+                      type="button"
+                      onClick={addConsequenceLine}
+                      className="inline-flex items-center gap-1 px-2 py-1 text-xs bg-white border border-orange-300 text-orange-700 rounded hover:bg-orange-50"
+                    >
+                      <Plus size={12} /> Legg til konsekvens
+                    </button>
+                  </div>
+                  <p className="text-[10px] text-gray-500">
+                    Produkter + mengder som vil trekkes fra prosjektbudsjettet hvis EMen avvises (samme UE som EMen).
+                  </p>
+                  {editConsequenceLines.length > 0 && (
+                    <div className="overflow-x-auto bg-white rounded border border-orange-200">
+                      <table className="w-full text-xs">
+                        <thead className="bg-orange-50/50">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-semibold text-orange-900">Produkt</th>
+                            <th className="px-3 py-2 text-right font-semibold text-orange-900 w-32">Mengde (−)</th>
+                            <th className="px-3 py-2 w-12"></th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {editConsequenceLines.map((ln) => {
+                            const prod = products.find((p) => p.id === ln.product_id) ?? null
+                            return (
+                              <tr key={ln.tempId} className="border-t border-orange-100">
+                                <td className="px-3 py-2">
+                                  <select
+                                    value={ln.product_id}
+                                    onChange={(e) => updateConsequenceLine(ln.tempId, { product_id: e.target.value })}
+                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white"
+                                  >
+                                    <option value="">Velg produkt...</option>
+                                    {products.map((p) => (
+                                      <option key={p.id} value={p.id}>{fmtProductLabel(p)}</option>
+                                    ))}
+                                  </select>
+                                </td>
+                                <td className="px-3 py-2 text-right">
+                                  <div className="inline-flex items-center justify-end gap-1.5">
+                                    <input
+                                      type="number"
+                                      inputMode="decimal"
+                                      step="0.01"
+                                      min="0"
+                                      value={ln.quantity}
+                                      onChange={(e) => updateConsequenceLine(ln.tempId, { quantity: e.target.value })}
+                                      className="w-20 px-2 py-1 text-right text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-400 tabular-nums"
+                                    />
+                                    <span className="text-gray-400 text-xs w-8">{prod?.unit ?? ''}</span>
+                                  </div>
+                                </td>
+                                <td className="px-3 py-2 text-center">
+                                  <button
+                                    type="button"
+                                    onClick={() => removeConsequenceLine(ln.tempId)}
+                                    className="p-1 text-gray-400 hover:text-red-600"
+                                    title="Fjern konsekvens-linje"
+                                  >
+                                    <Trash2 size={14} />
+                                  </button>
+                                </td>
+                              </tr>
+                            )
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </div>
 
                 {editError && (

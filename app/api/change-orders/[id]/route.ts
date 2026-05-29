@@ -1,8 +1,79 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { isAdmin, isSub, ensureProjectWritable } from '@/lib/api-guard'
 import type { ChangeOrder, Product, SubcontractorProductPrice, ProjectBudgetLine } from '@/types'
+
+/**
+ * Replace-all av "konsekvens ved avslag"-linjer for en EM. Tar mot enkle
+ * { product_id, quantity }-objekter; serveren slår opp gjeldende
+ * cost-pris (fra UE-prisliste, fallback til budsjettlinjen) og kunde-pris
+ * (fra produktmasteren) per linje, så vi har snapshots å reversere mot
+ * når EMen avvises eller angres senere.
+ *
+ * Returnerer string med feilmelding ved problem, ellers null.
+ */
+async function replaceConsequenceLines(
+  sb: ReturnType<typeof getSupabaseAdmin>,
+  order: ChangeOrder,
+  rawLines: Array<{ product_id: string; quantity: number }>,
+): Promise<string | null> {
+  // Valider input før vi sletter eksisterende — så enten lykkes alt eller
+  // ingenting endres.
+  type Snap = { product_id: string; qty: number; unit: string; cost: number; customer: number }
+  const snaps: Snap[] = []
+  for (const ln of rawLines) {
+    const qty = Number(ln.quantity)
+    if (!Number.isFinite(qty) || qty <= 0) return 'Konsekvens-mengde må være et positivt tall'
+    const [productRes, priceRes, blRes] = await Promise.all([
+      sb.from('products').select('customer_price, unit').eq('id', ln.product_id).maybeSingle<Pick<Product, 'customer_price' | 'unit'>>(),
+      sb.from('subcontractor_product_prices').select('cost_price')
+        .eq('subcontractor_id', order.subcontractor_id)
+        .eq('product_id', ln.product_id)
+        .maybeSingle<Pick<SubcontractorProductPrice, 'cost_price'>>(),
+      sb.from('project_budget_lines').select('subcontractor_cost_price_snapshot')
+        .eq('project_id', order.project_id)
+        .eq('product_id', ln.product_id)
+        .eq('assigned_subcontractor_id', order.subcontractor_id)
+        .maybeSingle<Pick<ProjectBudgetLine, 'subcontractor_cost_price_snapshot'>>(),
+    ])
+    if (!productRes.data) return 'Produkt på konsekvens-linje ikke funnet'
+    let cost = priceRes.data?.cost_price ?? 0
+    if (cost === 0 && blRes.data && blRes.data.subcontractor_cost_price_snapshot > 0) {
+      cost = blRes.data.subcontractor_cost_price_snapshot
+    }
+    snaps.push({
+      product_id: ln.product_id,
+      qty,
+      unit: productRes.data.unit,
+      cost,
+      customer: productRes.data.customer_price,
+    })
+  }
+
+  const { error: delErr } = await sb
+    .from('change_order_consequence_lines')
+    .delete()
+    .eq('change_order_id', order.id)
+  if (delErr) return `Konsekvens-linjer (slett): ${delErr.message}`
+
+  if (snaps.length > 0) {
+    const payload = snaps.map((s, i) => ({
+      id: randomUUID(),
+      change_order_id: order.id,
+      product_id: s.product_id,
+      quantity: s.qty,
+      unit: s.unit,
+      cost_price_snapshot: s.cost,
+      customer_price_snapshot: s.customer,
+      sort_order: i,
+    }))
+    const { error: insErr } = await sb.from('change_order_consequence_lines').insert(payload)
+    if (insErr) return `Konsekvens-linjer (lagre): ${insErr.message}`
+  }
+  return null
+}
 
 export async function PUT(
   request: NextRequest,
@@ -20,6 +91,11 @@ export async function PUT(
       em_type?: 'economic' | 'spec_deviation' | 'time'
       status?: 'pending' | 'draft'
       lines?: Array<{ product_id: string; requested_quantity: number }>
+      /** "Konsekvens ved å avslå" — replace-all når feltet er satt. PL/admin
+       *  only. Body sender produktet + mengde; serveren slår opp gjeldende
+       *  cost/customer-price-snapshots fra UE-prislisten + produktmasteren
+       *  så avslag-logikken senere kan reversere riktig sum. */
+      consequence_lines?: Array<{ product_id: string; quantity: number }>
     }
 
     if (body.em_type !== undefined && !['economic', 'spec_deviation', 'time'].includes(body.em_type)) {
@@ -194,6 +270,13 @@ export async function PUT(
         })
       }
 
+      // Konsekvens-linjer er admin/PM-only. UE har allerede returnert i en
+      // tidligere gate, men sjekker eksplisitt for å være på den sikre siden.
+      if (Array.isArray(body.consequence_lines) && isAdmin(session) && updatedOrder) {
+        const err = await replaceConsequenceLines(sb, updatedOrder, body.consequence_lines)
+        if (err) return NextResponse.json({ error: err }, { status: 400 })
+      }
+
       if (isSub(session) && updatedOrder) {
         const { customer_price_snapshot: _cp, total_customer_value: _tcv, profit: _p, ...rest } = updatedOrder
         return NextResponse.json(rest)
@@ -331,6 +414,11 @@ export async function PUT(
           metadata: { before, after },
         })
       }
+    }
+
+    if (Array.isArray(body.consequence_lines) && isAdmin(session)) {
+      const err = await replaceConsequenceLines(sb, data, body.consequence_lines)
+      if (err) return NextResponse.json({ error: err }, { status: 400 })
     }
 
     if (isSub(session)) {

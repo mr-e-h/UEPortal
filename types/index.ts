@@ -185,6 +185,25 @@ export type ChangeOrderStatus = 'draft' | 'pending' | 'approved' | 'rejected' | 
 export type ChangeOrderType = 'economic' | 'spec_deviation' | 'time'
 
 /**
+ * "Konsekvens ved å avslå" — produktlinjer som ble fjernet fra
+ * prosjektbudsjettet hvis EMen avvises. Brukt for å vise kunden
+ * konsekvensene av en avvisning. Bare admin + PM kan opprette og redigere
+ * disse; UE ser dem read-only. På avslag trekker /status-endepunktet
+ * mengdene fra matchende project_budget_lines (same project/produkt/UE).
+ */
+export interface ChangeOrderConsequenceLine {
+  id: string
+  change_order_id: string
+  product_id: string
+  quantity: number
+  unit: string
+  cost_price_snapshot: number
+  customer_price_snapshot: number
+  sort_order: number
+  created_at: string
+}
+
+/**
  * One product line within a change order. Multiple lines per EM are
  * supported on the admin edit flow. The parent change_orders row keeps
  * rolled-up totals as a cache for list queries; this table is the source

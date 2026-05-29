@@ -2,7 +2,88 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
-import type { ChangeOrder, ProjectBudgetLine, ActivityEntry } from '@/types'
+import type { ChangeOrder, ProjectBudgetLine, ActivityEntry, ChangeOrderConsequenceLine } from '@/types'
+
+/**
+ * Trekk konsekvens-mengdene fra prosjektbudsjettet — kjøres når en EM
+ * avvises. For hver konsekvens-linje finner vi matchende budget_line
+ * (samme project_id + product_id + assigned_subcontractor_id) og reduserer
+ * mengden. Hvis budsjettet faller til 0, slettes linjen.
+ *
+ * Linjer som ikke finnes i prosjektbudsjettet (admin satt opp en
+ * konsekvens som ikke matcher noen tildelt linje) hopper vi stille over —
+ * resultatet blir et "konsekvens uten effekt", noe revert-pathen kommer
+ * til å speile.
+ */
+async function applyConsequencesToBudget(
+  sb: ReturnType<typeof getSupabaseAdmin>,
+  order: ChangeOrder,
+) {
+  const { data: consequenceLines } = await sb
+    .from('change_order_consequence_lines')
+    .select('*')
+    .eq('change_order_id', order.id)
+  const lines = (consequenceLines ?? []) as ChangeOrderConsequenceLine[]
+  for (const line of lines) {
+    const { data: budgetLine } = await sb
+      .from('project_budget_lines')
+      .select('*')
+      .eq('project_id', order.project_id)
+      .eq('product_id', line.product_id)
+      .eq('assigned_subcontractor_id', order.subcontractor_id)
+      .maybeSingle<ProjectBudgetLine>()
+    if (!budgetLine) continue
+    const newQty = budgetLine.budget_quantity - line.quantity
+    if (newQty <= 0) {
+      await sb.from('project_budget_lines').delete().eq('id', budgetLine.id)
+    } else {
+      await sb.from('project_budget_lines').update({ budget_quantity: newQty }).eq('id', budgetLine.id)
+    }
+  }
+}
+
+/**
+ * Inverse av applyConsequencesToBudget — brukes når et avslag angres
+ * (rejected → pending). Legger konsekvens-mengdene tilbake i
+ * prosjektbudsjettet. Hvis budsjettlinjen ble fullstendig slettet under
+ * avslag-handlingen re-insertes den fra snapshots på konsekvens-linjen.
+ */
+async function reverseConsequencesOnBudget(
+  sb: ReturnType<typeof getSupabaseAdmin>,
+  order: ChangeOrder,
+) {
+  const { data: consequenceLines } = await sb
+    .from('change_order_consequence_lines')
+    .select('*')
+    .eq('change_order_id', order.id)
+  const lines = (consequenceLines ?? []) as ChangeOrderConsequenceLine[]
+  for (const line of lines) {
+    const { data: budgetLine } = await sb
+      .from('project_budget_lines')
+      .select('*')
+      .eq('project_id', order.project_id)
+      .eq('product_id', line.product_id)
+      .eq('assigned_subcontractor_id', order.subcontractor_id)
+      .maybeSingle<ProjectBudgetLine>()
+    if (budgetLine) {
+      await sb.from('project_budget_lines').update({
+        budget_quantity: budgetLine.budget_quantity + line.quantity,
+      }).eq('id', budgetLine.id)
+    } else {
+      const restored: ProjectBudgetLine = {
+        id: randomUUID(),
+        project_id: order.project_id,
+        product_id: line.product_id,
+        budget_quantity: line.quantity,
+        customer_price_snapshot: line.customer_price_snapshot,
+        assigned_subcontractor_id: order.subcontractor_id,
+        subcontractor_cost_price_snapshot: line.cost_price_snapshot,
+        source: 'manual',
+      }
+      await sb.from('project_budget_lines').insert(restored)
+    }
+  }
+}
 
 /**
  * Append an audit row directly instead of reading the whole table, mutating
@@ -96,6 +177,10 @@ export async function POST(
           await sb.from('project_budget_lines').update({ budget_quantity: newQty }).eq('id', existing.id)
         }
       }
+    } else if (prevStatus === 'rejected') {
+      // Avslaget aktiverte konsekvens-linjene — angre må reversere dem så
+      // budsjettet kommer tilbake til pre-avslag tilstand.
+      await reverseConsequencesOnBudget(sb, order)
     }
 
     await logActivity(params.id, 'reverted', actor, admin_comment)
@@ -164,6 +249,11 @@ export async function POST(
         subcontractor_id: order.subcontractor_id,
       })
     }
+  } else if (status === 'rejected') {
+    // Konsekvenser av avslag: trekk produktmengdene fra prosjektbudsjettet.
+    // Hvis admin la inn "50 m² standardfliser" som konsekvens, fjernes nå
+    // den mengden fra UE-ens budsjettlinje.
+    await applyConsequencesToBudget(sb, order)
   }
 
   await logActivity(params.id, status === 'approved' ? 'approved' : 'rejected', actor, admin_comment)
