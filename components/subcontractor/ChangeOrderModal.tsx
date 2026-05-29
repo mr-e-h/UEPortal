@@ -616,8 +616,13 @@ export default function ChangeOrderModal({
 
       {/* Versjonsdiff-popup nestet i samme overlay — åpnes når UE
           klikker "Se endringer". Lukkes med X eller utenfor-klikk uten
-          å lukke selve EM-modalen. */}
-      <VersionDiffModal entry={diffEntry} onClose={() => setDiffEntry(null)} />
+          å lukke selve EM-modalen. productNameLookup går via budgetLines
+          så produkt-IDer rendres som lesbare 'KODE - Navn'-strenger. */}
+      <VersionDiffModal
+        entry={diffEntry}
+        productNameLookup={(id) => budgetLines.find((b) => b.product_id === id)?.product_name ?? id}
+        onClose={() => setDiffEntry(null)}
+      />
     </div>
   )
 }

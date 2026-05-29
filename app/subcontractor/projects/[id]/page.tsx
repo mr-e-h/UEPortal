@@ -444,8 +444,15 @@ export default function SubcontractorProjectPage() {
       {/* Versjonsdiff-popup — åpnes når UE klikker "Se endringer"-link
           på en EM. /api/activity strip-er customer_price_snapshot,
           total_customer_value og profit rekursivt fra metadata før
-          det havner her, så UE ser bare trygge felter. */}
-      <VersionDiffModal entry={diffEntry} onClose={() => setDiffEntry(null)} />
+          det havner her, så UE ser bare trygge felter.
+          productNameLookup gjør at produkt-IDer i diff-tabellen
+          rendres som lesbare 'KODE - Navn'-strenger fra prosjektets
+          budsjett-data. */}
+      <VersionDiffModal
+        entry={diffEntry}
+        productNameLookup={(id) => productNameMap.get(id) ?? id}
+        onClose={() => setDiffEntry(null)}
+      />
 
       {/* ─── Financial KPI cards ──────────────────────────────────────────────── */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">

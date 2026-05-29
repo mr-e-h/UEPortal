@@ -280,8 +280,15 @@ export default function SubcontractorChangeOrdersPage() {
 
       {/* Versjonsdiff-popup. /api/activity har allerede strippet
           customer_price_snapshot, total_customer_value og profit
-          rekursivt fra metadata — UE ser her kun trygge felter. */}
-      <VersionDiffModal entry={diffEntry} onClose={() => setDiffEntry(null)} />
+          rekursivt fra metadata — UE ser her kun trygge felter.
+          productNameLookup gjør at produkt-IDer i diff-tabellen
+          rendres som lesbare 'KODE - Navn'-strenger fra UEs
+          budsjett-data. */}
+      <VersionDiffModal
+        entry={diffEntry}
+        productNameLookup={(id) => productNameMap.get(id) ?? id}
+        onClose={() => setDiffEntry(null)}
+      />
     </div>
   )
 }
