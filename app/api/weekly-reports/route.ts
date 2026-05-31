@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getDeletedProjectIds } from '@/lib/data'
 import { getSession } from '@/lib/auth'
-import { getProjectScope } from '@/lib/api-guard'
+import { getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import type { WeeklyReport, WeeklyReportLine } from '@/types'
 
 export async function GET(request: NextRequest) {
@@ -78,6 +78,15 @@ export async function POST(request: NextRequest) {
   }
   if (!isSubRole && !['main', 'project_manager', 'company'].includes(session.role)) {
     return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+  }
+
+  // PM write-side gate: a project_manager may only create reports for projects
+  // they're assigned to. UE writes are already scoped via the subcontractor_id
+  // check above; this is a no-op for main/company. Mirrors the gate on
+  // change-orders POST so a PM can't seed empty drafts outside their scope.
+  if (!isSubRole) {
+    const denied = await ensureProjectWritable(session, body.project_id)
+    if (denied) return denied
   }
 
   // Closed-project gate — once the project is set to anything other than
