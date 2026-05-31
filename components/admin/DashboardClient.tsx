@@ -1,15 +1,27 @@
 'use client'
 
 import { useState, useMemo } from 'react'
-import DashboardChart from './DashboardChart'
+import dynamic from 'next/dynamic'
 import DashboardKpiCardsV2 from './DashboardKpiCardsV2'
 import ActiveProjectsList, { type ActiveProjectRow } from './ActiveProjectsList'
-import MonthlyBarChart, { type MonthBucket } from './MonthlyBarChart'
 import Card from '@/components/ui/Card'
+import type { MonthBucket } from './MonthlyBarChart'
 import type { WeekPoint } from './DashboardChart'
 import type { PendingRow } from './PendingTable'
 import type { ProjectBreakdown } from './DashboardKpiCards'
 import type { ProjectStatus } from '@/types'
+
+// Lazy-load both recharts-based charts so the charting lib is code-split out
+// of the /admin/totalokonomi initial bundle (ssr:false is fine in this client
+// component). KPI cards, period switcher and the projects list stay eager.
+const DashboardChart = dynamic(() => import('./DashboardChart'), {
+  ssr: false,
+  loading: () => <div className="h-[200px] w-full animate-pulse rounded-lg bg-gray-100" />,
+})
+const MonthlyBarChart = dynamic(() => import('./MonthlyBarChart'), {
+  ssr: false,
+  loading: () => <div className="h-[280px] w-full animate-pulse rounded-lg bg-gray-100" />,
+})
 
 type PeriodKey = '4w' | '12w' | 'ytd'
 

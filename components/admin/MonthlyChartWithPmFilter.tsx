@@ -1,8 +1,18 @@
 'use client'
 
 import { useMemo, useState } from 'react'
+import dynamic from 'next/dynamic'
 import Card from '@/components/ui/Card'
-import MonthlyBarChart, { type MonthBucket } from './MonthlyBarChart'
+import type { MonthBucket } from './MonthlyBarChart'
+
+// Lazy-load the recharts bar chart so the charting lib is code-split out of
+// the /admin initial bundle and fetched after first paint. ssr:false is safe
+// here because this is a client component; the PM filter, header and totals
+// render immediately while only the chart canvas streams in afterwards.
+const MonthlyBarChart = dynamic(() => import('./MonthlyBarChart'), {
+  ssr: false,
+  loading: () => <div className="h-[280px] w-full animate-pulse rounded-lg bg-gray-100" />,
+})
 
 function fmt(n: number) {
   return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
