@@ -13,7 +13,6 @@ import { useMe } from '@/lib/useMe'
 import Field from '@/components/ui/Field'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
-import EmptyState from '@/components/ui/EmptyState'
 
 type EnrichedLine = WeeklyReportLine & {
   product_name: string

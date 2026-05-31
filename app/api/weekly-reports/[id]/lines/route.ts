@@ -45,6 +45,19 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     lines: Array<{ project_budget_line_id: string; reported_quantity: number; comment: string }>
   }
 
+  // Reported quantity must be a finite, non-negative number. A negative value
+  // would silently reverse budget consumption and invoicing math downstream
+  // (reported sums, approved_value, faktureringsgrunnlag).
+  for (const line of body.lines ?? []) {
+    const q = line.reported_quantity
+    if (typeof q !== 'number' || !Number.isFinite(q) || q < 0) {
+      return NextResponse.json(
+        { error: 'Rapportert mengde må være et tall som er 0 eller høyere' },
+        { status: 400 },
+      )
+    }
+  }
+
   // Validate every project_budget_line_id belongs to the same project as the
   // weekly report AND is owned by the reporting UE AND is a subcontractor_work
   // line. Otherwise UE could report against intern/material lines or other

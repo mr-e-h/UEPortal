@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
-import { isAdmin, isSub } from '@/lib/api-guard'
+import { isAdmin, isSub, getProjectScope } from '@/lib/api-guard'
 import { fmtProductLabel } from '@/lib/format'
 import type { WeeklyReport, WeeklyReportLine, ProjectBudgetLine, Product } from '@/types'
 
@@ -25,6 +25,14 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   }
   if (!userIsSub && !isAdmin(session)) {
     return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+  }
+  // PM scope: a project_manager may only view reports for assigned projects
+  // (isAdmin above is true for PMs too, so gate explicitly on project scope).
+  if (!userIsSub) {
+    const scope = await getProjectScope(session)
+    if (scope && !scope.has(report.project_id)) {
+      return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+    }
   }
 
   const { data: linesData } = await sb

@@ -12,10 +12,6 @@ import type {
   Product,
 } from '@/types'
 
-function fmt(n: number) {
-  return n.toFixed(2)
-}
-
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
@@ -25,7 +21,6 @@ export async function GET(request: NextRequest) {
   const subcontractorId = searchParams.get('subcontractor_id')
   const from = searchParams.get('from') // ISO date string
   const to = searchParams.get('to')     // ISO date string
-  const type = (searchParams.get('type') ?? 'ue') as 'ue' | 'customer'
   const excludeBilled = searchParams.get('exclude_billed') !== 'false'
 
   const projects = await readJson<Project>('projects.json')

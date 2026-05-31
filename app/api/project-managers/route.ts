@@ -1,14 +1,16 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, requireUserAdmin } from '@/lib/api-guard'
 import type { ProjectManagerAssignment, User } from '@/types'
 
 /**
  * PM ↔ project assignments. Used to scope what each project_manager sees
- * (see lib/api-guard.getProjectScope). Admin-only: any admin (main /
- * company / project_manager) can list, but only main/company should
- * realistically be adding/removing here. We keep all admin writes open
- * for now and revisit if it becomes a problem.
+ * (see lib/api-guard.getProjectScope). GET is open to any admin (main /
+ * company / project_manager) for display. WRITES (POST/DELETE) are
+ * restricted to requireUserAdmin (main / company): this IS the table that
+ * getProjectScope reads, so allowing a project_manager to write here would
+ * let a PM grant themselves scope over any project. Keep writes user-admin
+ * only.
  */
 export async function GET(request: NextRequest) {
   const auth = await requireAdmin()
@@ -41,7 +43,7 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const auth = await requireAdmin()
+  const auth = await requireUserAdmin()
   if (!auth.ok) return auth.response
 
   const body = await request.json() as { project_id?: string; user_id?: string }
@@ -88,7 +90,7 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const auth = await requireAdmin()
+  const auth = await requireUserAdmin()
   if (!auth.ok) return auth.response
 
   const id = new URL(request.url).searchParams.get('id')

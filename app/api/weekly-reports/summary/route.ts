@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson } from '@/lib/data'
 import { getSession } from '@/lib/auth'
-import { isAdmin, isSub } from '@/lib/api-guard'
+import { isAdmin, isSub, getProjectScope } from '@/lib/api-guard'
 import { fmtProductLabel } from '@/lib/format'
 import type { WeeklyReport, WeeklyReportLine, ProjectBudgetLine, Product } from '@/types'
 
@@ -21,6 +21,13 @@ export async function GET(request: NextRequest) {
 
   if (!isAdmin(session)) {
     if (!isSub(session) || session.subcontractor_id !== subcontractorId) {
+      return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+    }
+  } else {
+    // PM scope: a project_manager may only query summaries for assigned
+    // projects (isAdmin is true for PMs, so gate explicitly on project scope).
+    const scope = await getProjectScope(session)
+    if (scope && !scope.has(projectId)) {
       return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
     }
   }

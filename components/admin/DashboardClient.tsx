@@ -63,7 +63,6 @@ type Props = {
 export default function DashboardClient({
   chartData,
   projectStats,
-  pendingCORows,
   pendingReportRows,
   yearRevenue,
   yearCost,

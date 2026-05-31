@@ -1,7 +1,6 @@
 'use client'
 
-import { useMemo, useState, type RefObject } from 'react'
-import { Download } from 'lucide-react'
+import { useMemo, useState } from 'react'
 import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 import GanttSection from './GanttSection'
 import ProjectManagersCard from './ProjectManagersCard'
@@ -12,7 +11,6 @@ import type {
   Subcontractor,
   ChangeOrder,
   ProjectInternalCostEntry,
-  BudgetVersion,
   GanttMilestone,
   Product,
   WeeklyReport,
@@ -27,7 +25,6 @@ interface Props {
   budgetLines: ProjectBudgetLine[]
   changeOrders: ChangeOrder[]
   internalCosts: ProjectInternalCostEntry[]
-  budgetVersions: BudgetVersion[]
   milestones: GanttMilestone[]
   allProducts: Product[]
   allSubs: Subcontractor[]
@@ -40,13 +37,6 @@ interface Props {
   setAddSubId: (v: string) => void
   onAddSub: () => Promise<void> | void
   onRequestRemoveSub: (linkId: string) => void
-  // Excel post-import is shared with the budsjettlinjer tab.
-  importFileRef: RefObject<HTMLInputElement>
-  importing: boolean
-  importMsg: string
-  dragOver: boolean
-  setDragOver: (v: boolean) => void
-  onImport: (file: File) => Promise<void> | void
 }
 
 /**
@@ -65,7 +55,6 @@ export default function OverviewSection({
   budgetLines,
   changeOrders,
   internalCosts,
-  budgetVersions,
   milestones,
   allProducts,
   allSubs,
@@ -76,12 +65,6 @@ export default function OverviewSection({
   setAddSubId,
   onAddSub,
   onRequestRemoveSub,
-  importFileRef,
-  importing,
-  importMsg,
-  dragOver,
-  setDragOver,
-  onImport,
 }: Props) {
   // Tab-local UI state (cost-flow accordion).
   const [expandedSub, setExpandedSub] = useState<string | null>(null)
@@ -89,7 +72,6 @@ export default function OverviewSection({
   // ── Derived totals ────────────────────────────────────────────────
   const {
     totalSales,
-    totalCost,
     totalInternalCost,
     totalUEBudgetCost,
     totalUEReportedCost,
@@ -106,16 +88,11 @@ export default function OverviewSection({
       (s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot,
       0,
     )
-    const originalCost = manualLines
-      .filter((bl) => bl.assigned_subcontractor_id)
-      .reduce((s, bl) => s + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0)
 
     const approvedCOs = changeOrders.filter((co) => co.status === 'approved')
     const coSales = approvedCOs.reduce((s, co) => s + co.total_customer_value, 0)
-    const coCost = approvedCOs.reduce((s, co) => s + co.total_cost, 0)
 
     const totalSales = originalSales + coSales
-    const totalCost = originalCost + coCost
     const totalInternalCost = internalCosts.reduce((s, c) => s + c.amount, 0)
 
     const assignedSubIds = new Set(projectSubs.map((ps) => ps.subcontractor_id))
@@ -181,7 +158,7 @@ export default function OverviewSection({
       : 0
 
     return {
-      totalSales, totalCost, totalInternalCost,
+      totalSales, totalInternalCost,
       totalUEBudgetCost, totalUEReportedCost,
       subFlowData, internLines, internBudgetSales, internPct,
       projectSubDetails, availableSubs,

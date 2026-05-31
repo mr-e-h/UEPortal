@@ -40,7 +40,6 @@ export default function ChangeOrderDetailPage() {
   const adminName = me?.full_name ?? 'Admin'
   const [co, setCo] = useState<ChangeOrder | null>(null)
   const [project, setProject] = useState<Project | null>(null)
-  const [product, setProduct] = useState<Product | null>(null)
   const [sub, setSub] = useState<Subcontractor | null>(null)
   const [activity, setActivity] = useState<ActivityEntry[]>([])
   const [comment, setComment] = useState('')
@@ -85,7 +84,6 @@ export default function ChangeOrderDetailPage() {
     setProducts(Array.isArray(products) ? (products as Product[]) : [])
     if (found) {
       setProject((projects as Project[]).find((p) => p.id === found.project_id) ?? null)
-      setProduct((products as Product[]).find((p) => p.id === found.product_id) ?? null)
       setSub((subs as Subcontractor[]).find((s) => s.id === found.subcontractor_id) ?? null)
       setComment(found.admin_comment ?? '')
     }

@@ -174,7 +174,8 @@ export default function SubcontractorPricesPage() {
   const toggleSelectAll = () => setSelectedRows(allSelected ? new Set() : new Set(products.map((p) => p.id)))
   const toggleRow = (pid: string) => setSelectedRows((prev) => {
     const next = new Set(prev)
-    next.has(pid) ? next.delete(pid) : next.add(pid)
+    if (next.has(pid)) next.delete(pid)
+    else next.add(pid)
     return next
   })
 

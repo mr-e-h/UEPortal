@@ -9,7 +9,7 @@ import Button from '@/components/ui/Button'
 import Field from '@/components/ui/Field'
 import ErrorBox from '@/components/ui/ErrorBox'
 import ConfirmDialog from '@/components/ConfirmDialog'
-import { ROLES, roleLabel } from '@/lib/roles'
+import { ROLES } from '@/lib/roles'
 import { displayCompany } from '@/lib/usernames'
 import type { User, Subcontractor, UserRole } from '@/types'
 
@@ -42,7 +42,6 @@ export default function UserDetailPage() {
   const [resetLinkMsg, setResetLinkMsg] = useState<string | null>(null)
 
   const [confirmDelete, setConfirmDelete] = useState(false)
-  const [deleting, setDeleting] = useState(false)
 
   useEffect(() => {
     Promise.all([
@@ -127,9 +126,7 @@ export default function UserDetailPage() {
   }
 
   async function handleDelete() {
-    setDeleting(true)
     const res = await fetch(`/api/users?id=${id}`, { method: 'DELETE' })
-    setDeleting(false)
     if (res.ok) router.push('/admin/users')
     else {
       const d = await res.json().catch(() => ({}))

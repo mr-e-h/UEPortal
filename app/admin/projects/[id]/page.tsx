@@ -74,8 +74,6 @@ export default function ProjectDetailPage() {
   // Line type filter for Budsjettlinjer tab
   const [lineTypeFilter, setLineTypeFilter] = useState<string>('all')
 
-  const [expandedSub, setExpandedSub] = useState<string | null>(null)
-
   // Excel post-import
   const importFileRef = useRef<HTMLInputElement>(null)
   const [importMsg, setImportMsg] = useState('')
@@ -384,7 +382,6 @@ export default function ProjectDetailPage() {
           budgetLines={budgetLines}
           changeOrders={changeOrders}
           internalCosts={internalCosts}
-          budgetVersions={budgetVersions}
           milestones={milestones}
           allProducts={allProducts}
           allSubs={allSubs}
@@ -395,12 +392,6 @@ export default function ProjectDetailPage() {
           setAddSubId={setAddSubId}
           onAddSub={addSubToProject}
           onRequestRemoveSub={setConfirmRemoveSubId}
-          importFileRef={importFileRef}
-          importing={importing}
-          importMsg={importMsg}
-          dragOver={dragOver}
-          setDragOver={setDragOver}
-          onImport={handlePostImport}
         />
       )}
       {/* ── BUDSJETT ─────────────────────────────────────────────────── */}

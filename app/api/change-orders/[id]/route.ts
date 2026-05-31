@@ -445,21 +445,6 @@ export async function PUT(
     if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
     if (!data) return NextResponse.json({ error: 'Not found' }, { status: 404 })
 
-    // UE som sender inn ny versjon etter revisjon — logg som 'resubmitted'.
-    // Egen handlingstype så Versjonsloggen kan vise "Sendte inn ny versjon"
-    // tydelig adskilt fra første innsending eller en vanlig redigering.
-    if (isSub(session) && order.status === 'revision_requested' && newStatus === 'pending') {
-      const { randomUUID } = await import('crypto')
-      await sb.from('activity_log').insert({
-        id: randomUUID(),
-        entity_type: 'change_order',
-        entity_id: params.id,
-        action: 'resubmitted',
-        actor: session.full_name,
-        created_at: now,
-      })
-    }
-
     // change_order_lines speilesynk for single-line path: oppdater den
     // ene eksisterende linjen så lines-tabellen forblir sannheten om
     // produkt+mengde+snapshots. Hvis EMen hadde flere linjer fra før

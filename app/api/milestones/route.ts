@@ -117,6 +117,26 @@ export async function PATCH(req: NextRequest) {
   if (!auth.ok) return auth.response
   const updates = await req.json() as { id: string; sort_order: number }[]
   const sb = getSupabaseAdmin()
+
+  const ids = updates.map((u) => u.id)
+  if (ids.length === 0) return NextResponse.json({ ok: true })
+
+  // PM gate: a PM may only reorder milestones in projects they're assigned to.
+  // Resolve the affected milestones to their projects and verify write access
+  // on each distinct one (no-op for main/company). Without this a PM could
+  // pass IDs from any project and silently reorder outside their scope.
+  const { data: rows } = await sb
+    .from('milestones')
+    .select('project_id')
+    .in('id', ids)
+  const projectIds = Array.from(
+    new Set((rows ?? []).map((r: Pick<GanttMilestone, 'project_id'>) => r.project_id)),
+  )
+  for (const pid of projectIds) {
+    const denied = await ensureProjectWritable(auth.user, pid)
+    if (denied) return denied
+  }
+
   await Promise.all(updates.map(({ id, sort_order }) =>
     sb.from('milestones').update({ sort_order }).eq('id', id),
   ))

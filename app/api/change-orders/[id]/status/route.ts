@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
-import type { ChangeOrder, ProjectBudgetLine, ActivityEntry, ChangeOrderConsequenceLine } from '@/types'
+import type { ChangeOrder, ChangeOrderLine, ProjectBudgetLine, ActivityEntry, ChangeOrderConsequenceLine } from '@/types'
 
 /**
  * Trekk konsekvens-mengdene fra prosjektbudsjettet — kjøres når en EM
@@ -86,6 +86,125 @@ async function reverseConsequencesOnBudget(
 }
 
 /**
+ * Hent EM-linjene som skal bokføres mot budsjettet ved godkjenning.
+ * change_order_lines er source-of-truth (multi-line). Faller tilbake til
+ * rollup-cachen på change_orders for evt. eldre EM-er som mangler linjer,
+ * slik at vi alltid har minst én linje å bokføre. Aggregerer per product_id
+ * fordi budsjettet har én linje per (project, product, sub) — to EM-linjer
+ * på samme produkt slås sammen til én justering.
+ */
+async function getBudgetPostingLines(
+  sb: ReturnType<typeof getSupabaseAdmin>,
+  order: ChangeOrder,
+): Promise<Array<{ product_id: string; quantity: number; cost: number; customer: number }>> {
+  const { data: lineRows } = await sb
+    .from('change_order_lines')
+    .select('product_id, requested_quantity, cost_price_snapshot, customer_price_snapshot')
+    .eq('change_order_id', order.id)
+  const rows = (lineRows ?? []) as Array<
+    Pick<ChangeOrderLine, 'product_id' | 'requested_quantity' | 'cost_price_snapshot' | 'customer_price_snapshot'>
+  >
+
+  const source: Array<Pick<ChangeOrderLine, 'product_id' | 'requested_quantity' | 'cost_price_snapshot' | 'customer_price_snapshot'>> =
+    rows.length > 0
+      ? rows
+      : [{
+          product_id: order.product_id,
+          requested_quantity: order.requested_quantity,
+          cost_price_snapshot: order.cost_price_snapshot,
+          customer_price_snapshot: order.customer_price_snapshot,
+        }]
+
+  const byProduct = new Map<string, { product_id: string; quantity: number; cost: number; customer: number }>()
+  for (const r of source) {
+    const qty = Number(r.requested_quantity) || 0
+    if (qty <= 0) continue
+    const prev = byProduct.get(r.product_id)
+    if (prev) {
+      prev.quantity += qty
+    } else {
+      byProduct.set(r.product_id, {
+        product_id: r.product_id,
+        quantity: qty,
+        cost: r.cost_price_snapshot,
+        customer: r.customer_price_snapshot,
+      })
+    }
+  }
+  return Array.from(byProduct.values())
+}
+
+/**
+ * Bokfør en godkjent EM mot prosjektbudsjettet — én justering per produkt
+ * over ALLE EM-linjer (ikke bare rollup-cachen). Bump eksisterende
+ * budget_line (samme project+product+sub) eller insert en ny tagget
+ * source='change_order'. Speiler applyConsequencesToBudget-mønsteret.
+ */
+async function applyApprovalToBudget(
+  sb: ReturnType<typeof getSupabaseAdmin>,
+  order: ChangeOrder,
+) {
+  const lines = await getBudgetPostingLines(sb, order)
+  for (const line of lines) {
+    const { data: existing } = await sb
+      .from('project_budget_lines')
+      .select('*')
+      .eq('project_id', order.project_id)
+      .eq('product_id', line.product_id)
+      .eq('assigned_subcontractor_id', order.subcontractor_id)
+      .maybeSingle<ProjectBudgetLine>()
+
+    if (existing) {
+      await sb.from('project_budget_lines').update({
+        budget_quantity: existing.budget_quantity + line.quantity,
+      }).eq('id', existing.id)
+    } else {
+      const newLine: ProjectBudgetLine = {
+        id: randomUUID(),
+        project_id: order.project_id,
+        product_id: line.product_id,
+        budget_quantity: line.quantity,
+        customer_price_snapshot: line.customer,
+        assigned_subcontractor_id: order.subcontractor_id,
+        subcontractor_cost_price_snapshot: line.cost,
+        source: 'change_order',
+      }
+      await sb.from('project_budget_lines').insert(newLine)
+    }
+  }
+}
+
+/**
+ * Inverse av applyApprovalToBudget — kjøres når en godkjenning angres
+ * (approved → pending). Trekker hver produktmengde fra budsjettlinjen og
+ * sletter linjen hvis den faller til 0 eller lavere. Bruker samme
+ * linje-kilde (alle EM-linjer) som apply, så approve→angre balanserer for
+ * flerlinjes EM-er.
+ */
+async function reverseApprovalOnBudget(
+  sb: ReturnType<typeof getSupabaseAdmin>,
+  order: ChangeOrder,
+) {
+  const lines = await getBudgetPostingLines(sb, order)
+  for (const line of lines) {
+    const { data: existing } = await sb
+      .from('project_budget_lines')
+      .select('*')
+      .eq('project_id', order.project_id)
+      .eq('product_id', line.product_id)
+      .eq('assigned_subcontractor_id', order.subcontractor_id)
+      .maybeSingle<ProjectBudgetLine>()
+    if (!existing) continue
+    const newQty = existing.budget_quantity - line.quantity
+    if (newQty <= 0) {
+      await sb.from('project_budget_lines').delete().eq('id', existing.id)
+    } else {
+      await sb.from('project_budget_lines').update({ budget_quantity: newQty }).eq('id', existing.id)
+    }
+  }
+}
+
+/**
  * Append an audit row directly instead of reading the whole table, mutating
  * the array, and writing the whole thing back. Concurrent calls now compose
  * safely — Postgres serializes the inserts.
@@ -159,24 +278,9 @@ export async function POST(
     if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
 
     if (prevStatus === 'approved') {
-      // Reverse the budget effect: find the line this change-order created,
-      // subtract the qty, drop the line if it falls to zero.
-      const { data: existing } = await sb
-        .from('project_budget_lines')
-        .select('*')
-        .eq('project_id', order.project_id)
-        .eq('product_id', order.product_id)
-        .eq('assigned_subcontractor_id', order.subcontractor_id)
-        .maybeSingle<ProjectBudgetLine>()
-
-      if (existing) {
-        const newQty = existing.budget_quantity - order.requested_quantity
-        if (newQty <= 0) {
-          await sb.from('project_budget_lines').delete().eq('id', existing.id)
-        } else {
-          await sb.from('project_budget_lines').update({ budget_quantity: newQty }).eq('id', existing.id)
-        }
-      }
+      // Reverser budsjett-effekten over ALLE EM-linjer (ikke bare rollup-
+      // cachen) så approve→angre balanserer også for flerlinjes EM-er.
+      await reverseApprovalOnBudget(sb, order)
     } else if (prevStatus === 'rejected') {
       // Avslaget aktiverte konsekvens-linjene — angre må reversere dem så
       // budsjettet kommer tilbake til pre-avslag tilstand.
@@ -204,32 +308,12 @@ export async function POST(
   if (updErr) return NextResponse.json({ error: updErr.message }, { status: 500 })
 
   if (status === 'approved') {
-    // Apply the change to the project budget. Either bump an existing line or
-    // insert a new one tagged source='change_order'.
-    const { data: existing } = await sb
-      .from('project_budget_lines')
-      .select('*')
-      .eq('project_id', order.project_id)
-      .eq('product_id', order.product_id)
-      .eq('assigned_subcontractor_id', order.subcontractor_id)
-      .maybeSingle<ProjectBudgetLine>()
-
-    if (existing) {
-      await sb.from('project_budget_lines').update({
-        budget_quantity: existing.budget_quantity + order.requested_quantity,
-      }).eq('id', existing.id)
-    } else {
-      const newLine: ProjectBudgetLine = {
-        id: randomUUID(),
-        project_id: order.project_id,
-        product_id: order.product_id,
-        budget_quantity: order.requested_quantity,
-        customer_price_snapshot: order.customer_price_snapshot,
-        assigned_subcontractor_id: order.subcontractor_id,
-        subcontractor_cost_price_snapshot: order.cost_price_snapshot,
-        source: 'change_order',
-      }
-      await sb.from('project_budget_lines').insert(newLine)
+    // Bokfør EM-en mot prosjektbudsjettet — én justering per produkt over
+    // ALLE change_order_lines (multi-line korrekt). Kun ved faktisk overgang
+    // TIL approved: unngår dobbel bokføring hvis en allerede godkjent EM
+    // godkjennes på nytt.
+    if (order.status !== 'approved') {
+      await applyApprovalToBudget(sb, order)
     }
 
     // Defensive: ensure the UE is linked to the project so they can see it.
@@ -252,8 +336,11 @@ export async function POST(
   } else if (status === 'rejected') {
     // Konsekvenser av avslag: trekk produktmengdene fra prosjektbudsjettet.
     // Hvis admin la inn "50 m² standardfliser" som konsekvens, fjernes nå
-    // den mengden fra UE-ens budsjettlinje.
-    await applyConsequencesToBudget(sb, order)
+    // den mengden fra UE-ens budsjettlinje. Kun ved faktisk overgang TIL
+    // rejected — unngår dobbel trekk hvis en allerede avvist EM avvises igjen.
+    if (order.status !== 'rejected') {
+      await applyConsequencesToBudget(sb, order)
+    }
   }
 
   await logActivity(params.id, status === 'approved' ? 'approved' : 'rejected', actor, admin_comment)

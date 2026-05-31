@@ -343,7 +343,6 @@ export default function ForecastPeriodPage() {
     profit: allEntries.reduce((s, e) => s + profit(e), 0),
   }
 
-  const periodMonths = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
   const isLocked = period?.locked ?? false
 
   if (loading) {

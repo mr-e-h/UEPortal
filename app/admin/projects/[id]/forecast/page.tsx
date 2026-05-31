@@ -432,7 +432,7 @@ export default function ForecastPage() {
             ],
             budgetLabel: 'budsjettert UE-kostnad',
           },
-        ].map(({ title, remaining, budget, planned, pct, barColor, details, budgetLabel }) => (
+        ].map(({ title, remaining, budget, pct, barColor, details, budgetLabel }) => (
           <div key={title} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-3">
             <h2 className="text-sm font-semibold text-gray-700">{title}</h2>
             <div className="flex items-end justify-between gap-2">

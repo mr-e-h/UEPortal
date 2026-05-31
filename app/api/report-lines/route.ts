@@ -37,10 +37,17 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as Omit<ReportLine, 'id' | 'status'>
+  const qty = Number(body.reported_quantity)
+  if (!Number.isFinite(qty) || qty < 0) {
+    return NextResponse.json(
+      { error: 'Rapportert mengde må være et tall som er 0 eller høyere' },
+      { status: 400 },
+    )
+  }
   const newLine: ReportLine = {
     id: randomUUID(),
     ...body,
-    reported_quantity: Number(body.reported_quantity),
+    reported_quantity: qty,
     status: 'submitted',
   }
   const { error } = await getSupabaseAdmin().from('report_lines').insert(newLine)
