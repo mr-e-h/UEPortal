@@ -138,7 +138,11 @@ export default function SubcontractorPage() {
 
   useEffect(() => {
     if (!me) return
-    if (me.role !== 'sub') { router.replace('/login'); return }
+    // The server layout is the authoritative role gate. Don't redirect from
+    // here: when the super-admin exits view-as, `me.role` flips to 'main' for
+    // one render and a client redirect would race the ViewAsBar navigation
+    // (and used to bounce to /login). Just skip the sub-only data fetch.
+    if (me.role !== 'sub') return
     // View-as preview without a sub_id — show empty state instead of bouncing.
     if (!me.subcontractor_id) { setLoading(false); return }
     fetchAll(me.subcontractor_id)

@@ -110,6 +110,12 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
     else { setSortKey(key); setSortDir('asc') }
   }
 
+  // Hide columns that are empty for every UE so the table stays dense and
+  // doesn't show a column of blanks. Phone/county are often unset.
+  const showPhone = subcontractors.some((s) => s.phone)
+  const showCounty = subcontractors.some((s) => s.county)
+  const colCount = 6 + (showPhone ? 1 : 0) + (showCounty ? 1 : 0)
+
   return (
     <main className="px-4 sm:px-6 py-8 space-y-6">
       <div className="flex justify-between items-center">
@@ -154,37 +160,39 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-100">
-              <th className="w-8 px-4 py-3" />
+              <th className="w-8 px-4 py-2.5" />
               {([['company_name', 'Firma'], ['contact_person', 'Kontakt']] as [SortKey, string][]).map(([key, label]) => (
-                <th key={key} className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort(key)}>
+                <th key={key} className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700 whitespace-nowrap" onClick={() => toggleSort(key)}>
                   <span className="inline-flex items-center gap-1">
                     {label}
                     {sortKey === key ? (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : <ChevronUp size={12} className="opacity-20" />}
                   </span>
                 </th>
               ))}
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">E-post</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Telefon</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('county')}>
-                <span className="inline-flex items-center gap-1">
-                  Fylke
-                  {sortKey === 'county' ? (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : <ChevronUp size={12} className="opacity-20" />}
-                </span>
-              </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700" onClick={() => toggleSort('prices')}>
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">E-post</th>
+              {showPhone && <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Telefon</th>}
+              {showCounty && (
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700 whitespace-nowrap" onClick={() => toggleSort('county')}>
+                  <span className="inline-flex items-center gap-1">
+                    Fylke
+                    {sortKey === 'county' ? (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : <ChevronUp size={12} className="opacity-20" />}
+                  </span>
+                </th>
+              )}
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700 whitespace-nowrap" onClick={() => toggleSort('prices')}>
                 <span className="inline-flex items-center gap-1">
                   Priser
                   {sortKey === 'prices' ? (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : <ChevronUp size={12} className="opacity-20" />}
                 </span>
               </th>
-              <th className="px-4 py-3" />
+              <th className="px-4 py-2.5" />
             </tr>
           </thead>
           <tbody>
             {sorted.length === 0 ? (
               <tr>
-                <td colSpan={9}>
+                <td colSpan={colCount}>
                   <EmptyState
                     title="Ingen underentreprenører ennå"
                     description="Trykk «Legg til UE» for å opprette den første."
@@ -202,25 +210,25 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
                       className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/40' : ''}`}
                       onClick={() => toggleExpanded(s.id)}
                     >
-                      <td className="px-4 py-3 text-gray-400">
+                      <td className="px-4 py-2.5 text-gray-400">
                         {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                       </td>
-                      <td className="px-4 py-3 font-medium text-gray-900">{s.company_name}</td>
-                      <td className="px-4 py-3 text-gray-600">{s.contact_person}</td>
-                      <td className="px-4 py-3 text-gray-600">{s.email}</td>
-                      <td className="px-4 py-3 text-gray-600">{s.phone}</td>
-                      <td className="px-4 py-3 text-gray-600">{s.county}</td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5 font-medium text-gray-900">{s.company_name}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{s.contact_person}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{s.email}</td>
+                      {showPhone && <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{s.phone}</td>}
+                      {showCounty && <td className="px-4 py-2.5 text-gray-600">{s.county}</td>}
+                      <td className="px-4 py-2.5">
                         {s.active
                           ? <StatusPill tone="green">Aktiv</StatusPill>
                           : <StatusPill tone="gray">Inaktiv</StatusPill>}
                       </td>
-                      <td className="px-4 py-3">
+                      <td className="px-4 py-2.5">
                         {missingPrices > 0
                           ? <StatusPill tone="amber">{missingPrices} mangler</StatusPill>
                           : <StatusPill tone="green">Komplett</StatusPill>}
                       </td>
-                      <td className="px-4 py-3" onClick={(e) => e.stopPropagation()}>
+                      <td className="px-4 py-2.5" onClick={(e) => e.stopPropagation()}>
                         <Link
                           href={`/admin/subcontractors/${s.id}/prices`}
                           className="text-blue-600 text-xs hover:underline"
@@ -231,7 +239,7 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
                     </tr>
                     {isExpanded && (
                       <tr key={`${s.id}-expanded`} className="bg-blue-50/20 border-b border-gray-100">
-                        <td colSpan={9} className="px-6 py-3">
+                        <td colSpan={colCount} className="px-6 py-3">
                           <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
                             Brukere {usersLoaded ? `(${subUsers.length})` : ''}
                           </p>

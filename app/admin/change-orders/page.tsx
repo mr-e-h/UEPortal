@@ -103,7 +103,7 @@ function OrderTable({
               (h) => (
                 <th
                   key={h}
-                  className={`px-6 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide ${
+                  className={`px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide ${
                     h === 'Kundeverdi' || h === 'Kostnad' ? 'text-right' : ''
                   }`}
                 >
@@ -116,37 +116,37 @@ function OrderTable({
         <tbody>
           {orders.map((o) => (
             <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted transition-colors">
-              <td className="px-6 py-3 font-medium text-[var(--color-text-primary)]">
+              <td className="px-4 py-2.5 font-medium text-[var(--color-text-primary)]">
                 {fmtChangeOrderTitle(o.change_order_number, projMap.get(o.project_id)?.name)}
               </td>
-              <td className="px-6 py-3">
+              <td className="px-4 py-2.5">
                 {(() => {
                   const t = changeOrderType(o.em_type)
                   return <span className={`text-xs font-medium px-2 py-0.5 rounded ${t.cls}`}>{t.label}</span>
                 })()}
               </td>
-              <td className="px-6 py-3 text-[var(--color-text-secondary)]">
+              <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
                 {subMap.get(o.subcontractor_id)?.company_name ?? '–'}
               </td>
-              <td className="px-6 py-3 text-[var(--color-text-secondary)]">
+              <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
                 {fmtProductLabel(prodMap.get(o.product_id))}
               </td>
-              <td className="px-6 py-3 text-[var(--color-text-muted)]">
+              <td className="px-4 py-2.5 text-[var(--color-text-muted)]">
                 {o.requested_quantity} {o.unit}
               </td>
-              <td className="px-6 py-3 text-right text-[var(--color-text-primary)]">
+              <td className="px-4 py-2.5 text-right text-[var(--color-text-primary)]">
                 {fmt(o.total_customer_value)}
               </td>
-              <td className="px-6 py-3 text-right text-[var(--color-text-muted)]">{fmt(o.total_cost)}</td>
-              <td className="px-6 py-3 text-[var(--color-text-muted)]">
+              <td className="px-4 py-2.5 text-right text-[var(--color-text-muted)]">{fmt(o.total_cost)}</td>
+              <td className="px-4 py-2.5 text-[var(--color-text-muted)]">
                 {o.submitted_at ? o.submitted_at.split('T')[0] : '–'}
               </td>
-              <td className="px-6 py-3">
+              <td className="px-4 py-2.5">
                 <Badge
                   status={o.status === 'approved' ? 'approved' : o.status === 'rejected' ? 'rejected' : 'pending'}
                 />
               </td>
-              <td className="px-6 py-3 text-right">
+              <td className="px-4 py-2.5 text-right">
                 <Link href={`/admin/change-orders/${o.id}`} className="text-xs text-primary hover:underline font-medium">
                   Detaljer →
                 </Link>

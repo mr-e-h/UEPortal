@@ -95,7 +95,7 @@ function ReportTable({
             {['Prosjekt', 'Underentreprenør', 'Uke', '#', 'Innsendt', 'Status', ''].map((h) => (
               <th
                 key={h}
-                className="px-6 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide"
+                className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide"
               >
                 {h}
               </th>
@@ -105,20 +105,20 @@ function ReportTable({
         <tbody>
           {reports.map((r) => (
             <tr key={r.id} className="border-b border-border last:border-0 hover:bg-muted transition-colors">
-              <td className="px-6 py-3 font-medium text-[var(--color-text-primary)]">
+              <td className="px-4 py-2.5 font-medium text-[var(--color-text-primary)]">
                 {projMap.get(r.project_id)?.name ?? '–'}
               </td>
-              <td className="px-6 py-3 text-[var(--color-text-secondary)]">
+              <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
                 {subMap.get(r.subcontractor_id)?.company_name ?? '–'}
               </td>
-              <td className="px-6 py-3 text-[var(--color-text-secondary)]">
+              <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
                 {formatWeekLabel(r.year, r.week_number)}
               </td>
-              <td className="px-6 py-3 text-[var(--color-text-muted)]">#{r.submission_number ?? 1}</td>
-              <td className="px-6 py-3 text-[var(--color-text-muted)]">
+              <td className="px-4 py-2.5 text-[var(--color-text-muted)]">#{r.submission_number ?? 1}</td>
+              <td className="px-4 py-2.5 text-[var(--color-text-muted)]">
                 {r.submitted_at ? r.submitted_at.split('T')[0] : '–'}
               </td>
-              <td className="px-6 py-3">
+              <td className="px-4 py-2.5">
                 <Badge
                   status={
                     r.status === 'approved' ? 'approved'
@@ -127,7 +127,7 @@ function ReportTable({
                   }
                 />
               </td>
-              <td className="px-6 py-3 text-right">
+              <td className="px-4 py-2.5 text-right">
                 <Link
                   href={`/admin/weekly-reports/${r.id}`}
                   className="text-xs text-primary hover:underline font-medium"

@@ -91,7 +91,9 @@ export default function SubcontractorProjectsPage() {
 
   useEffect(() => {
     if (!me) return
-    if (me.role !== 'sub') { router.replace('/login'); return }
+    // Server layout is the authoritative role gate; don't redirect here or we
+    // race the ViewAsBar navigation when exiting view-as. Just skip the fetch.
+    if (me.role !== 'sub') return
     if (!me.subcontractor_id) { setLoading(false); return }
     fetchAll(me.subcontractor_id)
   }, [me, router, fetchAll])

@@ -1,7 +1,8 @@
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth'
-import { getEffectiveUser } from '@/lib/view-as'
+import { getEffectiveUser, isSuperAdmin } from '@/lib/view-as'
 import CompanyNav from '@/components/company/CompanyNav'
+import ViewAsBar from '@/components/ViewAsBar'
 
 /**
  * Company shell — server component. Resolves session + view-as on the server
@@ -20,12 +21,16 @@ export default async function CompanyLayout({ children }: { children: React.Reac
     redirect('/login')
   }
 
+  // Only the super-admin "viewing as" a company user sees the floating view-as
+  // switcher; reserve header space for it only then.
+  const canViewAs = isSuperAdmin(realUser)
+
   return (
     <div className="min-h-screen flex bg-[var(--color-bg-page)]">
       <CompanyNav userName={me.full_name} />
 
       <div className="flex-1 min-w-0 flex flex-col">
-        <header className="h-16 flex-none bg-card border-b border-border flex items-center px-4 sm:px-6 gap-4">
+        <header className={`h-16 flex-none bg-card border-b border-border flex items-center px-4 sm:px-6 gap-4 ${canViewAs ? 'pr-44' : ''}`}>
           <div className="flex-1" />
           <span className="text-sm text-[var(--color-text-secondary)] truncate max-w-[140px] sm:max-w-none">{me.full_name}</span>
         </header>
@@ -34,6 +39,8 @@ export default async function CompanyLayout({ children }: { children: React.Reac
           {children}
         </main>
       </div>
+
+      {canViewAs && <ViewAsBar />}
     </div>
   )
 }

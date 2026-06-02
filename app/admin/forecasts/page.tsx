@@ -194,7 +194,7 @@ export default async function ForecastsOverviewPage({
             <thead>
               <tr className="border-b border-border">
                 {['Periode', 'Prognosert omsetning', 'Progn. UE-kostnad', 'Progn. intern', 'Risiko', 'Forv. fortjeneste', 'Status'].map((h) => (
-                  <th key={h} className="px-6 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
+                  <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
                     {h}
                   </th>
                 ))}
@@ -212,18 +212,18 @@ export default async function ForecastsOverviewPage({
                 const profit = forecasts.reduce((s, f) => s + f.expected_profit, 0)
                 return (
                   <tr key={pName} className="border-b border-border last:border-0 hover:bg-muted transition-colors">
-                    <td className="px-6 py-3">
+                    <td className="px-4 py-2.5">
                       <Link href={`/admin/forecasts/${pName.toLowerCase()}`} className="font-semibold text-primary hover:underline">
                         {pName}
                       </Link>
                       <span className="ml-2 text-xs text-[var(--color-text-muted)]">Jan – Des {period.year}</span>
                     </td>
-                    <td className="px-6 py-3 font-medium">{fmt(revenue)}</td>
-                    <td className="px-6 py-3 text-[var(--color-text-secondary)]">{fmt(ueCost)}</td>
-                    <td className="px-6 py-3 text-[var(--color-text-secondary)]">{fmt(internal)}</td>
-                    <td className="px-6 py-3 text-amber-600">{risk > 0 ? fmt(risk) : '–'}</td>
-                    <td className={`px-6 py-3 font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(profit)}</td>
-                    <td className="px-6 py-3">
+                    <td className="px-4 py-2.5 font-medium">{fmt(revenue)}</td>
+                    <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{fmt(ueCost)}</td>
+                    <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{fmt(internal)}</td>
+                    <td className="px-4 py-2.5 text-amber-600">{risk > 0 ? fmt(risk) : '–'}</td>
+                    <td className={`px-4 py-2.5 font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(profit)}</td>
+                    <td className="px-4 py-2.5">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
                         period.locked ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-700'
                       }`}>
@@ -250,7 +250,7 @@ export default async function ForecastsOverviewPage({
             </div>
             <div className="divide-y divide-border">
               {unforcasted.map((p) => (
-                <div key={p.id} className="px-6 py-3 flex items-center justify-between">
+                <div key={p.id} className="px-4 py-2.5 flex items-center justify-between">
                   <div>
                     <span className="text-sm font-medium text-[var(--color-text-primary)]">{p.name}</span>
                     <span className="ml-2 text-xs text-[var(--color-text-muted)]">{p.project_number} · {p.customer}</span>

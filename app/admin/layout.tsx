@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth'
-import { getEffectiveUser } from '@/lib/view-as'
+import { getEffectiveUser, isSuperAdmin } from '@/lib/view-as'
 import AdminSidebarNav from '@/components/admin/AdminSidebarNav'
 import HeaderSearch from '@/components/admin/HeaderSearch'
 import LogoutButton from '@/components/LogoutButton'
+import ViewAsBar from '@/components/ViewAsBar'
 
 const USER_ADMIN_ROLES = ['main', 'company']
 
@@ -31,6 +32,10 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   }
 
   const isUserAdmin = USER_ADMIN_ROLES.includes(me.role)
+  // The view-as switcher is a fixed, top-right floating button. Only the
+  // super-admin ever sees it, so only then do we reserve right-hand space in
+  // the header to stop it overlapping the username + logout.
+  const canViewAs = isSuperAdmin(realUser)
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-page)] flex justify-center">
@@ -39,11 +44,11 @@ export default async function AdminLayout({ children }: { children: React.ReactN
 
         {/* Main area */}
         <div className="flex-1 min-w-0 flex flex-col">
-          <header className="h-16 flex-none bg-card border-b border-border flex items-center px-6 gap-4">
+          <header className={`h-16 flex-none bg-card border-b border-border flex items-center px-6 gap-4 ${canViewAs ? 'pr-44' : ''}`}>
             <div className="flex-1">
               <HeaderSearch />
             </div>
-            <span className="text-sm text-[var(--color-text-secondary)]">{me.full_name}</span>
+            <span className="text-sm text-[var(--color-text-secondary)] truncate max-w-[160px]">{me.full_name}</span>
             <LogoutButton />
           </header>
 
@@ -52,6 +57,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
           </main>
         </div>
       </div>
+
+      {canViewAs && <ViewAsBar />}
     </div>
   )
 }

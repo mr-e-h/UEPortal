@@ -505,7 +505,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
               <thead>
                 <tr className="border-b border-border">
                   {['E-post', 'Rolle', 'Utløper', ''].map((h) => (
-                    <th key={h} className="px-6 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
+                    <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
                       {h}
                     </th>
                   ))}
@@ -514,12 +514,12 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
               <tbody>
                 {pendingInvitations.map((i) => (
                   <tr key={i.id} className="border-b border-border last:border-0">
-                    <td className="px-6 py-3 text-[var(--color-text-primary)]">{i.email}</td>
-                    <td className="px-6 py-3 text-[var(--color-text-secondary)]">{roleLabel(i.role)}</td>
-                    <td className="px-6 py-3 text-[var(--color-text-muted)]">
+                    <td className="px-4 py-2.5 text-[var(--color-text-primary)]">{i.email}</td>
+                    <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{roleLabel(i.role)}</td>
+                    <td className="px-4 py-2.5 text-[var(--color-text-muted)]">
                       {new Date(i.expires_at).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })}
                     </td>
-                    <td className="px-6 py-3 text-right">
+                    <td className="px-4 py-2.5 text-right">
                       <button
                         type="button"
                         onClick={() => revokeInvitation(i.id, i.email)}

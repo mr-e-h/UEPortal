@@ -1,9 +1,10 @@
 import { redirect } from 'next/navigation'
 import { getSession } from '@/lib/auth'
-import { getEffectiveUser } from '@/lib/view-as'
+import { getEffectiveUser, isSuperAdmin } from '@/lib/view-as'
 import SubcontractorNav from '@/components/subcontractor/SubcontractorNav'
 import LogoutButton from '@/components/LogoutButton'
 import MobileQuickActions from '@/components/subcontractor/MobileQuickActions'
+import ViewAsBar from '@/components/ViewAsBar'
 
 /**
  * Subcontractor shell — server component. Resolves session + view-as on the
@@ -23,13 +24,18 @@ export default async function SubcontractorLayout({ children }: { children: Reac
     redirect('/login')
   }
 
+  // Only the super-admin "viewing as" this sub ever sees the floating view-as
+  // switcher, so only then reserve right-hand header space for it. A real sub
+  // never renders it.
+  const canViewAs = isSuperAdmin(realUser)
+
   return (
     <div className="min-h-screen bg-[var(--color-bg-page)] flex justify-center">
       <div className="w-full max-w-[1600px] flex min-h-screen">
         <SubcontractorNav />
 
         <div className="flex-1 min-w-0 flex flex-col">
-          <header className="h-16 flex-none bg-card border-b border-border flex items-center px-4 sm:px-6 gap-4">
+          <header className={`h-16 flex-none bg-card border-b border-border flex items-center px-4 sm:px-6 gap-4 ${canViewAs ? 'pr-44' : ''}`}>
             <div className="flex-1" />
             <span className="text-sm text-[var(--color-text-secondary)] truncate max-w-[140px] sm:max-w-none">{me.full_name}</span>
             <LogoutButton />
@@ -44,6 +50,7 @@ export default async function SubcontractorLayout({ children }: { children: Reac
       </div>
 
       <MobileQuickActions />
+      {canViewAs && <ViewAsBar />}
     </div>
   )
 }

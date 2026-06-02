@@ -51,7 +51,7 @@ export default function SortableTable<T extends { id: string }>({ columns, data,
   })
 
   return (
-    <div>
+    <div className="overflow-x-auto">
       <table className={`w-full text-sm${tableClassName ? ` ${tableClassName}` : ''}`}>
         {colWidths && (
           <colgroup>

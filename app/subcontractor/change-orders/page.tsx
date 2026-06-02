@@ -94,7 +94,10 @@ export default function SubcontractorChangeOrdersPage() {
 
   useEffect(() => {
     if (!me) return
-    if (me.role !== 'sub') { router.replace('/login'); return }
+    // Server layout is the authoritative role gate; don't redirect here or we
+    // race the ViewAsBar navigation when exiting view-as (role flips to 'main'
+    // for one render). Just skip the sub-only fetch.
+    if (me.role !== 'sub') return
     // View-as preview: super-admin posing as `sub` has no subcontractor_id
     // of their own. Show empty state instead of bouncing.
     if (!me.subcontractor_id) { setLoading(false); return }
