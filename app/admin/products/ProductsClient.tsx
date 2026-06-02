@@ -245,8 +245,8 @@ export default function ProductsClient({ initialProducts, initialPrices }: Props
                   className="rounded"
                 />
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Navn</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Kode</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Navn</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Enhet</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Fylke</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Utsalgspris</th>
@@ -285,24 +285,24 @@ export default function ProductsClient({ initialProducts, initialPrices }: Props
                       {isEditing ? (
                         <input
                           type="text"
-                          value={editForm.name ?? ''}
-                          onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
+                          value={editForm.description ?? ''}
+                          onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
                           className="w-full px-2 py-1 text-sm border border-blue-400 rounded focus:outline-none"
                         />
                       ) : (
-                        <span className="font-medium text-gray-900">{p.name}</span>
+                        <span className="font-medium text-gray-900">{p.description}</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
                       {isEditing ? (
                         <input
                           type="text"
-                          value={editForm.description ?? ''}
-                          onChange={(e) => setEditForm((prev) => ({ ...prev, description: e.target.value }))}
+                          value={editForm.name ?? ''}
+                          onChange={(e) => setEditForm((prev) => ({ ...prev, name: e.target.value }))}
                           className="w-full px-2 py-1 text-sm border border-blue-400 rounded focus:outline-none"
                         />
                       ) : (
-                        <span className="text-gray-500">{p.description}</span>
+                        <span className="text-gray-700">{p.name}</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
