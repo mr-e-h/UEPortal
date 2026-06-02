@@ -7,6 +7,8 @@ import type {
   ForecastPeriodStatus,
   ProjectStatus,
   ReportStatus,
+  TenderStatus,
+  TenderInvitationStatus,
 } from '@/types'
 
 export interface StatusMeta {
@@ -117,4 +119,38 @@ export const REPORT_LINE_STATUSES: Record<ReportStatus, StatusMeta> = {
 
 export function reportLineStatus(status: string): StatusMeta {
   return REPORT_LINE_STATUSES[status as ReportStatus] ?? { ...FALLBACK, label: status }
+}
+
+// ─── Tender ──────────────────────────────────────────────────────────────────
+
+export const TENDER_STATUSES: Record<TenderStatus, StatusMeta> = {
+  draft:        { label: 'Kladd',          cls: 'bg-gray-100 text-gray-600' },
+  sent:         { label: 'Sendt',          cls: 'bg-blue-100 text-blue-700' },
+  open:         { label: 'Åpen for prising', cls: 'bg-blue-100 text-blue-700' },
+  expired:      { label: 'Frist utløpt',   cls: 'bg-orange-100 text-orange-700' },
+  under_review: { label: 'Under vurdering', cls: 'bg-yellow-100 text-yellow-700' },
+  awarded:      { label: 'Tildelt',        cls: 'bg-green-100 text-green-700' },
+  closed:       { label: 'Avsluttet',      cls: 'bg-gray-200 text-gray-600' },
+  cancelled:    { label: 'Kansellert',     cls: 'bg-red-100 text-red-700' },
+}
+
+export function tenderStatus(status: string): StatusMeta {
+  return TENDER_STATUSES[status as TenderStatus] ?? { ...FALLBACK, label: status }
+}
+
+// ─── Tender invitation (per-UE) ──────────────────────────────────────────────
+
+export const TENDER_INVITATION_STATUSES: Record<TenderInvitationStatus, StatusMeta> = {
+  invited:       { label: 'Invitert',          cls: 'bg-gray-100 text-gray-500' },
+  opened:        { label: 'Åpnet',             cls: 'bg-blue-50 text-blue-600' },
+  not_answered:  { label: 'Ikke svart',        cls: 'bg-gray-100 text-gray-500' },
+  bid_submitted: { label: 'Tilbud sendt',      cls: 'bg-green-100 text-green-700' },
+  bid_revised:   { label: 'Revidert tilbud',   cls: 'bg-green-100 text-green-700' },
+  expired:       { label: 'Frist utløpt',      cls: 'bg-orange-100 text-orange-700' },
+  won:           { label: 'Valgt',             cls: 'bg-green-200 text-green-800' },
+  lost:          { label: 'Ikke valgt',        cls: 'bg-gray-100 text-gray-500' },
+}
+
+export function tenderInvitationStatus(status: string): StatusMeta {
+  return TENDER_INVITATION_STATUSES[status as TenderInvitationStatus] ?? { ...FALLBACK, label: status }
 }

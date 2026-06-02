@@ -444,9 +444,9 @@ export interface ProjectInternalCostEntry {
 
 export interface ActivityEntry {
   id: string
-  entity_type: 'weekly_report' | 'change_order'
+  entity_type: 'weekly_report' | 'change_order' | 'tender'
   entity_id: string
-  action: 'approved' | 'rejected' | 'reverted' | 'commented' | 'edited' | 'sent_to_customer' | 'revision_requested' | 'resubmitted' | 'submitted'
+  action: 'approved' | 'rejected' | 'reverted' | 'commented' | 'edited' | 'sent_to_customer' | 'revision_requested' | 'resubmitted' | 'submitted' | 'sent' | 'awarded' | 'cancelled' | 'deadline_extended' | 'bid_revised'
   /**
    * Optional structured snapshot. For 'edited' rows: { before, after } with
    * the values at the moment of change. The activity GET endpoint strips
@@ -483,4 +483,98 @@ export interface GanttMilestone {
   color: string
   created_at: string
   sort_order?: number
+}
+
+// ─── Tender / bidding module ─────────────────────────────────────────────────
+
+/**
+ * Lifecycle of a tender (anbudsforespørsel):
+ *  draft        – being built by the PM, not visible to any UE
+ *  sent         – published; invited UEs can now see and price it
+ *  open         – alias kept for clarity; treated like 'sent' while before deadline
+ *  expired      – deadline passed; UEs can no longer change their bids
+ *  under_review – PM is comparing bids (manual step before awarding)
+ *  awarded      – a winner was chosen; prices pushed into the project budget
+ *  closed       – archived/finished
+ *  cancelled    – withdrawn by the PM
+ */
+export type TenderStatus =
+  | 'draft' | 'sent' | 'open' | 'expired' | 'under_review' | 'awarded' | 'closed' | 'cancelled'
+
+/**
+ * Per-UE invitation state:
+ *  invited       – sent, not yet opened
+ *  opened        – UE has viewed the tender
+ *  not_answered  – deadline passed without a submitted bid
+ *  bid_submitted – UE submitted a bid
+ *  bid_revised   – UE submitted a revised bid (round/edit)
+ *  expired       – invitation no longer actionable
+ *  won           – this UE was awarded the tender
+ *  lost          – another UE was awarded
+ */
+export type TenderInvitationStatus =
+  | 'invited' | 'opened' | 'not_answered' | 'bid_submitted' | 'bid_revised' | 'expired' | 'won' | 'lost'
+
+export type TenderBidStatus = 'draft' | 'submitted'
+
+export interface Tender {
+  id: string
+  project_id: string
+  title: string
+  description: string
+  status: TenderStatus
+  deadline_at: string | null
+  current_round: number
+  awarded_subcontractor_id: string | null
+  awarded_at: string | null
+  awarded_by: string | null
+  created_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TenderLine {
+  id: string
+  tender_id: string
+  /** Catalog product when set; null = free-text work operation. */
+  product_id: string | null
+  description: string
+  unit: string
+  quantity: number
+  sort_order: number
+  created_at: string
+}
+
+export interface TenderInvitation {
+  id: string
+  tender_id: string
+  subcontractor_id: string
+  status: TenderInvitationStatus
+  round: number
+  invited_at: string
+  opened_at: string | null
+  created_at: string
+}
+
+export interface TenderBid {
+  id: string
+  tender_id: string
+  subcontractor_id: string
+  round: number
+  status: TenderBidStatus
+  total_cost: number
+  comment: string
+  is_current: boolean
+  submitted_at: string | null
+  submitted_by: string | null
+  created_at: string
+  updated_at: string
+}
+
+export interface TenderBidLine {
+  id: string
+  tender_bid_id: string
+  tender_line_id: string
+  unit_price: number
+  created_at: string
 }

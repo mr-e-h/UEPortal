@@ -19,6 +19,7 @@ import {
   UserPlus,
   PieChart,
   ClipboardList,
+  Gavel,
   Menu,
   X,
 } from 'lucide-react'
@@ -29,6 +30,7 @@ const sections = [
     links: [
       { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
       { href: '/admin/projects', label: 'Prosjekter', icon: FolderKanban },
+      { href: '/admin/tenders', label: 'Anbud', icon: Gavel },
       { href: '/admin/subcontractors', label: 'Underentreprenører', icon: Users },
       { href: '/admin/products', label: 'Produkter', icon: Package },
     ],
