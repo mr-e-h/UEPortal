@@ -6,6 +6,8 @@ import { Search, Pencil, Check, X, PowerOff, Trash2, ChevronUp, ChevronDown } fr
 import type { Product, SubcontractorProductPrice } from '@/types'
 import NumberInput from '@/components/NumberInput'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import ProductPriceModal from '@/components/admin/ProductPriceModal'
+import type { SubLite } from '@/components/admin/ProductPriceModal'
 import { COUNTIES } from '@/lib/counties'
 import { fmtNumber } from '@/lib/format'
 import Field from '@/components/ui/Field'
@@ -23,12 +25,14 @@ type SortDir = 'asc' | 'desc'
 interface Props {
   initialProducts: Product[]
   initialPrices: SubcontractorProductPrice[]
+  initialSubcontractors: SubLite[]
 }
 
-export default function ProductsClient({ initialProducts, initialPrices }: Props) {
+export default function ProductsClient({ initialProducts, initialPrices, initialSubcontractors }: Props) {
   const router = useRouter()
   const [products, setProducts] = useState<Product[]>(initialProducts)
   const [prices, setPrices] = useState<SubcontractorProductPrice[]>(initialPrices)
+  const [priceModalProduct, setPriceModalProduct] = useState<Product | null>(null)
   const [showForm, setShowForm] = useState(false)
   const [form, setForm] = useState(empty)
   const [saving, setSaving] = useState(false)
@@ -327,7 +331,14 @@ export default function ProductsClient({ initialProducts, initialPrices }: Props
                           className="w-full px-2 py-1 text-sm border border-blue-400 rounded focus:outline-none"
                         />
                       ) : (
-                        <span className="font-medium text-gray-900">{p.description}</span>
+                        <button
+                          type="button"
+                          onClick={() => setPriceModalProduct(p)}
+                          className="font-medium text-gray-900 hover:text-blue-600 hover:underline text-left"
+                          title="Se UE-priser på dette produktet"
+                        >
+                          {p.description}
+                        </button>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
@@ -339,7 +350,14 @@ export default function ProductsClient({ initialProducts, initialPrices }: Props
                           className="w-full px-2 py-1 text-sm border border-blue-400 rounded focus:outline-none"
                         />
                       ) : (
-                        <span className="text-gray-700">{p.name}</span>
+                        <button
+                          type="button"
+                          onClick={() => setPriceModalProduct(p)}
+                          className="text-gray-700 hover:text-blue-600 hover:underline text-left"
+                          title="Se UE-priser på dette produktet"
+                        >
+                          {p.name}
+                        </button>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
@@ -380,9 +398,16 @@ export default function ProductsClient({ initialProducts, initialPrices }: Props
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-center">
-                      {priceCount === 0
-                        ? <StatusPill tone="amber">Priser mangler</StatusPill>
-                        : <StatusPill tone="green">{priceCount} UE</StatusPill>}
+                      <button
+                        type="button"
+                        onClick={() => setPriceModalProduct(p)}
+                        className="hover:opacity-80 transition-opacity"
+                        title="Se og sammenlign UE-priser"
+                      >
+                        {priceCount === 0
+                          ? <StatusPill tone="amber">Priser mangler</StatusPill>
+                          : <StatusPill tone="green">{priceCount} UE</StatusPill>}
+                      </button>
                     </td>
                     <td className="px-4 py-2.5 text-center">
                       {p.active !== false
@@ -448,6 +473,15 @@ export default function ProductsClient({ initialProducts, initialPrices }: Props
           confirmLabel="Slett alle valgte"
           onConfirm={handleBulkDelete}
           onCancel={() => setConfirmBulkDelete(false)}
+        />
+      )}
+
+      {priceModalProduct && (
+        <ProductPriceModal
+          product={priceModalProduct}
+          prices={prices}
+          subcontractors={initialSubcontractors}
+          onClose={() => setPriceModalProduct(null)}
         />
       )}
     </main>
