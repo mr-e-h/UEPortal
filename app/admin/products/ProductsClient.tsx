@@ -2,7 +2,7 @@
 
 import { useState, useCallback } from 'react'
 import { useRouter } from 'next/navigation'
-import { Search, Pencil, Check, X, PowerOff, Trash2 } from 'lucide-react'
+import { Search, Pencil, Check, X, PowerOff, Trash2, ChevronUp, ChevronDown } from 'lucide-react'
 import type { Product, SubcontractorProductPrice } from '@/types'
 import NumberInput from '@/components/NumberInput'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -16,6 +16,9 @@ import Button from '@/components/ui/Button'
 const empty = { name: '', description: '', unit: 'meter', county: '', customer_price: '' }
 
 const fmt = (n: number) => fmtNumber(n, 2)
+
+type SortKey = 'code' | 'name' | 'unit' | 'county' | 'price' | 'ue_prices' | 'status'
+type SortDir = 'asc' | 'desc'
 
 interface Props {
   initialProducts: Product[]
@@ -37,6 +40,8 @@ export default function ProductsClient({ initialProducts, initialPrices }: Props
   const [searchQuery, setSearchQuery] = useState('')
   const [countyFilter, setCountyFilter] = useState('all')
   const [showInactive, setShowInactive] = useState(false)
+  const [sortKey, setSortKey] = useState<SortKey>('code')
+  const [sortDir, setSortDir] = useState<SortDir>('asc')
 
   // Mutations re-fetch via the same API so local state and the server-rendered
   // siblings (sidebar badges, etc) both update.
@@ -77,6 +82,14 @@ export default function ProductsClient({ initialProducts, initialPrices }: Props
       setSelected(new Set())
     } else {
       setSelected(new Set(filtered.map((p) => p.id)))
+    }
+  }
+
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) setSortDir((d) => (d === 'asc' ? 'desc' : 'asc'))
+    else {
+      setSortKey(key)
+      setSortDir('asc')
     }
   }
 
@@ -128,6 +141,30 @@ export default function ProductsClient({ initialProducts, initialPrices }: Props
     })
 
   const usedCounties = Array.from(new Set(products.map((p) => p.county).filter(Boolean))).sort()
+
+  // Pre-count UE prices per product so we can both display and sort by it.
+  const priceCountByProduct = new Map<string, number>()
+  for (const pr of prices) {
+    priceCountByProduct.set(pr.product_id, (priceCountByProduct.get(pr.product_id) ?? 0) + 1)
+  }
+
+  // Sort the visible rows by the active column. Strings use Norwegian
+  // collation; numbers/booleans compare numerically. Clicking a header
+  // toggles the direction.
+  const sorted = [...filtered].sort((a, b) => {
+    const dir = sortDir === 'asc' ? 1 : -1
+    let cmp = 0
+    switch (sortKey) {
+      case 'code': cmp = (a.description ?? '').localeCompare(b.description ?? '', 'nb'); break
+      case 'name': cmp = a.name.localeCompare(b.name, 'nb'); break
+      case 'unit': cmp = (a.unit ?? '').localeCompare(b.unit ?? '', 'nb'); break
+      case 'county': cmp = (a.county ?? '').localeCompare(b.county ?? '', 'nb'); break
+      case 'price': cmp = a.customer_price - b.customer_price; break
+      case 'ue_prices': cmp = (priceCountByProduct.get(a.id) ?? 0) - (priceCountByProduct.get(b.id) ?? 0); break
+      case 'status': cmp = (a.active === false ? 0 : 1) - (b.active === false ? 0 : 1); break
+    }
+    return cmp * dir
+  })
 
   // No loading state — initial data shipped server-side via RSC props.
 
@@ -245,13 +282,13 @@ export default function ProductsClient({ initialProducts, initialPrices }: Props
                   className="rounded"
                 />
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Kode</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Navn</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Enhet</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Fylke</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Utsalgspris</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wide">UE-priser</th>
-              <th className="px-4 py-3 text-center text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
+              <SortTh label="Kode" sortKey="code" current={sortKey} dir={sortDir} onSort={toggleSort} />
+              <SortTh label="Navn" sortKey="name" current={sortKey} dir={sortDir} onSort={toggleSort} />
+              <SortTh label="Enhet" sortKey="unit" current={sortKey} dir={sortDir} onSort={toggleSort} />
+              <SortTh label="Fylke" sortKey="county" current={sortKey} dir={sortDir} onSort={toggleSort} />
+              <SortTh label="Utsalgspris" sortKey="price" current={sortKey} dir={sortDir} onSort={toggleSort} align="right" />
+              <SortTh label="UE-priser" sortKey="ue_prices" current={sortKey} dir={sortDir} onSort={toggleSort} align="center" />
+              <SortTh label="Status" sortKey="status" current={sortKey} dir={sortDir} onSort={toggleSort} align="center" />
               <th className="px-4 py-3" />
             </tr>
           </thead>
@@ -268,9 +305,9 @@ export default function ProductsClient({ initialProducts, initialPrices }: Props
                 </td>
               </tr>
             ) : (
-              filtered.map((p) => {
+              sorted.map((p) => {
                 const isEditing = editingId === p.id
-                const priceCount = prices.filter((pr) => pr.product_id === p.id).length
+                const priceCount = priceCountByProduct.get(p.id) ?? 0
                 return (
                   <tr key={p.id} className={`border-b border-gray-100 hover:bg-gray-50 ${p.active === false ? 'opacity-50' : ''}`}>
                     <td className="px-4 py-2.5 w-8">
@@ -414,5 +451,33 @@ export default function ProductsClient({ initialProducts, initialPrices }: Props
         />
       )}
     </main>
+  )
+}
+
+/** Clickable, sortable column header with an up/down indicator. Mirrors the
+ *  pattern used in the users/subcontractor tables. */
+function SortTh({ label, sortKey: key, current, dir, onSort, align = 'left' }: {
+  label: string
+  sortKey: SortKey
+  current: SortKey
+  dir: SortDir
+  onSort: (k: SortKey) => void
+  align?: 'left' | 'right' | 'center'
+}) {
+  const active = current === key
+  const alignCls = align === 'right' ? 'text-right' : align === 'center' ? 'text-center' : 'text-left'
+  const justifyCls = align === 'right' ? 'justify-end' : align === 'center' ? 'justify-center' : 'justify-start'
+  return (
+    <th
+      onClick={() => onSort(key)}
+      className={`px-4 py-3 ${alignCls} text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700`}
+    >
+      <span className={`inline-flex items-center gap-1 ${justifyCls}`}>
+        {label}
+        {active
+          ? (dir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />)
+          : <ChevronUp size={12} className="opacity-20" />}
+      </span>
+    </th>
   )
 }
