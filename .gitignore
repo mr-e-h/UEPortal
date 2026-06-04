@@ -35,8 +35,12 @@ yarn-error.log*
 *.tsbuildinfo
 next-env.d.ts
 
-# local dev tooling
-.claude/
+# local dev tooling — ignore everything under .claude/ EXCEPT the shared
+# project subagent definitions, which we want versioned with the repo.
+.claude/*
+!.claude/agents/
+.claude/agents/*
+!.claude/agents/*.md
 
 # user uploads
 /data/uploads/

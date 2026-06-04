@@ -1,0 +1,55 @@
+-- ============================================================================
+-- 0000_baseline_schema.sql  —  PLACEHOLDER (NOT YET GENERATED)
+-- ============================================================================
+--
+-- ⚠️  THIS FILE IS AN EMPTY PLACEHOLDER. It does NOT yet contain the real
+--     database schema. It must be filled with a SCHEMA-ONLY dump of the live
+--     Supabase project before it can be considered the baseline.
+--
+-- WHY IT IS EMPTY
+--   The Fase 0 baseline dump could not be generated automatically because the
+--   tooling/credentials were not available in the environment at the time:
+--     - No Supabase CLI installed (global or local)
+--     - No pg_dump / psql on PATH
+--     - No DATABASE_URL / DB password in .env.local (only SUPABASE_URL +
+--       SERVICE_ROLE_KEY + APP_BASE_URL are present)
+--     - Supabase MCP connection was not available
+--   See supabase/README.md → "Generating the baseline" for the exact, safe,
+--   read-only commands to produce this file once ONE of those is available.
+--
+-- WHAT GOES HERE (when generated)
+--   A schema-only dump of the `public` schema for project ref
+--   `uvvxezkqwznisgywpojs` (region: AWS eu-west-1 / Ireland):
+--     - CREATE TABLE for all ~41 tables (users, subcontractors, projects,
+--       products, subcontractor_product_prices, project_budget_lines,
+--       change_orders (+ _lines, _consequence_lines), weekly_reports
+--       (+ _lines), tenders (+ _lines, _invitations, _bids, _bid_lines),
+--       activity_log, sessions, invitations, password_resets, forecast_*,
+--       project_*, etc.)
+--     - CHECK constraints, UNIQUE indexes, foreign keys, default values
+--     - `ALTER TABLE ... ENABLE ROW LEVEL SECURITY` flags (RLS is on with
+--       zero policies — the default-deny backstop documented in lib/supabase.ts)
+--     - Storage bucket definitions/policies if dumped (attachments, budget-files)
+--
+-- WHAT MUST **NOT** GO HERE
+--   - No INSERT / COPY statements. SCHEMA ONLY.
+--   - No rows from `users` (bcrypt hashes + emails), no `sessions`,
+--     no `password_resets`, no customer prices / margins, no business data.
+--   Production data belongs in an encrypted backup, never in git.
+--
+-- HOW TO FILL IT (pick one — all are READ-ONLY against the DB)
+--   A) Supabase CLI (recommended):
+--        npx supabase login
+--        npx supabase link --project-ref uvvxezkqwznisgywpojs
+--        npx supabase db dump --schema public -f supabase/migrations/0000_baseline_schema.sql
+--   B) pg_dump (needs DB password from Dashboard → Settings → Database):
+--        pg_dump "postgresql://postgres:[PASSWORD]@db.uvvxezkqwznisgywpojs.supabase.co:5432/postgres" \
+--          --schema-only --no-owner --no-privileges \
+--          -f supabase/migrations/0000_baseline_schema.sql
+--   C) Supabase MCP (when reconnected): introspect and write the DDL here.
+--
+--   After filling: open the file and CONFIRM there are zero INSERT/COPY lines
+--   before committing.
+-- ============================================================================
+
+-- (intentionally empty — replace this entire file with the schema-only dump)

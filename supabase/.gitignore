@@ -1,0 +1,19 @@
+# Supabase local/runtime artifacts — never commit
+.branches
+.temp
+.env
+
+# ── DATA & SECRETS: MUST NEVER BE COMMITTED ──────────────────────────────
+# The migrations/ folder is for SCHEMA-ONLY SQL (DDL). Never check in
+# production data: users have bcrypt password hashes + emails, and the
+# business tables hold customer prices / margins. Those belong in encrypted
+# backups, not in git.
+#
+# Any of these filename patterns are blocked as a safety net:
+seed_snapshot.sql
+*_data.sql
+*_data-only.sql
+*.dump
+*.backup
+*.csv
+data-*.sql
