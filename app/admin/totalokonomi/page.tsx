@@ -71,8 +71,8 @@ export default async function AdminDashboard() {
   ] = await Promise.all([
     sb.from('projects').select('*').neq('deleted', true),
     sb.from('project_budget_lines').select('id, project_id, budget_quantity, customer_price_snapshot, subcontractor_cost_price_snapshot'),
-    sb.from('weekly_reports').select('*').gte('year', thisYear - 1).lte('year', thisYear),
-    sb.from('change_orders').select('*').gte('submitted_at', lastYearStart).neq('status', 'draft'),
+    sb.from('weekly_reports').select('id, project_id, subcontractor_id, status, year, week_number, submitted_at, submission_number').gte('year', thisYear - 1).lte('year', thisYear),
+    sb.from('change_orders').select('id, project_id, subcontractor_id, status, reviewed_at, submitted_at, total_customer_value, total_cost, reason').gte('submitted_at', lastYearStart).neq('status', 'draft'),
     sb.from('hour_entries').select('*').gte('date', lastYearStart),
     sb.from('subcontractors').select('id, company_name'),
     // Invoices for the per-month bar chart — bounded to current year so we
@@ -116,6 +116,16 @@ export default async function AdminDashboard() {
   const blMap = new Map(budgetLines.map((b) => [b.id, b]))
   const projMap = new Map(projects.map((p) => [p.id, p]))
   const subMap = new Map(subcontractors.map((s) => [s.id, s]))
+
+  // Group report lines by their parent report once, so the loops below can do
+  // O(1) lookups instead of re-scanning the full weeklyReportLines array per
+  // report/project. Pure internal optimisation — same lines, same order.
+  const linesByReportId = new Map<string, WeeklyReportLine[]>()
+  for (const l of weeklyReportLines) {
+    const arr = linesByReportId.get(l.weekly_report_id)
+    if (arr) arr.push(l)
+    else linesByReportId.set(l.weekly_report_id, [l])
+  }
 
   // YTD KPI computations
   const approvedReportIds = new Set(
@@ -337,8 +347,8 @@ export default async function AdminDashboard() {
     if (y !== thisYear) continue
     const slot = monthlyBuckets[m - 1]
     if (!slot) continue
-    for (const l of weeklyReportLines) {
-      if (l.weekly_report_id !== wr.id || l.status !== 'approved') continue
+    for (const l of linesByReportId.get(wr.id) ?? []) {
+      if (l.status !== 'approved') continue
       const bl = blMap.get(l.project_budget_line_id)
       if (!bl) continue
       slot.omsetning += l.reported_quantity * bl.customer_price_snapshot
@@ -375,7 +385,7 @@ export default async function AdminDashboard() {
 
   // Pending weekly report rows
   const pendingRows: PendingRow[] = pendingReports.map((wr) => {
-    const lines = weeklyReportLines.filter((l) => l.weekly_report_id === wr.id)
+    const lines = linesByReportId.get(wr.id) ?? []
     const totalCost = lines.reduce(
       (s, l) =>
         s + l.reported_quantity * (blMap.get(l.project_budget_line_id)?.subcontractor_cost_price_snapshot ?? 0),
