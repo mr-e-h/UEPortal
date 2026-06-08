@@ -45,6 +45,12 @@ export async function GET(request: NextRequest) {
   const allBudgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
   const allProducts = await readJson<Product>('products.json')
 
+  // O(1) lookups instead of Array.find() inside the weekLines loop below
+  // (was O(weekLines × budgetLines) + O(weekLines × products)). Pure internal
+  // perf change — the resolved bl/product are identical to before.
+  const blById = new Map(allBudgetLines.map((b) => [b.id, b]))
+  const productById = new Map(allProducts.map((p) => [p.id, p]))
+
   const byBudgetLine = new Map<string, {
     project_budget_line_id: string
     product_name: string
@@ -58,8 +64,8 @@ export async function GET(request: NextRequest) {
   }>()
 
   for (const line of weekLines) {
-    const bl = allBudgetLines.find((b) => b.id === line.project_budget_line_id)
-    const product = allProducts.find((p) => p.id === bl?.product_id)
+    const bl = blById.get(line.project_budget_line_id)
+    const product = bl ? productById.get(bl.product_id) : undefined
 
     const existing = byBudgetLine.get(line.project_budget_line_id) ?? {
       project_budget_line_id: line.project_budget_line_id,
