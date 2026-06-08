@@ -293,3 +293,206 @@ function emptyResult(): InvoiceBasisResult {
     },
   }
 }
+
+// ============================================================================
+// Subcontractor (UE) invoice basis
+// ============================================================================
+//
+// The UE-facing variant. CRITICAL difference from the admin version: the UE may
+// ONLY ever see their own cost side. The returned line shape has NO customer
+// price, NO sales total, NO profit, NO subcontractor_name — only cost_price /
+// cost_total. Scoping is by a single subcontractor_id (the caller's own; the
+// route enforces that the caller owns it or is an admin). This is a faithful
+// port of the previous inline route logic; output is byte-for-byte identical.
+//
+// Behaviour preserved exactly:
+//   - filter to this subcontractor's approved/partially_approved reports
+//   - approved report lines only
+//   - approved change orders for this subcontractor
+//   - optional project_id + date-range (report submitted_at/created_at) filters
+//   - skip lines/COs whose project is missing OR soft-deleted (proj.deleted)
+//   - NO excludeBilled concept here (the UE route never had one)
+
+export type SubInvoiceBasisFilters = {
+  subcontractorId: string
+  projectId?: string | null
+  from?: string | null // ISO date (YYYY-MM-DD)
+  to?: string | null   // ISO date (YYYY-MM-DD)
+}
+
+export type SubInvoiceBasisLine = {
+  report_line_id?: string
+  change_order_id?: string
+  project_id: string
+  project_name: string
+  product_name: string
+  unit: string
+  quantity: number
+  cost_price: number
+  cost_total: number
+  date: string
+  source: 'report' | 'change_order'
+}
+
+export type SubInvoiceBasisResult = {
+  lines: SubInvoiceBasisLine[]
+  summary: {
+    line_count: number
+    total_cost: number
+  }
+}
+
+export async function getSubcontractorInvoiceBasis(
+  filters: SubInvoiceBasisFilters,
+): Promise<SubInvoiceBasisResult> {
+  const { subcontractorId, projectId = null, from = null, to = null } = filters
+  const sb = getSupabaseAdmin()
+
+  // --- Approved weekly reports for THIS subcontractor (server filtered) ---
+  let reportsQ = sb
+    .from('weekly_reports')
+    .select('*')
+    .eq('subcontractor_id', subcontractorId)
+    .in('status', ['approved', 'partially_approved'])
+  if (projectId) reportsQ = reportsQ.eq('project_id', projectId)
+  const { data: reportData, error: reportErr } = await reportsQ
+  if (reportErr) throw new Error(`getSubcontractorInvoiceBasis weekly_reports: ${reportErr.message}`)
+  const approvedReports = (reportData ?? []) as WeeklyReport[]
+
+  // --- Approved change orders for THIS subcontractor (server filtered) ----
+  let cosQ = sb
+    .from('change_orders')
+    .select('*')
+    .eq('subcontractor_id', subcontractorId)
+    .eq('status', 'approved')
+  if (projectId) cosQ = cosQ.eq('project_id', projectId)
+  const { data: coData, error: coErr } = await cosQ
+  if (coErr) throw new Error(`getSubcontractorInvoiceBasis change_orders: ${coErr.message}`)
+  let approvedCOs = (coData ?? []) as ChangeOrder[]
+
+  // --- Approved report lines for those reports ----------------------------
+  const approvedReportIds = approvedReports.map((r) => r.id)
+  let approvedLines: WeeklyReportLine[] = []
+  if (approvedReportIds.length > 0) {
+    const { data, error } = await sb
+      .from('weekly_report_lines')
+      .select('*')
+      .eq('status', 'approved')
+      .in('weekly_report_id', approvedReportIds)
+    if (error) throw new Error(`getSubcontractorInvoiceBasis weekly_report_lines: ${error.message}`)
+    approvedLines = (data ?? []) as WeeklyReportLine[]
+  }
+
+  // --- Lookup tables (only referenced rows) -------------------------------
+  const blIds = Array.from(new Set(approvedLines.map((l) => l.project_budget_line_id)))
+  let budgetLines: ProjectBudgetLine[] = []
+  if (blIds.length > 0) {
+    const { data, error } = await sb.from('project_budget_lines').select('*').in('id', blIds)
+    if (error) throw new Error(`getSubcontractorInvoiceBasis project_budget_lines: ${error.message}`)
+    budgetLines = (data ?? []) as ProjectBudgetLine[]
+  }
+  const blMap = new Map(budgetLines.map((bl) => [bl.id, bl]))
+
+  const neededProjectIds = new Set<string>()
+  for (const bl of budgetLines) neededProjectIds.add(bl.project_id)
+  for (const co of approvedCOs) neededProjectIds.add(co.project_id)
+  let projects: Project[] = []
+  if (neededProjectIds.size > 0) {
+    const { data, error } = await sb.from('projects').select('*').in('id', Array.from(neededProjectIds))
+    if (error) throw new Error(`getSubcontractorInvoiceBasis projects: ${error.message}`)
+    projects = (data ?? []) as Project[]
+  }
+  const projectMap = new Map(projects.map((p) => [p.id, p]))
+
+  const neededProductIds = new Set<string>()
+  for (const bl of budgetLines) neededProductIds.add(bl.product_id)
+  for (const co of approvedCOs) neededProductIds.add(co.product_id)
+  let products: Product[] = []
+  if (neededProductIds.size > 0) {
+    const { data, error } = await sb.from('products').select('*').in('id', Array.from(neededProductIds))
+    if (error) throw new Error(`getSubcontractorInvoiceBasis products: ${error.message}`)
+    products = (data ?? []) as Product[]
+  }
+  const productMap = new Map(products.map((p) => [p.id, p]))
+
+  const wrMap = new Map(approvedReports.map((r) => [r.id, r]))
+
+  // --- Date-range filter on report lines (preserved JS logic) -------------
+  if (from || to) {
+    const reportDateMap = new Map(approvedReports.map((r) => [r.id, r.submitted_at ?? r.created_at]))
+    approvedLines = approvedLines.filter((l) => {
+      const dateStr = reportDateMap.get(l.weekly_report_id)
+      if (!dateStr) return false
+      const d = dateStr.split('T')[0]
+      if (from && d < from) return false
+      if (to && d > to) return false
+      return true
+    })
+  }
+
+  // --- Date-range filter on change orders (preserved JS logic) ------------
+  if (from || to) {
+    approvedCOs = approvedCOs.filter((co) => {
+      const d = (co.reviewed_at ?? co.submitted_at ?? '').split('T')[0]
+      if (!d) return false
+      if (from && d < from) return false
+      if (to && d > to) return false
+      return true
+    })
+  }
+
+  // --- Assemble (cost-only line shape, deleted projects skipped) ----------
+  const lineItems: SubInvoiceBasisLine[] = []
+
+  for (const line of approvedLines) {
+    const bl = blMap.get(line.project_budget_line_id)
+    if (!bl) continue
+    const report = wrMap.get(line.weekly_report_id)
+    if (!report) continue
+    const proj = projectMap.get(bl.project_id)
+    if (!proj || proj.deleted) continue
+    const product = productMap.get(bl.product_id)
+
+    lineItems.push({
+      report_line_id: line.id,
+      project_id: bl.project_id,
+      project_name: proj.name,
+      product_name: fmtProductLabel(product),
+      unit: product?.unit ?? '–',
+      quantity: line.reported_quantity,
+      cost_price: bl.subcontractor_cost_price_snapshot,
+      cost_total: line.reported_quantity * bl.subcontractor_cost_price_snapshot,
+      date: (report.submitted_at ?? report.created_at).split('T')[0],
+      source: 'report',
+    })
+  }
+
+  for (const co of approvedCOs) {
+    const proj = projectMap.get(co.project_id)
+    if (!proj || proj.deleted) continue
+    const product = productMap.get(co.product_id)
+
+    lineItems.push({
+      change_order_id: co.id,
+      project_id: co.project_id,
+      project_name: proj.name,
+      product_name: fmtProductLabel(product),
+      unit: co.unit,
+      quantity: co.requested_quantity,
+      cost_price: co.cost_price_snapshot,
+      cost_total: co.total_cost,
+      date: (co.reviewed_at ?? co.submitted_at ?? '').split('T')[0],
+      source: 'change_order',
+    })
+  }
+
+  const totalCost = lineItems.reduce((s, l) => s + l.cost_total, 0)
+
+  return {
+    lines: lineItems,
+    summary: {
+      line_count: lineItems.length,
+      total_cost: totalCost,
+    },
+  }
+}
