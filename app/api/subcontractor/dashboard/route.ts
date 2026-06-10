@@ -63,7 +63,9 @@ export async function GET(request: NextRequest) {
     sb.from('projects').select('id, name, project_number, end_date').neq('deleted', true),
     sb.from('project_subcontractors').select('project_id, subcontractor_id').eq('subcontractor_id', subId),
     sb.from('project_budget_lines').select('id, project_id, product_id, budget_quantity, subcontractor_cost_price_snapshot, assigned_subcontractor_id, line_type'),
-    sb.from('change_orders').select('id, project_id, subcontractor_id, product_id, requested_quantity, unit, cost_price_snapshot, total_cost, status, submitted_at').eq('subcontractor_id', subId),
+    // change_order_number MÅ være med — dashboardet bygger "Endringsmelding N"-
+    // titler fra den; uten feltet rendres "Endringsmelding ?".
+    sb.from('change_orders').select('id, change_order_number, project_id, subcontractor_id, product_id, requested_quantity, unit, cost_price_snapshot, total_cost, status, submitted_at').eq('subcontractor_id', subId),
     sb.from('weekly_reports').select('id, project_id, subcontractor_id, year, week_number, status, submitted_at, submission_number').eq('subcontractor_id', subId),
     sb.from('weekly_report_lines').select('id, weekly_report_id, project_budget_line_id, reported_quantity, status'),
     sb.from('ue_invoices').select('id, subcontractor_id, amount').eq('subcontractor_id', subId),
