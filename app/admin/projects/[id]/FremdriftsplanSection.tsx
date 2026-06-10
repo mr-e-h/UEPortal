@@ -1,6 +1,7 @@
 'use client'
 
 import GanttSection from './GanttSection'
+import PhasesSection from './PhasesSection'
 import type { GanttMilestone, Subcontractor, ProjectMonthPlan } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
 
@@ -32,6 +33,8 @@ export default function FremdriftsplanSection({
 
   return (
     <div className="space-y-8">
+      <PhasesSection projectId={projectId} />
+
       <GanttSection
         projectId={projectId}
         projectStart={projectStart}
