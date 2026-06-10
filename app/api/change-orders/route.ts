@@ -3,7 +3,7 @@ import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getDeletedProjectIds } from '@/lib/data'
 import { getSession } from '@/lib/auth'
-import { isSub, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
+import { isSub, getProjectScope, ensureProjectWritable, canSeeCustomerEconomics } from '@/lib/api-guard'
 import type { ChangeOrder, Product, SubcontractorProductPrice, ProjectBudgetLine } from '@/types'
 
 function stripForUE<T extends ChangeOrder>(o: T) {
@@ -41,9 +41,15 @@ export async function GET(request: NextRequest) {
 
     if (userIsSub) return NextResponse.json(orders.map(stripForUE))
 
-    // PM scope: only see COs for assigned projects.
+    // PM/byggeleder scope: only see COs for assigned projects.
     const scope = await getProjectScope(session)
     if (scope) orders = orders.filter((o) => scope.has(o.project_id))
+    // Byggeleder (site manager) is project staff but NOT an economy role —
+    // strip customer price/value/profit exactly like the UE view. main /
+    // company / project_manager pass through untouched.
+    if (!canSeeCustomerEconomics(session)) {
+      return NextResponse.json(orders.map(stripForUE))
+    }
     return NextResponse.json(orders)
   } catch (error) {
     console.error('change-orders GET error:', error)

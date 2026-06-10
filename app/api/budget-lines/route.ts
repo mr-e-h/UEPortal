@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getDeletedProjectIds } from '@/lib/data'
-import { requireAuth, requireAdmin, isSub, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
+import { requireAuth, requireAdmin, isSub, getProjectScope, ensureProjectWritable, canSeeCustomerEconomics } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { ProjectBudgetLine, Product, SubcontractorProductPrice, ProjectSubcontractor } from '@/types'
 
@@ -44,9 +44,16 @@ export async function GET(request: NextRequest) {
     return NextResponse.json(lines.map((l) => ({ ...l, customer_price_snapshot: 0 })))
   }
 
-  // PM scope: filter to assigned projects only. main/company unaffected.
+  // PM/byggeleder scope: filter to assigned projects only. main/company
+  // unaffected (scope null). Empty scope → empty list (in-memory filter).
   const scope = await getProjectScope(auth.user)
   if (scope) lines = lines.filter((l) => scope.has(l.project_id))
+
+  // Byggeleder: cost-only — mask the customer price snapshot exactly like
+  // the UE branch above. main/company/PM pass through untouched.
+  if (!canSeeCustomerEconomics(auth.user)) {
+    return NextResponse.json(lines.map((l) => ({ ...l, customer_price_snapshot: 0 })))
+  }
 
   return NextResponse.json(lines)
 }

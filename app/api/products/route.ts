@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, requireAuth, isSub } from '@/lib/api-guard'
+import { requireAdmin, requireAuth, canSeeCustomerEconomics } from '@/lib/api-guard'
 import type { Product } from '@/types'
 
 export async function GET(req: NextRequest) {
@@ -26,8 +26,10 @@ export async function GET(req: NextRequest) {
   // sub-role users get a stripped response (customer_price hidden).
   const headers = { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
 
-  // UE never sees customer_price (MinUE's selling price).
-  if (isSub(auth.user)) {
+  // UE and byggeleder never see customer_price (MinUE's selling price).
+  // canSeeCustomerEconomics is the explicit economy gate: true only for
+  // main / company / project_manager — identical output for sub as before.
+  if (!canSeeCustomerEconomics(auth.user)) {
     return NextResponse.json(products.map((p) => ({ ...p, customer_price: 0 })), { headers })
   }
   return NextResponse.json(products, { headers })

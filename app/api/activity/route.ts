@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSession } from '@/lib/auth'
-import { isAdmin, isSub } from '@/lib/api-guard'
+import { isAdmin, isSub, canSeeCustomerEconomics, getProjectScope, requireStaff } from '@/lib/api-guard'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import type { ActivityEntry } from '@/types'
 
@@ -42,18 +42,40 @@ export async function GET(request: NextRequest) {
   const entityId = searchParams.get('entity_id')
   const entityType = searchParams.get('entity_type')
 
-  // For non-admins, only allow access to their OWN change_order entities.
+  // For non-admins, only allow access to scoped entities:
+  //  - UE (sub): their OWN change_order entities (unchanged behaviour).
+  //  - byggeleder: change_order/weekly_report entities on ASSIGNED projects.
   if (!isAdmin(session)) {
-    if (!isSub(session) || !entityId || entityType !== 'change_order') {
-      return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
-    }
-    // Ownership check: the requested EM must belong to this sub.
-    const { data: order } = await getSupabaseAdmin()
-      .from('change_orders')
-      .select('subcontractor_id')
-      .eq('id', entityId)
-      .maybeSingle<{ subcontractor_id: string }>()
-    if (!order || order.subcontractor_id !== session.subcontractor_id) {
+    if (isSub(session)) {
+      if (!entityId || entityType !== 'change_order') {
+        return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+      }
+      // Ownership check: the requested EM must belong to this sub.
+      const { data: order } = await getSupabaseAdmin()
+        .from('change_orders')
+        .select('subcontractor_id')
+        .eq('id', entityId)
+        .maybeSingle<{ subcontractor_id: string }>()
+      if (!order || order.subcontractor_id !== session.subcontractor_id) {
+        return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+      }
+    } else if (session.role === 'byggeleder') {
+      if (!entityId || (entityType !== 'change_order' && entityType !== 'weekly_report')) {
+        return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+      }
+      // Scope check: the entity's project must be one of the byggeleder's
+      // assigned projects (empty scope = no projects = no access).
+      const table = entityType === 'change_order' ? 'change_orders' : 'weekly_reports'
+      const { data: entity } = await getSupabaseAdmin()
+        .from(table)
+        .select('project_id')
+        .eq('id', entityId)
+        .maybeSingle<{ project_id: string }>()
+      const scope = await getProjectScope(session)
+      if (!entity || !scope || !scope.has(entity.project_id)) {
+        return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+      }
+    } else {
       return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
     }
   }
@@ -71,10 +93,11 @@ export async function GET(request: NextRequest) {
 
   let rows = (data ?? []) as ActivityEntry[]
 
-  // UE strip: fjern kundepris-keys rekursivt fra diff-snapshots så
-  // Versjonslogg-popup på UE-siden aldri avslører Salgsverdi/Profit —
-  // også dypt i nested change_order/lines/consequence_lines-strukturen.
-  if (isSub(session)) {
+  // Economy strip: fjern kundepris-keys rekursivt fra diff-snapshots for
+  // alle roller uten økonomitilgang (UE OG byggeleder) så Versjonslogg-popup
+  // aldri avslører Kundepris/Salgsverdi/Fortjeneste — også dypt i nested
+  // change_order/lines/consequence_lines-strukturen. main/company/PM uendret.
+  if (!canSeeCustomerEconomics(session)) {
     rows = rows.map((r) => {
       if (!r.metadata) return r
       return {
@@ -92,12 +115,10 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
-  if (!isAdmin(session)) {
-    return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
-  }
-  const auth = { ok: true, user: session } as const
+  // Comments: project staff (main / company / PM / byggeleder). Byggeleder
+  // writes operational notes on EMs/reports — no economy in the payload.
+  const auth = await requireStaff()
+  if (!auth.ok) return auth.response
 
   const body = await request.json() as {
     entity_type: 'weekly_report' | 'change_order'

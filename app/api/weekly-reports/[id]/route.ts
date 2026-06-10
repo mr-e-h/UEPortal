@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
-import { isAdmin, isSub, getProjectScope } from '@/lib/api-guard'
+import { isSub, getProjectScope, canSeeCustomerEconomics } from '@/lib/api-guard'
+import { PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { fmtProductLabel } from '@/lib/format'
 import type { WeeklyReport, WeeklyReportLine, ProjectBudgetLine, Product } from '@/types'
 
@@ -23,11 +24,14 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   if (userIsSub && report.subcontractor_id !== session.subcontractor_id) {
     return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
   }
-  if (!userIsSub && !isAdmin(session)) {
+  // Project staff = main / company / project_manager / byggeleder. Byggeleder
+  // is admitted here for operational follow-up; the scope gate below confines
+  // both PM and byggeleder to their assigned projects.
+  if (!userIsSub && !PROJECT_STAFF_ROLES.includes(session.role)) {
     return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
   }
-  // PM scope: a project_manager may only view reports for assigned projects
-  // (isAdmin above is true for PMs too, so gate explicitly on project scope).
+  // Scope: PM (project_managers) and byggeleder (project_site_managers) may
+  // only view reports for assigned projects. main/company → scope null → pass.
   if (!userIsSub) {
     const scope = await getProjectScope(session)
     if (scope && !scope.has(report.project_id)) {
@@ -68,7 +72,9 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
       unit: product?.unit ?? '–',
       subcontractor_cost_price_snapshot: bl?.subcontractor_cost_price_snapshot ?? 0,
     }
-    if (userIsSub) return base
+    // Cost-only view for UE AND byggeleder — customer_price_snapshot is an
+    // economy field reserved for main/company/PM. Sub output is unchanged.
+    if (userIsSub || !canSeeCustomerEconomics(session)) return base
     return { ...base, customer_price_snapshot: bl?.customer_price_snapshot ?? 0 }
   })
 
