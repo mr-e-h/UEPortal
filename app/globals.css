@@ -21,12 +21,15 @@ input[type='number'] {
 }
 
 :root {
-  --background: #ffffff;
+  /* "Hvit" er bevisst svakt grånet (#FAFBFC) — ren #FFF blender på skjermer
+     med lav lysstyrke/dårlig lys. Side- og muted-bakgrunnene er flyttet ett
+     hakk ned tilsvarende så hierarkiet side < muted < kort beholdes. */
+  --background: #FAFBFC;
   --foreground: #171717;
 
-  --color-bg-page: #F7F8FA;
-  --color-bg-card: #FFFFFF;
-  --color-bg-muted: #F1F3F6;
+  --color-bg-page: #F2F4F7;
+  --color-bg-card: #FAFBFC;
+  --color-bg-muted: #ECEFF2;
 
   --color-primary: #2563EB;
   --color-primary-hover: #1D4ED8;

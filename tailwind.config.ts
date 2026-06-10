@@ -9,6 +9,11 @@ const config: Config = {
   theme: {
     extend: {
       colors: {
+        // Demp "hvit" globalt: mange flater bruker bg-white direkte, og ren
+        // #FFF blender på skjermer med dårlig lys. Samme verdi som
+        // --color-bg-card så bg-white og bg-card ser identiske ut.
+        // (text-white på fargede knapper påvirkes umerkelig.)
+        white: '#FAFBFC',
         background: "var(--background)",
         foreground: "var(--foreground)",
         primary: {
