@@ -6,6 +6,7 @@ import Link from 'next/link'
 import {
   LayoutDashboard,
   FolderKanban,
+  CalendarRange,
   Users,
   Package,
   CheckSquare,
@@ -34,6 +35,7 @@ const sections = [
     links: [
       { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true, siteVisible: true as const },
       { href: '/admin/projects', label: 'Prosjekter', icon: FolderKanban, siteVisible: true as const },
+      { href: '/admin/fremdriftsplan', label: 'Fremdriftsplan', icon: CalendarRange, siteVisible: true as const },
       { href: '/admin/tenders', label: 'Anbud', icon: Gavel },
       { href: '/admin/subcontractors', label: 'Underentreprenører', icon: Users },
       { href: '/admin/products', label: 'Produkter', icon: Package },
