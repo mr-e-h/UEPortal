@@ -1,13 +1,14 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Download, RefreshCw } from 'lucide-react'
-import type { Project, Subcontractor } from '@/types'
+import { Download, RefreshCw, Plus, Trash2 } from 'lucide-react'
+import type { Project, Subcontractor, ProjectInvoice } from '@/types'
 import { fmtNOK as fmt, fmtNumber } from '@/lib/format'
 import Field from '@/components/ui/Field'
 import Card from '@/components/ui/Card'
 import StatusPill from '@/components/ui/StatusPill'
 import EmptyState from '@/components/ui/EmptyState'
+import ConfirmDialog from '@/components/ConfirmDialog'
 
 const fmtQty = (n: number) => fmtNumber(n, 2)
 
@@ -49,6 +50,59 @@ export default function InvoiceBasisPage() {
   const [typeFilter, setTypeFilter] = useState<'ue' | 'customer'>('ue')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+
+  // A-konto mot kunde: registrerte fakturaer (project_invoices). Systemet er
+  // IKKE et fakturasystem — fakturering skjer utenfor; her loggføres kun
+  // dato/beløp/notat så «produsert − fakturert = gjenstående» kan vises.
+  const [invoices, setInvoices] = useState<ProjectInvoice[]>([])
+  const [invForm, setInvForm] = useState({ amount: '', date: new Date().toISOString().split('T')[0], projectId: '', comment: '' })
+  const [invSaving, setInvSaving] = useState(false)
+  const [invError, setInvError] = useState('')
+  const [confirmDeleteInvoice, setConfirmDeleteInvoice] = useState<string | null>(null)
+
+  const fetchInvoices = useCallback(async () => {
+    const data = await fetch('/api/invoices').then((r) => (r.ok ? r.json() : []))
+    setInvoices(Array.isArray(data) ? data : [])
+  }, [])
+  useEffect(() => { fetchInvoices() }, [fetchInvoices])
+
+  async function registerInvoice(e: React.FormEvent) {
+    e.preventDefault()
+    setInvError('')
+    const amount = Number(invForm.amount)
+    if (!Number.isFinite(amount) || amount <= 0) { setInvError('Oppgi et gyldig beløp'); return }
+    if (!invForm.projectId) { setInvError('Velg prosjekt'); return }
+    setInvSaving(true)
+    const res = await fetch('/api/invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: invForm.projectId, amount, invoice_date: invForm.date, comment: invForm.comment }),
+    })
+    setInvSaving(false)
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      setInvError((d as { error?: string }).error ?? 'Lagring feilet')
+      return
+    }
+    setInvForm((f) => ({ ...f, amount: '', comment: '' }))
+    fetchInvoices()
+  }
+
+  async function deleteInvoice(id: string) {
+    await fetch(`/api/invoices/${id}`, { method: 'DELETE' })
+    setConfirmDeleteInvoice(null)
+    fetchInvoices()
+  }
+
+  // Trio-tallene respekterer prosjektfilteret: produsert kommer ferdig
+  // filtrert fra API-et; fakturert filtreres her tilsvarende.
+  const visibleInvoices = projectFilter === 'all'
+    ? invoices
+    : invoices.filter((i) => i.project_id === projectFilter)
+  const invoicedTotal = visibleInvoices.reduce((s, i) => s + i.amount, 0)
+  const producedValue = summary?.total_sales_value ?? 0
+  const remainingValue = producedValue - invoicedTotal
+  const projectNameById = new Map(projects.map((p) => [p.id, p.name]))
 
   useEffect(() => {
     Promise.all([
@@ -206,6 +260,126 @@ export default function InvoiceBasisPage() {
             </>
           )}
         </div>
+      )}
+
+      {/* A-konto mot kunde — produsert / fakturert / gjenstående + enkel
+          registrering. Fakturering skjer utenfor systemet; dette er kun
+          loggføring (dato + beløp + notat) per prosjekt. */}
+      {typeFilter === 'customer' && (
+        <Card className="overflow-hidden">
+          <div className="px-4 py-3 border-b border-border">
+            <h2 className="text-sm font-semibold text-gray-900">A-konto-fakturering</h2>
+            <p className="text-xs text-gray-500 mt-0.5">Registrer fakturert beløp — systemet viser hva som gjenstår av produsert verdi</p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-border">
+            <div className="bg-card p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Produsert verdi</p>
+              <p className="text-xl font-bold text-gray-900 mt-1">{fmt(producedValue)}</p>
+            </div>
+            <div className="bg-card p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Fakturert hittil</p>
+              <p className="text-xl font-bold text-primary mt-1">{fmt(invoicedTotal)}</p>
+              <p className="text-[11px] text-gray-400">{visibleInvoices.length} {visibleInvoices.length === 1 ? 'faktura' : 'fakturaer'}</p>
+            </div>
+            <div className="bg-card p-4">
+              <p className="text-xs text-gray-500 uppercase tracking-wide">Gjenstår å fakturere</p>
+              <p className={`text-xl font-bold mt-1 ${remainingValue >= 0 ? 'text-gray-900' : 'text-danger'}`}>{fmt(remainingValue)}</p>
+            </div>
+          </div>
+
+          <form onSubmit={registerInvoice} className="px-4 py-3 border-t border-border flex flex-wrap gap-3 items-end">
+            <Field label="Beløp (NOK)">
+              <input
+                type="number" min="0" step="any" value={invForm.amount}
+                onChange={(e) => setInvForm((f) => ({ ...f, amount: e.target.value }))}
+                placeholder="0"
+                className="w-36 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+              />
+            </Field>
+            <Field label="Fakturadato">
+              <input
+                type="date" value={invForm.date}
+                onChange={(e) => setInvForm((f) => ({ ...f, date: e.target.value }))}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+              />
+            </Field>
+            <Field label="Prosjekt">
+              <select
+                value={invForm.projectId}
+                onChange={(e) => setInvForm((f) => ({ ...f, projectId: e.target.value }))}
+                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+              >
+                <option value="">Velg prosjekt…</option>
+                {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
+              </select>
+            </Field>
+            <Field label="Notat (valgfritt)">
+              <input
+                type="text" value={invForm.comment}
+                onChange={(e) => setInvForm((f) => ({ ...f, comment: e.target.value }))}
+                placeholder="Fakturanr. eller merknad"
+                className="w-52 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+              />
+            </Field>
+            <button
+              type="submit" disabled={invSaving}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-primary text-white text-sm rounded-lg hover:bg-primary-hover disabled:opacity-50"
+            >
+              <Plus size={14} /> {invSaving ? 'Lagrer…' : 'Registrer faktura'}
+            </button>
+            {invError && <p className="text-sm text-danger basis-full">{invError}</p>}
+          </form>
+
+          {visibleInvoices.length > 0 && (
+            <div className="border-t border-border overflow-x-auto">
+              <table className="w-full text-sm">
+                <thead>
+                  <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                    <th className="px-4 py-2.5">Dato</th>
+                    <th className="px-4 py-2.5">Prosjekt</th>
+                    <th className="px-4 py-2.5">Notat</th>
+                    <th className="px-4 py-2.5 text-right">Beløp</th>
+                    <th className="px-4 py-2.5" />
+                  </tr>
+                </thead>
+                <tbody>
+                  {visibleInvoices
+                    .slice()
+                    .sort((a, b) => (b.invoice_date ?? '').localeCompare(a.invoice_date ?? ''))
+                    .map((inv) => (
+                      <tr key={inv.id} className="border-b border-gray-50 last:border-0">
+                        <td className="px-4 py-2.5 whitespace-nowrap text-gray-700">{inv.invoice_date}</td>
+                        <td className="px-4 py-2.5 text-gray-700 max-w-[220px] truncate">{projectNameById.get(inv.project_id) ?? '–'}</td>
+                        <td className="px-4 py-2.5 text-gray-500">{inv.comment || '–'}</td>
+                        <td className="px-4 py-2.5 text-right font-medium text-gray-900 whitespace-nowrap">{fmt(inv.amount)}</td>
+                        <td className="px-4 py-2.5 text-right">
+                          <button
+                            type="button"
+                            onClick={() => setConfirmDeleteInvoice(inv.id)}
+                            title="Slett registrering"
+                            className="p-1 text-gray-400 hover:text-danger hover:bg-danger-soft rounded"
+                          >
+                            <Trash2 size={14} />
+                          </button>
+                        </td>
+                      </tr>
+                    ))}
+                </tbody>
+              </table>
+            </div>
+          )}
+        </Card>
+      )}
+
+      {confirmDeleteInvoice && (
+        <ConfirmDialog
+          title="Slett fakturaregistrering?"
+          message="Registreringen fjernes fra historikken og «Gjenstår å fakturere» justeres opp tilsvarende."
+          confirmLabel="Slett"
+          onConfirm={() => deleteInvoice(confirmDeleteInvoice)}
+          onCancel={() => setConfirmDeleteInvoice(null)}
+        />
       )}
 
       {/* Lines table */}
