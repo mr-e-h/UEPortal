@@ -3,7 +3,7 @@
 import { useState, useMemo } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
-import { Send, Award, XCircle } from 'lucide-react'
+import { Send, Award, XCircle, CalendarClock } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -44,6 +44,10 @@ export default function TenderDetailClient({
   const [error, setError] = useState<string | null>(null)
   const [confirmAward, setConfirmAward] = useState<string | null>(null)
   const [confirmCancel, setConfirmCancel] = useState(false)
+  // Forleng frist: inline datetime-velger. PATCH-ruten støtter deadline_at
+  // allerede — dette er kun UI. Nyttig når UE-er trenger mer tid.
+  const [extendOpen, setExtendOpen] = useState(false)
+  const [newDeadline, setNewDeadline] = useState('')
 
   const subName = useMemo(
     () => new Map(subcontractors.map((s) => [s.id, s.company_name])),
@@ -128,17 +132,55 @@ export default function TenderDetailClient({
             </Button>
           )}
           {!isDraft && !isAwarded && !isCancelled && (
-            <Button
-              variant="secondary"
-              onClick={() => setConfirmCancel(true)}
-              disabled={busy}
-              className="px-3 py-1.5 text-xs"
-            >
-              <XCircle size={13} className="mr-1.5" /> Kanseller
-            </Button>
+            <>
+              <Button
+                variant="secondary"
+                onClick={() => setExtendOpen((v) => !v)}
+                disabled={busy}
+                className="px-3 py-1.5 text-xs"
+              >
+                <CalendarClock size={13} className="mr-1.5" /> Forleng frist
+              </Button>
+              <Button
+                variant="secondary"
+                onClick={() => setConfirmCancel(true)}
+                disabled={busy}
+                className="px-3 py-1.5 text-xs"
+              >
+                <XCircle size={13} className="mr-1.5" /> Kanseller
+              </Button>
+            </>
           )}
         </div>
       </div>
+
+      {extendOpen && !isDraft && !isAwarded && !isCancelled && (
+        <div className="flex flex-wrap items-end gap-3 bg-card border border-border rounded-lg px-4 py-3">
+          <label className="text-xs text-[var(--color-text-muted)] flex flex-col gap-1">
+            Ny svarfrist
+            <input
+              type="datetime-local"
+              value={newDeadline}
+              onChange={(e) => setNewDeadline(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-border rounded-lg bg-card focus:outline-none focus:border-primary"
+            />
+          </label>
+          <Button
+            onClick={async () => {
+              if (!newDeadline) return
+              const ok = await call(`/api/tenders/${tender.id}`, { deadline_at: new Date(newDeadline).toISOString() }, 'PATCH')
+              if (ok) { setExtendOpen(false); setNewDeadline('') }
+            }}
+            disabled={busy || !newDeadline}
+            className="px-3 py-1.5 text-xs"
+          >
+            Lagre ny frist
+          </Button>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            UE-ene kan prise frem til ny frist. Innsendte tilbud beholdes.
+          </p>
+        </div>
+      )}
 
       {error && <div className="text-sm text-red-600 bg-red-50 border border-red-200 rounded px-3 py-2">{error}</div>}
 

@@ -1,8 +1,13 @@
 'use client'
 
+import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { tenderStatus } from '@/lib/statuses'
 import type { TenderStatus } from '@/types'
+
+/** Avsluttede anbud (kansellert/lukket) skjules som standard — de er
+ *  historikk, ikke arbeidskø. Toggle viser dem ved behov. */
+const ARCHIVED_STATUSES: TenderStatus[] = ['cancelled', 'closed']
 
 type Row = {
   id: string
@@ -34,8 +39,25 @@ function TenderChip({ status }: { status: string }) {
 
 export default function TendersList({ rows }: { rows: Row[] }) {
   const router = useRouter()
+  const [showArchived, setShowArchived] = useState(false)
+  const archivedCount = rows.filter((r) => ARCHIVED_STATUSES.includes(r.status)).length
+  const visibleRows = showArchived ? rows : rows.filter((r) => !ARCHIVED_STATUSES.includes(r.status))
+
   return (
     <div className="overflow-x-auto">
+      {archivedCount > 0 && (
+        <div className="px-4 py-2 border-b border-border flex justify-end">
+          <label className="flex items-center gap-1.5 text-xs text-[var(--color-text-muted)] cursor-pointer select-none">
+            <input
+              type="checkbox"
+              checked={showArchived}
+              onChange={(e) => setShowArchived(e.target.checked)}
+              className="rounded"
+            />
+            Vis avsluttede ({archivedCount})
+          </label>
+        </div>
+      )}
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border bg-muted/40">
@@ -47,7 +69,7 @@ export default function TendersList({ rows }: { rows: Row[] }) {
           </tr>
         </thead>
         <tbody>
-          {rows.map((r) => (
+          {visibleRows.map((r) => (
             <tr
               key={r.id}
               onClick={() => router.push(`/admin/tenders/${r.id}`)}
