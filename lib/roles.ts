@@ -1,6 +1,6 @@
 import type { UserRole } from '@/types'
 
-type RoleKind = 'admin' | 'sub' | 'other'
+type RoleKind = 'admin' | 'site' | 'sub' | 'other'
 
 export interface RoleDefinition {
   value: UserRole
@@ -33,6 +33,13 @@ export const ROLES: RoleDefinition[] = [
     badgeClass: 'bg-indigo-50 text-indigo-700',
   },
   {
+    value: 'byggeleder',
+    label: 'Byggeleder',
+    shortLabel: 'Byggeleder',
+    kind: 'site',
+    badgeClass: 'bg-emerald-50 text-emerald-700',
+  },
+  {
     value: 'sub',
     label: 'Underentreprenør',
     shortLabel: 'UE',
@@ -62,3 +69,17 @@ export const ROLE_LABELS: Record<UserRole, string> = ROLES.reduce(
 
 export const ADMIN_ROLES: UserRole[] = ROLES.filter((r) => r.kind === 'admin').map((r) => r.value)
 export const SUB_ROLES: UserRole[] = ROLES.filter((r) => r.kind === 'sub').map((r) => r.value)
+
+/**
+ * Project-operational staff: the admin roles PLUS byggeleder (site manager).
+ * These roles render inside the /admin shell and may reach project-scoped
+ * operational views (projects, weekly reports, change orders in follow-up
+ * mode). It is intentionally BROADER than ADMIN_ROLES — byggeleder is NOT an
+ * admin (no economy access, no final approvals, no user management).
+ *
+ * Use PROJECT_STAFF_ROLES for "may enter the admin shell / operational route".
+ * Use ADMIN_ROLES for "full economy + approval authority".
+ */
+export const PROJECT_STAFF_ROLES: UserRole[] = ROLES
+  .filter((r) => r.kind === 'admin' || r.kind === 'site')
+  .map((r) => r.value)

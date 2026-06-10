@@ -1,4 +1,4 @@
-export type UserRole = 'company' | 'project_manager' | 'main' | 'sub'
+export type UserRole = 'company' | 'project_manager' | 'main' | 'sub' | 'byggeleder'
 
 export interface Invitation {
   id: string

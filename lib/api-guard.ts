@@ -2,7 +2,7 @@ import { NextResponse } from 'next/server'
 import { cache } from 'react'
 import { getSession } from './auth'
 import { getSupabaseAdmin } from './supabase'
-import { ADMIN_ROLES, SUB_ROLES } from './roles'
+import { ADMIN_ROLES, PROJECT_STAFF_ROLES, SUB_ROLES } from './roles'
 import type { User, UserRole } from '@/types'
 
 /**
@@ -34,6 +34,25 @@ export async function requireAdmin(): Promise<AuthResult> {
   const result = await requireAuth()
   if (!result.ok) return result
   if (!ADMIN_ROLES.includes(result.user.role)) {
+    return { ok: false, response: NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 }) }
+  }
+  return result
+}
+
+/**
+ * Broader than requireAdmin — admits PROJECT_STAFF_ROLES (main / company /
+ * project_manager / byggeleder). Use for project-scoped OPERATIONAL routes a
+ * site manager must reach (e.g. follow up / approve weekly-report lines).
+ *
+ * IMPORTANT: this does NOT grant economy access or approval authority. Callers
+ * that return customer economics must still gate output with
+ * canSeeCustomerEconomics(), and routes for final EM approval / send-to-customer
+ * / budgets must keep using requireAdmin (which excludes byggeleder).
+ */
+export async function requireStaff(): Promise<AuthResult> {
+  const result = await requireAuth()
+  if (!result.ok) return result
+  if (!PROJECT_STAFF_ROLES.includes(result.user.role)) {
     return { ok: false, response: NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 }) }
   }
   return result
@@ -74,25 +93,74 @@ export function isSub(user: User): boolean {
 }
 
 /**
+ * The economy-visibility gate. TRUE only for roles allowed to see MinUE's
+ * customer-side economics (customer_price, customer_price_snapshot,
+ * total_customer_value, profit, margin): main / company / project_manager.
+ *
+ * FALSE for byggeleder AND sub — both must get the stripped, cost-only view.
+ *
+ * This is the explicit replacement for the old `isSub()` economy check: never
+ * use `!isSub(user)` to decide economy exposure, because a byggeleder is not a
+ * sub and would wrongly fall into the full-economy branch. Use
+ * `canSeeCustomerEconomics(user)` instead. (Wired into the economy routes in
+ * Pakke 3 — not yet applied here.)
+ */
+export function canSeeCustomerEconomics(user: User): boolean {
+  return ADMIN_ROLES.includes(user.role)
+}
+
+/**
  * Project-scope resolver. Returns:
- *   - `null` when the user sees everything (main / company / sub via
- *     project_subcontractors / non-admin non-PM roles)
- *   - `Set<string>` of allowed project_ids when the user is project_manager
- *     (scoped via the project_managers table)
+ *   - `null` when the user sees everything (main / company; sub is handled
+ *     separately via project_subcontractors in its own routes)
+ *   - `Set<string>` of allowed project_ids when the user is scoped:
+ *       · project_manager → scoped via the project_managers table
+ *       · byggeleder      → scoped via the project_site_managers table
+ *
+ * Both scoped roles return a Set EVEN WHEN EMPTY. An empty Set means "assigned
+ * to no projects → sees nothing" — it must NOT collapse to `null` (which would
+ * mean "see everything"). This is the key safety property for byggeleder.
  *
  * Callers should treat `null` as "no filter" and the set as a whitelist:
  *
  *   const scope = await getProjectScope(user)
  *   if (scope) query.in('project_id', Array.from(scope))
+ *   // note: an empty Array.from(scope) must be handled by the caller as
+ *   // "return nothing" (see isEmptyScope) — an empty .in([]) is a no-op filter.
  */
 export const getProjectScope = cache(async (user: User): Promise<Set<string> | null> => {
-  if (user.role !== 'project_manager') return null
-  const { data } = await getSupabaseAdmin()
-    .from('project_managers')
-    .select('project_id')
-    .eq('user_id', user.id)
-  return new Set((data ?? []).map((r: { project_id: string }) => r.project_id))
+  if (user.role === 'project_manager') {
+    const { data } = await getSupabaseAdmin()
+      .from('project_managers')
+      .select('project_id')
+      .eq('user_id', user.id)
+    return new Set((data ?? []).map((r: { project_id: string }) => r.project_id))
+  }
+  if (user.role === 'byggeleder') {
+    const { data } = await getSupabaseAdmin()
+      .from('project_site_managers')
+      .select('project_id')
+      .eq('user_id', user.id)
+    return new Set((data ?? []).map((r: { project_id: string }) => r.project_id))
+  }
+  return null
 })
+
+/**
+ * Helper for the "empty scope = see nothing" hazard. A scoped role with no
+ * assignments yields an empty Set; callers that filter with `.in('project_id',
+ * [...])` must short-circuit to an empty result in that case, because an empty
+ * `.in([])` is a no-op (would leak everything). Returns true when the user is
+ * scoped to zero projects.
+ *
+ *   const scope = await getProjectScope(user)
+ *   if (isEmptyScope(scope)) return NextResponse.json([])
+ *
+ * (Provided now for Pakke 3/4 to use; routes are not refactored in this pakke.)
+ */
+export function isEmptyScope(scope: Set<string> | null): boolean {
+  return scope !== null && scope.size === 0
+}
 
 /**
  * Write-side gate. Used by POST/PUT/DELETE handlers to refuse mutations

@@ -25,6 +25,7 @@ interface ViewAsUser {
 const ROLE_HOME: Record<UserRole, string> = {
   main: '/admin',
   project_manager: '/admin',
+  byggeleder: '/admin',
   company: '/company',
   sub: '/subcontractor',
 }
@@ -67,7 +68,7 @@ export default function ViewAsBar() {
         )
       : users
     const map: Record<UserRole, ViewAsUser[]> = {
-      main: [], project_manager: [], company: [], sub: [],
+      main: [], project_manager: [], byggeleder: [], company: [], sub: [],
     }
     for (const u of filtered) map[u.role].push(u)
     return map
@@ -106,7 +107,7 @@ export default function ViewAsBar() {
     }
   }
 
-  const sectionOrder: UserRole[] = ['main', 'project_manager', 'company', 'sub']
+  const sectionOrder: UserRole[] = ['main', 'project_manager', 'byggeleder', 'company', 'sub']
 
   return (
     <>
