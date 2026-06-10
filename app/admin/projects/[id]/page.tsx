@@ -5,6 +5,7 @@ import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { useProjectData } from './useProjectData'
+import { useMe } from '@/lib/useMe'
 import type { Product } from '@/types'
 import { fmtProductLabel } from '@/lib/format'
 import ConfirmDialog from '@/components/ConfirmDialog'
@@ -39,6 +40,11 @@ const TABS = [
 ] as const
 type ActiveTab = (typeof TABS)[number]['id']
 
+// Byggeleder (site manager): operational tabs only — no budget/economy/
+// forecast/invoice surfaces. UI-filtering is UX; the underlying economy APIs
+// (budget-lines, invoices, forecasts, internal costs) 403/mask server-side.
+const SITE_MANAGER_TABS: ReadonlyArray<ActiveTab> = ['sjekkliste', 'fremdriftsplan', 'rapporteringer', 'endringsmeldinger']
+
 export default function ProjectDetailPage() {
   const { id } = useParams<{ id: string }>()
   const router = useRouter()
@@ -54,7 +60,19 @@ export default function ProjectDetailPage() {
     deleteInternalCost,
   } = useProjectData(id)
 
+  const { me } = useMe()
+  const isSiteManager = me?.role === 'byggeleder'
+  const visibleTabs = isSiteManager ? TABS.filter((t) => SITE_MANAGER_TABS.includes(t.id)) : TABS
+
   const [activeTab, setActiveTab] = useState<ActiveTab>('oversikt')
+
+  // Byggeleder lander på Rapporteringer (Oversikt er økonomi-tung og skjult).
+  // Kjøres når rollen er kjent + hvis aktiv fane ikke er tillatt.
+  useEffect(() => {
+    if (isSiteManager && !SITE_MANAGER_TABS.includes(activeTab)) {
+      setActiveTab('rapporteringer')
+    }
+  }, [isSiteManager, activeTab])
 
   const [showAddLine, setShowAddLine] = useState(false)
   const [newLine, setNewLine] = useState({ product_id: '', budget_quantity: '', line_type: 'subcontractor_work' })
@@ -311,7 +329,9 @@ export default function ProjectDetailPage() {
         </div>
         {/* Lukk / Åpne — flips project.status between 'active' and 'completed'.
             Completed projects fall into 'Avsluttede' on /admin/projects and
-            reject new reports/EMs server-side. Re-opening reverses both. */}
+            reject new reports/EMs server-side. Re-opening reverses both.
+            Admin-handlinger — skjult for byggeleder (API-ene 403'er uansett). */}
+        {!isSiteManager && (
         <button
           type="button"
           onClick={async () => {
@@ -341,24 +361,30 @@ export default function ProjectDetailPage() {
         >
           {project.status === 'active' ? 'Lukk prosjekt' : 'Åpne på nytt'}
         </button>
-        <Link href={`/admin/projects/${id}/edit`} className="text-sm text-gray-600 border border-gray-200 px-3 py-1 rounded hover:bg-gray-50">Rediger</Link>
+        )}
+        {!isSiteManager && (
+          <Link href={`/admin/projects/${id}/edit`} className="text-sm text-gray-600 border border-gray-200 px-3 py-1 rounded hover:bg-gray-50">Rediger</Link>
+        )}
       </div>
 
-      {/* Status hero — always visible. Click-through targets pop the right
-          detail tab so the user lands on the EM / report queue they came for. */}
-      <ProjectStatusHero
-        project={project}
-        budgetLines={budgetLines}
-        weeklyReportsWL={weeklyReportsWL}
-        changeOrders={changeOrders}
-        projectManagers={projectManagers}
-        onGoToTab={(tab) => setActiveTab(tab)}
-      />
+      {/* Status hero — economy summary (salgsverdi/fakturert), so it's
+          hidden for byggeleder. Click-through targets pop the right detail
+          tab so the user lands on the EM / report queue they came for. */}
+      {!isSiteManager && (
+        <ProjectStatusHero
+          project={project}
+          budgetLines={budgetLines}
+          weeklyReportsWL={weeklyReportsWL}
+          changeOrders={changeOrders}
+          projectManagers={projectManagers}
+          onGoToTab={(tab) => setActiveTab(tab)}
+        />
+      )}
 
       {/* Tab navigation */}
       <div className="border-b border-gray-200 -mb-2">
         <nav className="flex gap-1 overflow-x-auto">
-          {TABS.map((tab) => (
+          {visibleTabs.map((tab) => (
             <button
               key={tab.id}
               onClick={() => setActiveTab(tab.id)}
@@ -522,6 +548,7 @@ export default function ProjectDetailPage() {
       {/* ── ENDRINGSMELDINGER ────────────────────────────────────────── */}
       {activeTab === 'endringsmeldinger' && (
         <ChangeOrdersSection
+          showEconomy={!isSiteManager}
           changeOrders={changeOrders}
           allProducts={allProducts}
           allSubs={allSubs}

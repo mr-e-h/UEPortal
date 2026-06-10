@@ -2,7 +2,7 @@ import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
-import { ADMIN_ROLES } from '@/lib/roles'
+import { ADMIN_ROLES, PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { getProjectScope } from '@/lib/api-guard'
 import type { ChangeOrder, Project, Subcontractor, Product } from '@/types'
 import Card from '@/components/ui/Card'
@@ -14,7 +14,11 @@ export const dynamic = 'force-dynamic'
 
 export default async function ChangeOrdersPage() {
   const me = await getSession()
-  if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
+  // Project staff incl. byggeleder (oppfølgingsmodus). Kundeverdi-kolonnen og
+  // verdisummen i undertittelen rendres KUN for økonomiroller — betinget
+  // server-side, så tallene aldri når en byggeleders nettleser.
+  if (!me || !PROJECT_STAFF_ROLES.includes(me.role)) redirect('/login')
+  const canSeeEconomy = ADMIN_ROLES.includes(me.role)
 
   const sb = getSupabaseAdmin()
   const [projRes, ordersRes, subsRes, prodsRes] = await Promise.all([
@@ -53,7 +57,9 @@ export default async function ChangeOrdersPage() {
         <div>
           <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Endringsmeldinger</h1>
           <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
-            {pending.length} venter ({fmt(pendingValue)}) · {approved.length} godkjent · {rejected.length} avslått
+            {canSeeEconomy
+              ? `${pending.length} venter (${fmt(pendingValue)}) · ${approved.length} godkjent · ${rejected.length} avslått`
+              : `${pending.length} venter · ${approved.length} godkjent · ${rejected.length} avslått`}
           </p>
         </div>
       </div>
@@ -66,7 +72,7 @@ export default async function ChangeOrdersPage() {
               {pending.length}
             </span>
           </div>
-          <OrderTable orders={pending} projMap={projMap} subMap={subMap} prodMap={prodMap} />
+          <OrderTable orders={pending} projMap={projMap} subMap={subMap} prodMap={prodMap} showEconomy={canSeeEconomy} />
         </Card>
       )}
 
@@ -74,7 +80,7 @@ export default async function ChangeOrdersPage() {
         <div className="px-6 py-4 border-b border-border">
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Alle endringsmeldinger</h2>
         </div>
-        <OrderTable orders={orders} projMap={projMap} subMap={subMap} prodMap={prodMap} />
+        <OrderTable orders={orders} projMap={projMap} subMap={subMap} prodMap={prodMap} showEconomy={canSeeEconomy} />
       </Card>
     </div>
   )
@@ -85,21 +91,25 @@ function OrderTable({
   projMap,
   subMap,
   prodMap,
+  showEconomy,
 }: {
   orders: ChangeOrder[]
   projMap: Map<string, Project>
   subMap: Map<string, Subcontractor>
   prodMap: Map<string, Product>
+  /** Kundeverdi-kolonnen vises kun for økonomiroller (main/company/PM). */
+  showEconomy: boolean
 }) {
   if (orders.length === 0) {
     return <div className="py-10 text-center text-sm text-[var(--color-text-muted)]">Ingen endringsmeldinger</div>
   }
+  const headers = ['Endringsmelding', 'Type', 'Underentreprenør', 'Produkt', 'Mengde', ...(showEconomy ? ['Kundeverdi'] : []), 'Kostnad', 'Innsendt', 'Status', '']
   return (
     <div className="overflow-x-auto">
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border">
-            {['Endringsmelding', 'Type', 'Underentreprenør', 'Produkt', 'Mengde', 'Kundeverdi', 'Kostnad', 'Innsendt', 'Status', ''].map(
+            {headers.map(
               (h) => (
                 <th
                   key={h}
@@ -134,9 +144,11 @@ function OrderTable({
               <td className="px-4 py-2.5 text-[var(--color-text-muted)]">
                 {o.requested_quantity} {o.unit}
               </td>
-              <td className="px-4 py-2.5 text-right text-[var(--color-text-primary)]">
-                {fmt(o.total_customer_value)}
-              </td>
+              {showEconomy && (
+                <td className="px-4 py-2.5 text-right text-[var(--color-text-primary)]">
+                  {fmt(o.total_customer_value)}
+                </td>
+              )}
               <td className="px-4 py-2.5 text-right text-[var(--color-text-muted)]">{fmt(o.total_cost)}</td>
               <td className="px-4 py-2.5 text-[var(--color-text-muted)]">
                 {o.submitted_at ? o.submitted_at.split('T')[0] : '–'}

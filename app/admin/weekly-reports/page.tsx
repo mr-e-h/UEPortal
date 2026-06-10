@@ -2,7 +2,7 @@ import { redirect } from 'next/navigation'
 import Link from 'next/link'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
-import { ADMIN_ROLES } from '@/lib/roles'
+import { PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { getProjectScope } from '@/lib/api-guard'
 import type { WeeklyReport, Project, Subcontractor } from '@/types'
 import { formatWeekLabel } from '@/lib/utils/weeks'
@@ -13,7 +13,10 @@ export const dynamic = 'force-dynamic'
 
 export default async function WeeklyReportsPage() {
   const me = await getSession()
-  if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
+  // Project staff incl. byggeleder — weekly-report follow-up is core site-
+  // manager work. The list shows status/week/UE only (no customer economics);
+  // the scope filter below confines PM/byggeleder to assigned projects.
+  if (!me || !PROJECT_STAFF_ROLES.includes(me.role)) redirect('/login')
 
   const sb = getSupabaseAdmin()
   const [projRes, repRes, subsRes] = await Promise.all([

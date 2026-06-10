@@ -1,7 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
-import { ADMIN_ROLES } from '@/lib/roles'
+import { ADMIN_ROLES, PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { getProjectScope } from '@/lib/api-guard'
 import type { Project, ProjectBudgetLine, ProjectSubcontractor } from '@/types'
 import Card from '@/components/ui/Card'
@@ -12,7 +12,12 @@ export const dynamic = 'force-dynamic'
 
 export default async function ProjectsPage() {
   const me = await getSession()
-  if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
+  // Project staff incl. byggeleder — list shows no customer economics. The
+  // scope filter below confines PM/byggeleder to assigned projects.
+  if (!me || !PROJECT_STAFF_ROLES.includes(me.role)) redirect('/login')
+  // Creating projects stays an admin action (POST /api/projects is
+  // requireAdmin) — hide the button for byggeleder.
+  const canCreate = ADMIN_ROLES.includes(me.role)
 
   const sb = getSupabaseAdmin()
   // PM scope: project_manager users only see their assigned projects.
@@ -49,9 +54,11 @@ export default async function ProjectsPage() {
           <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Prosjekter</h1>
           <p className="text-sm text-[var(--color-text-muted)] mt-0.5">{active.length} aktive · {rest.length} avsluttede</p>
         </div>
-        <Button href="/admin/projects/new" variant="primary" className="px-3 py-1.5 text-xs">
-          + Nytt prosjekt
-        </Button>
+        {canCreate && (
+          <Button href="/admin/projects/new" variant="primary" className="px-3 py-1.5 text-xs">
+            + Nytt prosjekt
+          </Button>
+        )}
       </div>
 
       <Card>

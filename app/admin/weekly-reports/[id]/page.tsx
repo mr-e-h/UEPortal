@@ -41,6 +41,11 @@ export default function AdminWeeklyReportPage() {
   const [loading, setLoading] = useState(true)
   const { me } = useMe()
   const adminName = me?.full_name ?? 'Admin'
+  // Økonomivisning (salgsverdi) er forbeholdt main/company/PM. For byggeleder
+  // er customer_price_snapshot uansett strippet server-side i
+  // /api/weekly-reports/[id] — dette styrer bare at UI-et ikke viser
+  // tomme/NaN-kolonner. Frontend-skjuling er UX; serveren er sikkerheten.
+  const canSeeEconomy = me ? ['main', 'company', 'project_manager'].includes(me.role) : true
   const [bulkComment, setBulkComment] = useState('')
   const [newComment, setNewComment] = useState('')
   const [saving, setSaving] = useState(false)
@@ -168,8 +173,8 @@ export default function AdminWeeklyReportPage() {
         </div>
       </div>
 
-      {/* Summary cards */}
-      <div className="grid grid-cols-3 gap-4">
+      {/* Summary cards — salgsverdi-kortet kun for økonomiroller */}
+      <div className={`grid gap-4 ${canSeeEconomy ? 'grid-cols-3' : 'grid-cols-2'}`}>
         <Card className="p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Linjer</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{report.lines.length}</p>
@@ -178,10 +183,12 @@ export default function AdminWeeklyReportPage() {
           <p className="text-xs text-gray-500 uppercase tracking-wide">Total kostnad</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalCost)}</p>
         </Card>
-        <Card className="p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Total salgsverdi</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalSales)}</p>
-        </Card>
+        {canSeeEconomy && (
+          <Card className="p-4">
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Total salgsverdi</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalSales)}</p>
+          </Card>
+        )}
       </div>
 
       {/* Bulk actions */}
@@ -228,7 +235,9 @@ export default function AdminWeeklyReportPage() {
             { key: 'reported_quantity', label: 'Mengde', sortable: true },
             { key: 'comment', label: 'Kommentar' },
             { key: 'cost', label: 'Kostnad', sortable: true, getValue: (r: LineRow) => r.cost, render: (r: LineRow) => fmt(r.cost) },
-            { key: 'sales', label: 'Salgsverdi', sortable: true, getValue: (r: LineRow) => r.sales, render: (r: LineRow) => <span className="font-medium">{fmt(r.sales)}</span> },
+            ...(canSeeEconomy
+              ? [{ key: 'sales', label: 'Salgsverdi', sortable: true, getValue: (r: LineRow) => r.sales, render: (r: LineRow) => <span className="font-medium">{fmt(r.sales)}</span> }]
+              : []),
             {
               key: 'status',
               label: 'Status',

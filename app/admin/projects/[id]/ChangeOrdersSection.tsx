@@ -25,9 +25,13 @@ interface Props {
   allProducts: Product[]
   allSubs: Subcontractor[]
   onStatusChange: (id: string, status: 'approved' | 'rejected') => void
+  /** Salgsverdi-kolonnen + godkjenn/avslå-knappene er forbeholdt
+   *  økonomiroller (main/company/PM). Byggeleder ser kost + status og kan
+   *  åpne detaljer (API-ene maskerer/403'er uansett server-side). */
+  showEconomy?: boolean
 }
 
-export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs, onStatusChange }: Props) {
+export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs, onStatusChange, showEconomy = true }: Props) {
   const [coStatusFilter, setCoStatusFilter] = useState('all')
   const [coSubFilter, setCoSubFilter] = useState('all')
 
@@ -94,12 +98,14 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
       ),
     },
     { key: 'total_cost', label: 'Kostnad', sortable: true, render: (row: CORow) => fmt(row.total_cost) },
-    {
-      key: 'total_customer_value',
-      label: 'Salgsverdi',
-      sortable: true,
-      render: (row: CORow) => <span className="font-medium">{fmt(row.total_customer_value)}</span>,
-    },
+    ...(showEconomy
+      ? [{
+          key: 'total_customer_value',
+          label: 'Salgsverdi',
+          sortable: true,
+          render: (row: CORow) => <span className="font-medium">{fmt(row.total_customer_value)}</span>,
+        }]
+      : []),
     { key: 'submitted_date', label: 'Dato', sortable: true },
     {
       key: 'actions',
@@ -109,7 +115,7 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
           <Link href={`/admin/change-orders/${row.id}`} className="text-xs text-blue-600 hover:underline">
             Detaljer
           </Link>
-          {row.status === 'pending' && (
+          {showEconomy && row.status === 'pending' && (
             <>
               <button
                 onClick={() => onStatusChange(row.id, 'approved')}

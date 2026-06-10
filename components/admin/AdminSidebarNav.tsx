@@ -24,12 +24,16 @@ import {
   X,
 } from 'lucide-react'
 
+// `siteVisible` marks the small operational subset a byggeleder (site
+// manager) sees. Everything WITHOUT the flag is hidden for that role —
+// economy, prognoser, price lists, tenders and all admin/config pages.
+// (Nav hiding is UX only; the pages/APIs enforce access server-side.)
 const sections = [
   {
     label: 'OVERSIKT',
     links: [
-      { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true },
-      { href: '/admin/projects', label: 'Prosjekter', icon: FolderKanban },
+      { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true, siteVisible: true as const },
+      { href: '/admin/projects', label: 'Prosjekter', icon: FolderKanban, siteVisible: true as const },
       { href: '/admin/tenders', label: 'Anbud', icon: Gavel },
       { href: '/admin/subcontractors', label: 'Underentreprenører', icon: Users },
       { href: '/admin/products', label: 'Produkter', icon: Package },
@@ -38,8 +42,8 @@ const sections = [
   {
     label: 'GODKJENNINGER',
     links: [
-      { href: '/admin/weekly-reports', label: 'Ukesrapporter', icon: CheckSquare },
-      { href: '/admin/change-orders', label: 'Endringsmeldinger', icon: FileText },
+      { href: '/admin/weekly-reports', label: 'Ukesrapporter', icon: CheckSquare, siteVisible: true as const },
+      { href: '/admin/change-orders', label: 'Endringsmeldinger', icon: FileText, siteVisible: true as const },
     ],
   },
   {
@@ -66,7 +70,7 @@ const sections = [
     links: [
       { href: '/admin/users', label: 'Brukere', icon: Users, userAdminOnly: true as const },
       { href: '/admin/access-requests', label: 'Tilgangsforespørsler', icon: UserPlus, badgeKey: 'access-requests' as const, userAdminOnly: true as const },
-      { href: '/admin/account', label: 'Min konto', icon: Settings },
+      { href: '/admin/account', label: 'Min konto', icon: Settings, siteVisible: true as const },
     ],
   },
   {
@@ -91,7 +95,7 @@ const sections = [
  * links are visible AND whether we poll the access-requests endpoint (PMs have
  * neither the menu item nor permission, so polling would just spam 403s).
  */
-export default function AdminSidebarNav({ isUserAdmin }: { isUserAdmin: boolean }) {
+export default function AdminSidebarNav({ isUserAdmin, isSiteManager = false }: { isUserAdmin: boolean; isSiteManager?: boolean }) {
   const pathname = usePathname()
   const [mobileNavOpen, setMobileNavOpen] = useState(false)
   const [pendingAccessRequests, setPendingAccessRequests] = useState(0)
@@ -153,9 +157,11 @@ export default function AdminSidebarNav({ isUserAdmin }: { isUserAdmin: boolean 
 
       <nav className="flex-1 overflow-y-auto py-4">
         {sections.map((section) => {
-          const visibleLinks = section.links.filter((link) =>
-            !('userAdminOnly' in link && link.userAdminOnly) || isUserAdmin,
-          )
+          const visibleLinks = section.links.filter((link) => {
+            // Byggeleder: only the explicitly site-visible operational links.
+            if (isSiteManager && !('siteVisible' in link && link.siteVisible)) return false
+            return !('userAdminOnly' in link && link.userAdminOnly) || isUserAdmin
+          })
           if (visibleLinks.length === 0) return null
           return (
             <div key={section.label} className="mb-4">

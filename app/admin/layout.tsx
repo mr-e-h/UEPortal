@@ -27,11 +27,17 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const me = await getEffectiveUser(realUser)
 
   if (me.role === 'sub') redirect('/subcontractor')
-  if (me.role !== 'project_manager' && me.role !== 'main' && me.role !== 'company') {
+  if (me.role !== 'project_manager' && me.role !== 'main' && me.role !== 'company' && me.role !== 'byggeleder') {
     redirect('/login')
   }
 
   const isUserAdmin = USER_ADMIN_ROLES.includes(me.role)
+  // Byggeleder (site manager): operational project staff WITHOUT economy or
+  // admin rights. Gets a restricted nav (dashboard/projects/reports/EMs) and
+  // no header search (the search page is ADMIN_ROLES-gated). The actual
+  // security lives server-side in each page guard + API route — this flag
+  // only drives shell UX.
+  const isSiteManager = me.role === 'byggeleder'
   // The view-as switcher is a fixed, top-right floating button. Only the
   // super-admin ever sees it, so only then do we reserve right-hand space in
   // the header to stop it overlapping the username + logout.
@@ -40,13 +46,13 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   return (
     <div className="min-h-screen bg-[var(--color-bg-page)] flex justify-center">
       <div className="w-full max-w-[1600px] flex min-h-screen">
-        <AdminSidebarNav isUserAdmin={isUserAdmin} />
+        <AdminSidebarNav isUserAdmin={isUserAdmin} isSiteManager={isSiteManager} />
 
         {/* Main area */}
         <div className="flex-1 min-w-0 flex flex-col">
           <header className={`h-16 flex-none bg-card border-b border-border flex items-center px-6 gap-4 ${canViewAs ? 'pr-44' : ''}`}>
             <div className="flex-1">
-              <HeaderSearch />
+              {!isSiteManager && <HeaderSearch />}
             </div>
             <span className="text-sm text-[var(--color-text-secondary)] truncate max-w-[160px]">{me.full_name}</span>
             <LogoutButton />

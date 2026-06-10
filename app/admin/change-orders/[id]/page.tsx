@@ -38,6 +38,11 @@ export default function ChangeOrderDetailPage() {
   const { id } = useParams<{ id: string }>()
   const { me } = useMe()
   const adminName = me?.full_name ?? 'Admin'
+  // Byggeleder følger opp EM-er i lese-/oppfølgingsmodus: ingen kundepris/
+  // fortjeneste/margin (allerede strippet server-side i /api/change-orders),
+  // og ingen endelig godkjenn/avslå/send-til-kunde (API-ene 403'er uansett —
+  // dette skjuler bare knappene/kortene). UE-kost vises.
+  const canSeeEconomy = me ? ['main', 'company', 'project_manager'].includes(me.role) : true
   const [co, setCo] = useState<ChangeOrder | null>(null)
   const [project, setProject] = useState<Project | null>(null)
   const [sub, setSub] = useState<Subcontractor | null>(null)
@@ -345,7 +350,7 @@ export default function ChangeOrderDetailPage() {
               {/* Action buttons live INSIDE the card so they're near the content
                   they affect. Hidden in print. */}
               <div className="flex items-center gap-2 print:hidden flex-none">
-                {!isReviewed && !editing && (
+                {canSeeEconomy && !isReviewed && !editing && (
                   <button
                     onClick={startEdit}
                     disabled={submitting}
@@ -354,14 +359,16 @@ export default function ChangeOrderDetailPage() {
                     <Pencil size={12} /> Rediger
                   </button>
                 )}
-                <button
-                  onClick={exportPDF}
-                  disabled={exporting || co.status === 'draft'}
-                  className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
-                  title="Markeres som 'Til behandling' og åpner print-dialog"
-                >
-                  <Printer size={12} /> {exporting ? 'Markerer...' : 'Eksporter PDF'}
-                </button>
+                {canSeeEconomy && (
+                  <button
+                    onClick={exportPDF}
+                    disabled={exporting || co.status === 'draft'}
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
+                    title="Markeres som 'Til behandling' og åpner print-dialog"
+                  >
+                    <Printer size={12} /> {exporting ? 'Markerer...' : 'Eksporter PDF'}
+                  </button>
+                )}
               </div>
             </div>
 
@@ -378,7 +385,7 @@ export default function ChangeOrderDetailPage() {
                     <tr>
                       <th className="px-3 py-2 text-left font-medium">Produkt</th>
                       <th className="px-3 py-2 text-right font-medium">Mengde</th>
-                      <th className="px-3 py-2 text-right font-medium">Total</th>
+                      {canSeeEconomy && <th className="px-3 py-2 text-right font-medium">Total</th>}
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-gray-100">
@@ -403,23 +410,27 @@ export default function ChangeOrderDetailPage() {
                           <td className="px-3 py-2 text-right tabular-nums text-gray-700">
                             {ln.requested_quantity} <span className="text-gray-400">{ln.unit}</span>
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-gray-700">
-                            {fmt(lineSales)}
-                          </td>
+                          {canSeeEconomy && (
+                            <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+                              {fmt(lineSales)}
+                            </td>
+                          )}
                         </tr>
                       )
                     })}
                   </tbody>
-                  <tfoot className="bg-blue-50 border-t-2 border-blue-200">
-                    <tr>
-                      <td colSpan={2} className="px-3 py-2.5 text-sm font-medium text-blue-900">
-                        Totalbeløp (eks. mva)
-                      </td>
-                      <td className="px-3 py-2.5 text-right tabular-nums text-lg font-bold text-blue-900">
-                        {fmt(co.total_customer_value)}
-                      </td>
-                    </tr>
-                  </tfoot>
+                  {canSeeEconomy && (
+                    <tfoot className="bg-blue-50 border-t-2 border-blue-200">
+                      <tr>
+                        <td colSpan={2} className="px-3 py-2.5 text-sm font-medium text-blue-900">
+                          Totalbeløp (eks. mva)
+                        </td>
+                        <td className="px-3 py-2.5 text-right tabular-nums text-lg font-bold text-blue-900">
+                          {fmt(co.total_customer_value)}
+                        </td>
+                      </tr>
+                    </tfoot>
+                  )}
                 </table>
               </div>
             </div>
@@ -713,7 +724,7 @@ export default function ChangeOrderDetailPage() {
               helst av disse to "uavklart"-tilstandene. Kontekst-uegnede
               knapper skjules per status: Be om ny versjon + Til behandling
               er kun pending-relevant. */}
-          {(co.status === 'pending' || co.status === 'revision_requested') && (
+          {canSeeEconomy && (co.status === 'pending' || co.status === 'revision_requested') && (
             <div className="print:hidden bg-white rounded-lg shadow p-6 space-y-4">
               <h2 className="text-base font-semibold text-gray-900">Behandle endringsmelding</h2>
               <div>
@@ -833,7 +844,7 @@ export default function ChangeOrderDetailPage() {
           </div>
 
           <div className="bg-white rounded-lg shadow p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-gray-900">Internt — økonomi</h2>
+            <h2 className="text-sm font-semibold text-gray-900">{canSeeEconomy ? 'Internt — økonomi' : 'Internt — kostnad'}</h2>
             <p className="text-[10px] text-gray-500 -mt-2">Skjules i PDF og hos UE</p>
 
             <dl className="space-y-2 text-sm">
@@ -841,26 +852,32 @@ export default function ChangeOrderDetailPage() {
                 <dt className="text-gray-500">UE-kostpris</dt>
                 <dd className="font-medium text-gray-900 tabular-nums">{fmt(co.cost_price_snapshot)}/{co.unit}</dd>
               </div>
-              <div className="flex justify-between">
-                <dt className="text-gray-500">Kundepris</dt>
-                <dd className="font-medium text-gray-900 tabular-nums">{fmt(co.customer_price_snapshot)}/{co.unit}</dd>
-              </div>
+              {canSeeEconomy && (
+                <div className="flex justify-between">
+                  <dt className="text-gray-500">Kundepris</dt>
+                  <dd className="font-medium text-gray-900 tabular-nums">{fmt(co.customer_price_snapshot)}/{co.unit}</dd>
+                </div>
+              )}
               <div className="border-t border-gray-100 pt-2 flex justify-between">
                 <dt className="text-gray-500">Total kostnad</dt>
                 <dd className="font-semibold text-gray-900 tabular-nums">{fmt(co.total_cost)}</dd>
               </div>
-              <div className="flex justify-between">
-                <dt className="text-gray-500">Salgsverdi</dt>
-                <dd className="font-semibold text-gray-900 tabular-nums">{fmt(co.total_customer_value)}</dd>
-              </div>
-              <div className="border-t border-gray-100 pt-2 flex justify-between">
-                <dt className="text-gray-500">Fortjeneste</dt>
-                <dd className={`font-bold tabular-nums ${co.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(co.profit)}</dd>
-              </div>
-              <div className="flex justify-between">
-                <dt className="text-gray-500">Margin</dt>
-                <dd className={`font-semibold tabular-nums ${margin >= 15 ? 'text-green-600' : 'text-orange-500'}`}>{margin}%</dd>
-              </div>
+              {canSeeEconomy && (
+                <>
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500">Salgsverdi</dt>
+                    <dd className="font-semibold text-gray-900 tabular-nums">{fmt(co.total_customer_value)}</dd>
+                  </div>
+                  <div className="border-t border-gray-100 pt-2 flex justify-between">
+                    <dt className="text-gray-500">Fortjeneste</dt>
+                    <dd className={`font-bold tabular-nums ${co.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(co.profit)}</dd>
+                  </div>
+                  <div className="flex justify-between">
+                    <dt className="text-gray-500">Margin</dt>
+                    <dd className={`font-semibold tabular-nums ${margin >= 15 ? 'text-green-600' : 'text-orange-500'}`}>{margin}%</dd>
+                  </div>
+                </>
+              )}
             </dl>
           </div>
 

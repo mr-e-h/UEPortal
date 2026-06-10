@@ -4,7 +4,7 @@ import { FileText, ClipboardList, Bell } from 'lucide-react'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { getProjectScope } from '@/lib/api-guard'
-import { ADMIN_ROLES } from '@/lib/roles'
+import { ADMIN_ROLES, PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { formatWeekLabel } from '@/lib/utils/weeks'
 import { osloYearMonth } from '@/lib/utils/dates'
 import { fmtChangeOrderTitle } from '@/lib/format'
@@ -40,7 +40,13 @@ function fmt(n: number) {
  */
 export default async function AdminDashboard() {
   const me = await getSession()
-  if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
+  if (!me || !PROJECT_STAFF_ROLES.includes(me.role)) redirect('/login')
+
+  // Byggeleder gets the triage inbox (scoped, cost-only) but NO customer
+  // economics: the customer-value/profit stack on EM rows and the monthly
+  // revenue chart are reserved for main/company/PM. Enforced here server-side
+  // — the stripped data never reaches the client for byggeleder.
+  const canSeeEconomy = ADMIN_ROLES.includes(me.role)
 
   const sb = getSupabaseAdmin()
   const scope = await getProjectScope(me)
@@ -392,12 +398,21 @@ export default async function AdminDashboard() {
                           </span>
                         </div>
                       </div>
-                      {/* Salg → Kost → Fortjeneste, kompakt vertikal stack */}
-                      <div className="text-right flex-none text-xs leading-tight tabular-nums">
-                        <p className="font-semibold text-[var(--color-text-primary)]">{fmt(co.total_customer_value)}</p>
-                        <p className="text-[var(--color-text-secondary)]">{fmt(co.total_cost)}</p>
-                        <p className={`font-semibold ${co.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(co.profit)}</p>
-                      </div>
+                      {/* Salg → Kost → Fortjeneste for økonomiroller; byggeleder
+                          ser kun UE-kostnaden (server-side betinget — kunde-
+                          verdiene rendres aldri inn i HTML-en for byggeleder). */}
+                      {canSeeEconomy ? (
+                        <div className="text-right flex-none text-xs leading-tight tabular-nums">
+                          <p className="font-semibold text-[var(--color-text-primary)]">{fmt(co.total_customer_value)}</p>
+                          <p className="text-[var(--color-text-secondary)]">{fmt(co.total_cost)}</p>
+                          <p className={`font-semibold ${co.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(co.profit)}</p>
+                        </div>
+                      ) : (
+                        <div className="text-right flex-none text-xs leading-tight tabular-nums">
+                          <p className="font-semibold text-[var(--color-text-primary)]">{fmt(co.total_cost)}</p>
+                          <p className="text-[10px] text-[var(--color-text-muted)]">Kostnad</p>
+                        </div>
+                      )}
                     </div>
                   </Link>
                 </li>
@@ -477,13 +492,17 @@ export default async function AdminDashboard() {
       {/* Per-month bars: same data + bucketing as /admin/totalokonomi,
           mounted here so admins triaging the inbox can also see the
           year's economic shape at a glance. PM dropdown filters into
-          per-PM views computed server-side. */}
-      <MonthlyChartWithPmFilter
-        year={thisYear}
-        all={monthlyBuckets}
-        byPm={byPm}
-        pmList={pmInfo}
-      />
+          per-PM views computed server-side. Hidden for byggeleder —
+          omsetning/fakturert is customer economics, and skipping the render
+          means the bucket data is never serialized to the client. */}
+      {canSeeEconomy && (
+        <MonthlyChartWithPmFilter
+          year={thisYear}
+          all={monthlyBuckets}
+          byPm={byPm}
+          pmList={pmInfo}
+        />
+      )}
     </div>
   )
 }
