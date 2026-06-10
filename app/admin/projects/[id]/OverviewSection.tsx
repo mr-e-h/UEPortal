@@ -4,6 +4,7 @@ import { useMemo, useState } from 'react'
 import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 import GanttSection from './GanttSection'
 import ProjectManagersCard from './ProjectManagersCard'
+import SiteManagersCard from './SiteManagersCard'
 import type {
   Project,
   ProjectBudgetLine,
@@ -293,9 +294,15 @@ export default function OverviewSection({
           of vertical space, but they're both compact "who's on this
           project" lists and read better next to each other. */}
       <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div>
-          <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Prosjektledere</h3>
-          <ProjectManagersCard projectId={projectId} />
+        <div className="space-y-4">
+          <div>
+            <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Prosjektledere</h3>
+            <ProjectManagersCard projectId={projectId} />
+          </div>
+          <div>
+            <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Byggeledere</h3>
+            <SiteManagersCard projectId={projectId} />
+          </div>
         </div>
 
         <div>
