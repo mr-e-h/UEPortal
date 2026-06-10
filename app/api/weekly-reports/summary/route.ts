@@ -1,7 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson } from '@/lib/data'
 import { getSession } from '@/lib/auth'
-import { isAdmin, isSub, getProjectScope } from '@/lib/api-guard'
+import { isSub, getProjectScope } from '@/lib/api-guard'
+import { PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { fmtProductLabel } from '@/lib/format'
 import type { WeeklyReport, WeeklyReportLine, ProjectBudgetLine, Product } from '@/types'
 
@@ -19,13 +20,15 @@ export async function GET(request: NextRequest) {
     return NextResponse.json({ error: 'project_id, subcontractor_id, year, and week are required' }, { status: 400 })
   }
 
-  if (!isAdmin(session)) {
+  if (!PROJECT_STAFF_ROLES.includes(session.role)) {
     if (!isSub(session) || session.subcontractor_id !== subcontractorId) {
       return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
     }
   } else {
-    // PM scope: a project_manager may only query summaries for assigned
-    // projects (isAdmin is true for PMs, so gate explicitly on project scope).
+    // Scope: PM and byggeleder may only query summaries for assigned
+    // projects (both are in PROJECT_STAFF_ROLES, so gate on project scope).
+    // main/company → scope null → pass. No economy in this response
+    // (quantities + UE cost value only).
     const scope = await getProjectScope(session)
     if (scope && !scope.has(projectId)) {
       return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })

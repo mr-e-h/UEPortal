@@ -1,11 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
+import { requireAdmin, requireStaff, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { ProjectSubcontractor } from '@/types'
 
 export async function GET(request: NextRequest) {
-  const auth = await requireAdmin()
+  // Project staff incl. byggeleder — "which UEs are on my projects" is core
+  // operational info (no prices in these rows). The scope filter below
+  // confines PM and byggeleder to assigned projects; writes stay requireAdmin.
+  const auth = await requireStaff()
   if (!auth.ok) return auth.response
 
   const params = new URL(request.url).searchParams

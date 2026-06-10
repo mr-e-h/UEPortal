@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
+import { requireStaff, ensureProjectWritable } from '@/lib/api-guard'
 import { randomUUID } from 'crypto'
 import type { WeeklyReport, ActivityEntry } from '@/types'
 
@@ -27,7 +27,10 @@ async function logActivity(
 }
 
 export async function POST(request: NextRequest, { params }: { params: { id: string } }) {
-  const auth = await requireAdmin()
+  // Project staff incl. byggeleder — operational weekly-report review is a
+  // site-manager duty. ensureProjectWritable below confines PM AND byggeleder
+  // to their assigned projects (empty byggeleder scope → 403 on everything).
+  const auth = await requireStaff()
   if (!auth.ok) return auth.response
 
   const body = await request.json() as {

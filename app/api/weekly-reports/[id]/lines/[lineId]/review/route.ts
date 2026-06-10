@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
+import { requireStaff, ensureProjectWritable } from '@/lib/api-guard'
 import type { WeeklyReport, WeeklyReportLine, WeeklyReportStatus } from '@/types'
 
 /**
@@ -15,7 +15,9 @@ export async function POST(
   request: NextRequest,
   { params }: { params: { id: string; lineId: string } },
 ) {
-  const auth = await requireAdmin()
+  // Project staff incl. byggeleder — per-line operational review. The
+  // ensureProjectWritable gate below scopes PM and byggeleder alike.
+  const auth = await requireStaff()
   if (!auth.ok) return auth.response
 
   const body = await request.json() as { status: 'approved' | 'rejected' }
