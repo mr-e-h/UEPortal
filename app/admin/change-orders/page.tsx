@@ -58,8 +58,8 @@ export default async function ChangeOrdersPage() {
           <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Endringsmeldinger</h1>
           <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
             {canSeeEconomy
-              ? `${pending.length} venter (${fmt(pendingValue)}) · ${approved.length} godkjent · ${rejected.length} avslått`
-              : `${pending.length} venter · ${approved.length} godkjent · ${rejected.length} avslått`}
+              ? `${pending.length} venter (${fmt(pendingValue)}) · ${approved.length} godkjent · ${rejected.length} avvist`
+              : `${pending.length} venter · ${approved.length} godkjent · ${rejected.length} avvist`}
           </p>
         </div>
       </div>
@@ -67,7 +67,7 @@ export default async function ChangeOrdersPage() {
       {pending.length > 0 && (
         <Card>
           <div className="px-6 py-4 border-b border-border flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Venter godkjenning</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Til godkjenning</h2>
             <span className="bg-primary text-white text-xs font-medium px-1.5 py-0.5 rounded-full">
               {pending.length}
             </span>
@@ -76,11 +76,13 @@ export default async function ChangeOrdersPage() {
         </Card>
       )}
 
+      {/* Ventende (pending) rader bor i køen over — her vises resten
+          (behandlede + til revisjon), så ingen EM står to ganger. */}
       <Card>
         <div className="px-6 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Alle endringsmeldinger</h2>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Behandlede endringsmeldinger</h2>
         </div>
-        <OrderTable orders={orders} projMap={projMap} subMap={subMap} prodMap={prodMap} showEconomy={canSeeEconomy} />
+        <OrderTable orders={orders.filter((o) => o.status !== 'pending')} projMap={projMap} subMap={subMap} prodMap={prodMap} showEconomy={canSeeEconomy} />
       </Card>
     </div>
   )

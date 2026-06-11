@@ -22,7 +22,7 @@ const sections: NavSection[] = [
     links: [
       { href: '/subcontractor/tenders', label: 'Tilbud', icon: Gavel },
       { href: '/subcontractor/change-orders', label: 'Endringsmeldinger', icon: FileText },
-      { href: '/subcontractor/invoice-basis', label: 'Fakturagrunnlag', icon: Receipt },
+      { href: '/subcontractor/invoice-basis', label: 'Fakturering', icon: Receipt },
     ],
   },
   {

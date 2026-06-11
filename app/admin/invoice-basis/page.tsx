@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Download, RefreshCw, Plus, Trash2 } from 'lucide-react'
+import { Download, Plus, Trash2 } from 'lucide-react'
 import type { Project, Subcontractor, ProjectInvoice } from '@/types'
 import { fmtNOK as fmt, fmtNumber } from '@/lib/format'
 import Field from '@/components/ui/Field'
@@ -161,7 +161,7 @@ export default function InvoiceBasisPage() {
         <button
           onClick={exportCSV}
           disabled={lines.length === 0}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-40"
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-40"
         >
           <Download size={14} />
           Eksporter CSV
@@ -178,7 +178,7 @@ export default function InvoiceBasisPage() {
                 onClick={() => setTypeFilter(t)}
                 className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${typeFilter === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
               >
-                {t === 'ue' ? 'UE → Oss (kostnad)' : 'Oss → Kunde (salg)'}
+                {t === 'ue' ? 'Kostnad fra UE' : 'Salg til kunde'}
               </button>
             ))}
           </div>
@@ -219,46 +219,17 @@ export default function InvoiceBasisPage() {
             className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
           />
         </Field>
-        <button
-          onClick={fetchBasis}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-gray-300 rounded-lg hover:bg-gray-50"
-        >
-          <RefreshCw size={13} />
-          Oppdater
-        </button>
       </Card>
 
-      {/* Summary cards */}
-      {summary && (
+      {/* Summary — kun kostnadstotalen i UE-modus. I kunde-modus eier
+          a-konto-trioen (produsert/fakturert/gjenstår) toppen; fortjeneste/
+          margin er analyse og hører hjemme på totaløkonomi. */}
+      {summary && typeFilter === 'ue' && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Linjer</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{summary.line_count}</p>
+            <p className="text-xs text-gray-500 uppercase tracking-wide">Total kostnad</p>
+            <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(summary.total_cost)}</p>
           </Card>
-          <Card className="p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">
-              {typeFilter === 'ue' ? 'Total kostnad' : 'Total salgsverdi'}
-            </p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">
-              {fmt(typeFilter === 'ue' ? summary.total_cost : summary.total_sales_value)}
-            </p>
-          </Card>
-          {typeFilter === 'customer' && (
-            <>
-              <Card className="p-4">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Fortjeneste</p>
-                <p className={`text-2xl font-bold mt-1 ${summary.profit >= 0 ? 'text-green-700' : 'text-red-600'}`}>
-                  {fmt(summary.profit)}
-                </p>
-              </Card>
-              <Card className="p-4">
-                <p className="text-xs text-gray-500 uppercase tracking-wide">Margin</p>
-                <p className={`text-2xl font-bold mt-1 ${Number(summary.margin) >= 10 ? 'text-green-700' : 'text-orange-500'}`}>
-                  {summary.margin}%
-                </p>
-              </Card>
-            </>
-          )}
         </div>
       )}
 
@@ -269,7 +240,7 @@ export default function InvoiceBasisPage() {
         <Card className="overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
             <h2 className="text-sm font-semibold text-gray-900">A-konto-fakturering</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Registrer fakturert beløp — systemet viser hva som gjenstår av produsert verdi</p>
+            <p className="text-xs text-gray-500 mt-0.5">Registrer fakturert beløp — gjenstående oppdateres automatisk</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-border">
@@ -382,8 +353,13 @@ export default function InvoiceBasisPage() {
         />
       )}
 
-      {/* Lines table */}
-      <div className="bg-white rounded-lg shadow overflow-hidden">
+      {/* Lines table — åpen i kostnadsmodus (der den er hovedinnholdet),
+          lukket i kunde-modus der a-konto-kortet eier flaten. */}
+      <details open={typeFilter === 'ue'} className="bg-white rounded-lg shadow overflow-hidden group">
+        <summary className="px-4 py-3 text-sm font-semibold text-gray-900 cursor-pointer select-none list-none inline-flex items-center gap-1.5 w-full">
+          <span className="inline-block transition-transform group-open:rotate-90 text-gray-400">›</span>
+          Produktlinjer{lines.length > 0 ? ` (${lines.length})` : ''}
+        </summary>
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-gray-50 border-b border-gray-100">
@@ -456,7 +432,7 @@ export default function InvoiceBasisPage() {
             </tfoot>
           )}
         </table>
-      </div>
+      </details>
     </main>
   )
 }

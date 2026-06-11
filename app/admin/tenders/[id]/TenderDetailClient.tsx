@@ -114,7 +114,9 @@ export default function TenderDetailClient({
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div className="min-w-0">
           <div className="flex items-center gap-2">
-            <h1 className="text-xl font-bold text-[var(--color-text-primary)]">{tender.title || '(uten tittel)'}</h1>
+            <h1 className="text-xl font-bold text-[var(--color-text-primary)]">
+              {tender.title || <span className="italic text-[var(--color-text-muted)] font-medium">Uten tittel</span>}
+            </h1>
             <Chip status={tender.status} kind="tender" />
           </div>
           <p className="text-sm text-[var(--color-text-muted)] mt-1">
@@ -141,8 +143,10 @@ export default function TenderDetailClient({
               >
                 <CalendarClock size={13} className="mr-1.5" /> Forleng frist
               </Button>
+              {/* Ghost — destruktiv unntakshandling skal ikke konkurrere
+                  visuelt med Forleng frist / Send ut. */}
               <Button
-                variant="secondary"
+                variant="ghost"
                 onClick={() => setConfirmCancel(true)}
                 disabled={busy}
                 className="px-3 py-1.5 text-xs"
@@ -307,7 +311,6 @@ export default function TenderDetailClient({
                           {fmtNOK(b.total_cost)}
                         </div>
                         {diff > 0 && <div className="text-[10px] font-normal text-[var(--color-text-muted)]">+{fmtNOK(diff)}</div>}
-                        {isLowest && <div className="text-[10px] font-normal text-green-600">lavest</div>}
                       </td>
                     )
                   })}

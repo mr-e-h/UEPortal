@@ -381,18 +381,15 @@ export default async function AdminDashboard() {
                         <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
                           {co.em_title}
                         </p>
-                        {/* Type + status på samme rad, kompakt */}
+                        {/* Type + status på samme rad, kompakt. Badge kun når
+                            den skiller seg fra køens default (ubehandlet). */}
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${t.cls}`}>{t.label}</span>
-                          <span
-                            className={`text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                              co.sent_to_customer
-                                ? 'bg-blue-50 text-blue-700'
-                                : 'bg-amber-50 text-amber-700'
-                            }`}
-                          >
-                            {co.sent_to_customer ? 'Til behandling' : 'Ubehandlet'}
-                          </span>
+                          {co.sent_to_customer && (
+                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                              Sendt kunde
+                            </span>
+                          )}
                           <span className="text-[10px] text-[var(--color-text-muted)] truncate">
                             {co.submitted_by ? `${co.submitted_by}, ${co.sub_name}` : co.sub_name} · {co.submitted_at}
                           </span>
@@ -425,14 +422,14 @@ export default async function AdminDashboard() {
         {/* Pending weekly reports */}
         <section className="bg-card border border-border rounded-2xl overflow-hidden">
           <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-red-50 flex items-center justify-center">
-              <ClipboardList size={16} className="text-red-600" />
+            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
+              <ClipboardList size={16} className="text-amber-600" />
             </div>
             <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex-1">
               Ukesrapporter til godkjenning
             </h2>
             {reportRows.length > 0 && (
-              <span className="bg-red-100 text-red-700 text-xs font-semibold px-2 py-0.5 rounded-full">
+              <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-0.5 rounded-full">
                 {reportRows.length}
               </span>
             )}
@@ -459,20 +456,13 @@ export default async function AdminDashboard() {
                             {wr.submission_number > 1 && <span className="text-[var(--color-text-muted)] font-normal"> · innsending #{wr.submission_number}</span>}
                           </p>
                           <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-                            {wr.project_name} · {wr.sub_name}
+                            {wr.project_name} · {wr.sub_name} · {wr.line_count} {wr.line_count === 1 ? 'linje' : 'linjer'}
                           </p>
-                          <p className="text-xs text-[var(--color-text-secondary)] mt-1">
-                            {wr.line_count} {wr.line_count === 1 ? 'linje' : 'linjer'}
-                          </p>
-                          <span
-                            className={`inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                              isPartial
-                                ? 'bg-blue-50 text-blue-700'
-                                : 'bg-amber-50 text-amber-700'
-                            }`}
-                          >
-                            {isPartial ? 'Til behandling' : 'Ubehandlet'}
-                          </span>
+                          {isPartial && (
+                            <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">
+                              Delvis godkjent
+                            </span>
+                          )}
                         </div>
                         <div className="text-right flex-none">
                           <p className="text-sm font-semibold text-[var(--color-text-primary)]">{fmt(wr.total_cost)}</p>
@@ -494,14 +484,24 @@ export default async function AdminDashboard() {
           year's economic shape at a glance. PM dropdown filters into
           per-PM views computed server-side. Hidden for byggeleder —
           omsetning/fakturert is customer economics, and skipping the render
-          means the bucket data is never serialized to the client. */}
+          means the bucket data is never serialized to the client.
+          Lukket <details> som standard: dashboardet skal åpne som ren
+          triage-kø; grafen er analyse og finnes også på totaløkonomi. */}
       {canSeeEconomy && (
-        <MonthlyChartWithPmFilter
-          year={thisYear}
-          all={monthlyBuckets}
-          byPm={byPm}
-          pmList={pmInfo}
-        />
+        <details className="group">
+          <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] select-none">
+            <span className="inline-block transition-transform group-open:rotate-90 text-[var(--color-text-muted)]">›</span>
+            Månedsøkonomi {thisYear}
+          </summary>
+          <div className="mt-3">
+            <MonthlyChartWithPmFilter
+              year={thisYear}
+              all={monthlyBuckets}
+              byPm={byPm}
+              pmList={pmInfo}
+            />
+          </div>
+        </details>
       )}
     </div>
   )

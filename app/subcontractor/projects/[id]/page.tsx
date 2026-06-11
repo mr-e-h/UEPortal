@@ -406,7 +406,7 @@ export default function SubcontractorProjectPage() {
       {/* ─── Page header ─────────────────────────────────────────────────────── */}
       <div className="flex items-start justify-between gap-4 flex-wrap">
         <div>
-          <Button variant="ghost" href="/subcontractor" className="px-0 text-sm mb-2">
+          <Button variant="ghost" href="/subcontractor/projects" className="px-0 text-sm mb-2">
             ← Prosjekter
           </Button>
           <h1 className="text-xl font-bold text-[var(--color-text-primary)]">{project.name}</h1>
@@ -545,7 +545,7 @@ export default function SubcontractorProjectPage() {
       {project.budget_lines.length > 0 && (
         <Card className="overflow-hidden">
           <div className="px-6 py-3 border-b border-border flex items-center justify-between gap-4">
-            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Budsjett-oversikt</h2>
+            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Mine produktlinjer</h2>
             <input
               type="search"
               placeholder="Søk produkt eller kode…"
@@ -763,7 +763,7 @@ export default function SubcontractorProjectPage() {
               <div className="flex items-center gap-3">
                 {submitError && <span className="text-sm text-danger">{submitError}</span>}
                 <Button variant="primary" onClick={handleSubmit} disabled={submitting || !hasAnyInput}>
-                  {submitting ? 'Sender inn...' : `Send inn innsending #${currentReport!.submission_number ?? 1}`}
+                  {submitting ? 'Sender inn...' : `Send inn rapport #${currentReport!.submission_number ?? 1}`}
                 </Button>
               </div>
             </>

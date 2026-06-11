@@ -57,7 +57,7 @@ export default function MonthlyChartWithPmFilter({ year, all, byPm, pmList }: Pr
     <Card className="p-6">
       <div className="flex items-center justify-between mb-4 flex-wrap gap-3">
         <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
-          Per måned {year}
+          Økonomi per måned {year}
         </h2>
         <div className="flex items-center gap-2 flex-wrap">
           <label htmlFor="pm-filter" className="text-xs text-[var(--color-text-muted)]">
@@ -81,10 +81,12 @@ export default function MonthlyChartWithPmFilter({ year, all, byPm, pmList }: Pr
           )}
         </div>
       </div>
-      <p className="text-xs text-[var(--color-text-muted)] mb-3">
-        Omsetning · Kostnad · Fakturert
-        {selectedPmId !== 'all' && ' — kun prosjekter tildelt valgt PL'}
-      </p>
+      {/* Seriene navngis av grafens egen legend — ingen duplisert undertekst. */}
+      {selectedPmId !== 'all' && (
+        <p className="text-xs text-[var(--color-text-muted)] mb-3">
+          Kun prosjekter tildelt valgt prosjektleder
+        </p>
+      )}
       <MonthlyBarChart data={data} />
     </Card>
   )

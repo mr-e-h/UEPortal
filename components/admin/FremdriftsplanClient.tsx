@@ -171,7 +171,7 @@ export default function FremdriftsplanClient({
               onClick={() => setYear(thisYear)}
               className="px-2 py-1 text-xs font-medium text-primary hover:bg-primary-soft rounded-md"
             >
-              I dag
+              I år
             </button>
           )}
         </div>
@@ -182,8 +182,7 @@ export default function FremdriftsplanClient({
         <div className="flex items-start gap-2 text-sm text-amber-800 bg-amber-50 border border-amber-200 rounded-lg px-3 py-2">
           <Info size={15} className="flex-none mt-0.5" />
           <span>
-            Arbeidsfaser er ikke aktivert ennå (databasemigrasjonen for fasetyper må kjøres).
-            Tidslinjen viser foreløpig kun prosjektperiodene.
+            Arbeidsfaser er ikke tilgjengelig ennå. Tidslinjen viser foreløpig prosjektperiodene.
           </span>
         </div>
       )}

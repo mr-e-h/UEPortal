@@ -283,10 +283,10 @@ export default function ChangeOrderDetailPage() {
   // pluss kladd, godkjent, avslått og 'Trenger revisjon' (returnert til UE).
   const statusPill: { label: string; cls: string } = (() => {
     if (co.status === 'approved') return { label: 'Godkjent', cls: 'bg-green-100 text-green-700' }
-    if (co.status === 'rejected') return { label: 'Avslått', cls: 'bg-red-100 text-red-700' }
+    if (co.status === 'rejected') return { label: 'Avvist', cls: 'bg-red-100 text-red-700' }
     if (co.status === 'draft') return { label: 'Kladd', cls: 'bg-gray-100 text-gray-500' }
     if (co.status === 'revision_requested') return { label: 'Trenger revisjon hos UE', cls: 'bg-orange-100 text-orange-700' }
-    if (sentToCustomer) return { label: 'Til behandling', cls: 'bg-blue-50 text-blue-700' }
+    if (sentToCustomer) return { label: 'Sendt kunde', cls: 'bg-blue-50 text-blue-700' }
     return { label: 'Ubehandlet', cls: 'bg-amber-50 text-amber-700' }
   })()
 
@@ -306,7 +306,7 @@ export default function ChangeOrderDetailPage() {
 
       <header className="bg-white shadow print:hidden">
         <div className="px-4 sm:px-6 py-4 flex items-center gap-3 flex-wrap">
-          <Link href="/admin" className="text-gray-400 hover:text-gray-600 text-sm">← Dashboard</Link>
+          <Link href="/admin/change-orders" className="text-gray-400 hover:text-gray-600 text-sm">← Endringsmeldinger</Link>
           <div>
             <h1 className="text-xl font-bold text-gray-900">
               {fmtChangeOrderTitle(co.change_order_number, project?.name)}
@@ -364,7 +364,7 @@ export default function ChangeOrderDetailPage() {
                     onClick={exportPDF}
                     disabled={exporting || co.status === 'draft'}
                     className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-primary text-white rounded hover:bg-primary-hover disabled:opacity-50"
-                    title="Markeres som 'Til behandling' og åpner print-dialog"
+                    title="Markeres som 'Sendt kunde' og åpner print-dialog"
                   >
                     <Printer size={12} /> {exporting ? 'Markerer...' : 'Eksporter PDF'}
                   </button>
@@ -676,7 +676,7 @@ export default function ChangeOrderDetailPage() {
                   <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">{editError}</p>
                 )}
                 <p className="text-[10px] text-gray-500">
-                  Pris-snapshots resolves serverside fra produktets kundepris og UEs prisliste (faller tilbake til budsjettlinjen om UE-pris mangler). Totaler regnes ut fra disse, endringen logges, og UE ser samme oppdatering — uten kundepris.
+                  Priser hentes automatisk fra prislisten. Endringen logges i versjonsloggen, og UE ser samme oppdatering — uten kundepriser.
                 </p>
                 <div className="flex gap-2 justify-end">
                   <button
@@ -745,11 +745,13 @@ export default function ChangeOrderDetailPage() {
                 >
                   Avvis
                 </button>
+                {/* Sekundær outline-stil: dette er unntaks-/bokføringshandlinger,
+                    ikke beslutninger — kun Godkjenn/Avvis skal være fylte. */}
                 {co.status === 'pending' && (
                   <button
                     onClick={requestRevision}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm bg-orange-500 text-white rounded hover:bg-orange-600 disabled:opacity-50"
+                    className="px-4 py-2 text-sm bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
                     title="Returnerer EMen til UE for revisjon. Kommentaren over blir vist for UE så de vet hva som mangler."
                   >
                     Be om ny versjon
@@ -759,10 +761,10 @@ export default function ChangeOrderDetailPage() {
                   <button
                     onClick={markAsSent}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm bg-blue-600 text-white rounded hover:bg-blue-700 disabled:opacity-50"
-                    title="Markerer EM som sendt til kunde — pillen flippes fra 'Ubehandlet' til 'Til behandling'. Bruk når EMen er sendt ut via annen kanal enn Eksporter PDF."
+                    className="px-4 py-2 text-sm bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
+                    title="Markerer EM som sendt til kunde — pillen flippes fra 'Ubehandlet' til 'Sendt kunde'. Bruk når EMen er sendt ut via annen kanal enn Eksporter PDF."
                   >
-                    Til behandling
+                    Marker som sendt kunde
                   </button>
                 )}
                 <button

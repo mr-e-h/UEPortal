@@ -10,6 +10,12 @@ interface Props {
   subCounts: Record<string, number>
 }
 
+function fmtDate(d: string | null): string {
+  if (!d) return '–'
+  const [y, m, day] = d.split('-')
+  return `${day}.${m}.${y.slice(2)}`
+}
+
 export default function ProjectsListTable({ projects, blCounts, subCounts }: Props) {
   const router = useRouter()
 
@@ -20,7 +26,7 @@ export default function ProjectsListTable({ projects, blCounts, subCounts }: Pro
   // Only show the Fylke (county) column when at least one project actually has
   // a value — otherwise it's just an empty column eating horizontal space.
   const showCounty = projects.some((p) => p.county)
-  const headers = ['Navn', 'Nr.', 'Kunde', ...(showCounty ? ['Fylke'] : []), 'UE', 'Budsjettlinjer', 'Oppstart', 'Status']
+  const headers = ['Navn', 'Nr.', 'Kunde', ...(showCounty ? ['Fylke'] : []), 'UE', 'Linjer', 'Oppstart', 'Status']
 
   return (
     <div className="overflow-x-auto">
@@ -50,9 +56,11 @@ export default function ProjectsListTable({ projects, blCounts, subCounts }: Pro
               {showCounty && <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{p.county}</td>}
               <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{subCounts[p.id] ?? 0}</td>
               <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{blCounts[p.id] ?? 0}</td>
-              <td className="px-4 py-2.5 text-[var(--color-text-muted)] whitespace-nowrap">{p.start_date ?? '–'}</td>
+              <td className="px-4 py-2.5 text-[var(--color-text-muted)] whitespace-nowrap">{fmtDate(p.start_date)}</td>
               <td className="px-4 py-2.5">
-                <Badge status={p.status === 'active' ? 'active' : 'draft'} />
+                {/* ProjectStatus-verdiene er gyldige BadgeStatus-verdier — direkte
+                    mapping gir riktig «Fullført»/«Arkivert» (før: alt ≠ active = «Kladd»). */}
+                <Badge status={p.status} />
               </td>
             </tr>
           ))}

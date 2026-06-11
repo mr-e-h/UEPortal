@@ -179,7 +179,7 @@ export default function SubcontractorPage() {
             <CheckCircle2 size={22} className="text-green-600" strokeWidth={1.75} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-[var(--color-text-secondary)]">Du har dette du kan fakturere</p>
+            <p className="text-sm font-medium text-[var(--color-text-secondary)]">Klart til fakturering</p>
             <p className="text-3xl font-bold text-[var(--color-text-primary)] mt-1 leading-tight">{fmt(dashboard.kpi.fakturerbart)}</p>
             <p className="text-xs text-[var(--color-text-muted)] mt-1">Godkjent arbeid som ikke er fakturert ennå</p>
           </div>
@@ -189,9 +189,9 @@ export default function SubcontractorPage() {
             <Clock size={22} className="text-amber-600" strokeWidth={1.75} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-[var(--color-text-secondary)]">Du har dette du har produsert men ikke bedt om å fakturere</p>
+            <p className="text-sm font-medium text-[var(--color-text-secondary)]">Sendt inn, venter på godkjenning</p>
             <p className="text-3xl font-bold text-[var(--color-text-primary)] mt-1 leading-tight">{fmt(dashboard.kpi.produsertIkkeBedt)}</p>
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">Innsendt arbeid som venter på admin-godkjenning</p>
+            <p className="text-xs text-[var(--color-text-muted)] mt-1">Innsendt arbeid som venter på godkjenning fra prosjektleder</p>
           </div>
         </div>
       </div>
@@ -256,7 +256,7 @@ export default function SubcontractorPage() {
             type="button"
             onClick={() => setPicker('new-em')}
             disabled={pickerProjects.length === 0}
-            className="w-full inline-flex items-center justify-center gap-2 px-5 py-4 text-base font-semibold bg-amber-500 text-white rounded-2xl hover:bg-amber-600 transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
+            className="w-full inline-flex items-center justify-center gap-2 px-5 py-4 text-base font-semibold bg-card border-2 border-primary text-primary rounded-2xl hover:bg-primary-soft transition-all shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
           >
             <Plus size={20} strokeWidth={2.5} /> Send endringsmelding
           </button>
@@ -303,14 +303,9 @@ export default function SubcontractorPage() {
                           </p>
                           {co.admin_comment && (
                             <p className="text-xs text-orange-800 bg-orange-50 border border-orange-200 rounded p-2 mt-2 whitespace-pre-line">
-                              <span className="font-semibold">Admin: </span>{co.admin_comment}
+                              <span className="font-semibold">Prosjektleder: </span>{co.admin_comment}
                             </p>
                           )}
-                        </div>
-                        <div className="text-right flex-none">
-                          <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700">
-                            Trenger revisjon
-                          </span>
                         </div>
                       </div>
                     </Link>

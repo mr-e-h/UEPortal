@@ -193,7 +193,7 @@ function ProjectCard({ card }: { card: ProjectCardData }) {
       <div className="mt-3 flex items-center gap-1.5 flex-wrap min-h-[22px]">
         <HardHat size={12} className="flex-none text-[var(--color-text-muted)]" />
         {chips.length === 0 ? (
-          <span className="text-xs text-[var(--color-text-muted)]">Ingen UE tilknyttet</span>
+          <span className="text-xs text-[var(--color-text-muted)]">Ingen UE</span>
         ) : (
           <>
             {chips.map((name) => (
@@ -202,7 +202,10 @@ function ProjectCard({ card }: { card: ProjectCardData }) {
               </span>
             ))}
             {moreChips > 0 && (
-              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-[var(--color-text-muted)]">
+              <span
+                title={card.sub_names.slice(maxChips).join(', ')}
+                className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-[var(--color-text-muted)]"
+              >
                 +{moreChips}
               </span>
             )}
@@ -210,25 +213,30 @@ function ProjectCard({ card }: { card: ProjectCardData }) {
         )}
       </div>
 
-      {/* Fremdrift */}
+      {/* Fremdrift — bar kun når det finnes et tall; «(tid)»-forklaringen
+          ligger som tooltip i stedet for synlig tekst. */}
       <div className="mt-3">
         <div className="flex items-center justify-between text-[10px] text-[var(--color-text-muted)] mb-1">
-          <span>Fremdrift{card.progress_source === 'tid' ? ' (tid)' : ''}</span>
+          <span title={card.progress_source === 'tid' ? 'Beregnet fra prosjektperiode, ikke rapporterte mengder' : undefined}>
+            Fremdrift
+          </span>
           <span>{card.progress !== null ? `${card.progress}%` : '–'}</span>
         </div>
-        <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-          <div
-            className="h-full rounded-full bg-primary transition-all"
-            style={{ width: `${card.progress ?? 0}%` }}
-          />
-        </div>
+        {card.progress !== null && (
+          <div className="h-1.5 rounded-full bg-muted overflow-hidden">
+            <div
+              className="h-full rounded-full bg-primary transition-all"
+              style={{ width: `${card.progress}%` }}
+            />
+          </div>
+        )}
       </div>
 
       {/* Oppmerksomhetsbadge nede til høyre */}
       {card.attention.total > 0 && (
         <span
           title={attentionTitle}
-          className="absolute bottom-3 right-3 inline-flex items-center gap-1 bg-amber-100 text-amber-800 border border-amber-200 text-[11px] font-semibold px-2 py-0.5 rounded-full"
+          className="absolute bottom-3 right-3 inline-flex items-center gap-1 bg-warning-soft text-warning text-[11px] font-semibold px-2 py-0.5 rounded-full"
         >
           <Bell size={11} />
           {card.attention.total}

@@ -1,7 +1,7 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Download, RefreshCw, Plus, Trash2 } from 'lucide-react'
+import { Download, Plus, Trash2 } from 'lucide-react'
 import type { Project } from '@/types'
 import { fmtNOK as fmt, fmtNumber } from '@/lib/format'
 import { useMe } from '@/lib/useMe'
@@ -155,15 +155,15 @@ export default function UEInvoiceBasisPage() {
     <main className="px-4 sm:px-6 py-8 space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Fakturagrunnlag</h1>
+          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Fakturering</h1>
           <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
-            Dine godkjente rapportlinjer og endringsmeldinger
+            Tilgjengelig for fakturering — godkjent arbeid minus det du allerede har fakturert
           </p>
         </div>
         <button
           onClick={exportCSV}
           disabled={lines.length === 0}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-green-600 text-white text-sm rounded-lg hover:bg-green-700 disabled:opacity-40"
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-border text-[var(--color-text-secondary)] text-sm rounded-lg hover:bg-muted disabled:opacity-40"
         >
           <Download size={14} />
           Eksporter CSV
@@ -198,21 +198,17 @@ export default function UEInvoiceBasisPage() {
             className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-primary bg-card text-[var(--color-text-primary)]"
           />
         </Field>
-        <button
-          onClick={() => { fetchBasis(); fetchInvoices() }}
-          className="flex items-center gap-1.5 px-3 py-1.5 text-sm border border-border rounded-lg hover:bg-muted text-[var(--color-text-primary)]"
-        >
-          <RefreshCw size={13} />
-          Oppdater
-        </button>
       </Card>
 
-      {/* Financial summary */}
+      {/* Financial summary — «Gjenstår» er helten og står først;
+          linjeantall-kortet var støy og er fjernet. */}
       {summary && (
-        <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-          <Card className="p-4">
-            <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Linjer</p>
-            <p className="text-2xl font-bold text-[var(--color-text-primary)] mt-1">{summary.line_count}</p>
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <Card className={`p-4 ${totalRemaining < 0 ? 'border-red-200 bg-red-50' : ''}`}>
+            <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Gjenstår å fakturere</p>
+            <p className={`text-2xl font-bold mt-1 ${totalRemaining < 0 ? 'text-red-600' : totalRemaining === 0 ? 'text-green-600' : 'text-[var(--color-text-primary)]'}`}>
+              {fmt(totalRemaining)}
+            </p>
           </Card>
           <Card className="p-4">
             <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Godkjent total</p>
@@ -220,14 +216,8 @@ export default function UEInvoiceBasisPage() {
           </Card>
           <Card className="p-4">
             <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Fakturert</p>
-            <p className="text-2xl font-bold text-blue-600 mt-1">{fmt(totalInvoiced)}</p>
+            <p className="text-2xl font-bold text-[var(--color-text-primary)] mt-1">{fmt(totalInvoiced)}</p>
             <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{invoices.length} faktura{invoices.length !== 1 ? 'er' : ''}</p>
-          </Card>
-          <Card className={`p-4 ${totalRemaining < 0 ? 'border-red-200 bg-red-50' : ''}`}>
-            <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Gjenstår å fakturere</p>
-            <p className={`text-2xl font-bold mt-1 ${totalRemaining < 0 ? 'text-red-600' : totalRemaining === 0 ? 'text-green-600' : 'text-[var(--color-text-primary)]'}`}>
-              {fmt(totalRemaining)}
-            </p>
           </Card>
         </div>
       )}

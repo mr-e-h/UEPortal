@@ -51,7 +51,7 @@ export default async function TendersPage() {
 
   const rows = tenders.map((t) => ({
     id: t.id,
-    title: t.title || '(uten tittel)',
+    title: t.title || 'Uten tittel',
     status: t.status,
     deadline_at: t.deadline_at,
     project_name: projMap.get(t.project_id)?.name ?? '–',
@@ -64,10 +64,7 @@ export default async function TendersPage() {
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Anbud / tilbudsforespørsler</h1>
-          <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
-            Send prosjektgrunnlag til flere underentreprenører og sammenlign tilbud
-          </p>
+          <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Anbud</h1>
         </div>
         <Button href="/admin/tenders/new" variant="primary" className="px-3 py-1.5 text-xs">
           + Nytt anbud

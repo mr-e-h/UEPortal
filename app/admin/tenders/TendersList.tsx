@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation'
 import { tenderStatus } from '@/lib/statuses'
 import type { TenderStatus } from '@/types'
 
-/** Avsluttede anbud (kansellert/lukket) skjules som standard — de er
+/** Avsluttede anbud (kansellert/lukket/tildelt) skjules som standard — de er
  *  historikk, ikke arbeidskø. Toggle viser dem ved behov. */
-const ARCHIVED_STATUSES: TenderStatus[] = ['cancelled', 'closed']
+const ARCHIVED_STATUSES: TenderStatus[] = ['cancelled', 'closed', 'awarded']
 
 type Row = {
   id: string
@@ -54,14 +54,14 @@ export default function TendersList({ rows }: { rows: Row[] }) {
               onChange={(e) => setShowArchived(e.target.checked)}
               className="rounded"
             />
-            Vis avsluttede ({archivedCount})
+            Vis avsluttede og tildelte ({archivedCount})
           </label>
         </div>
       )}
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border bg-muted/40">
-            {['Tittel', 'Prosjekt', 'Status', 'Svarfrist', 'Svar', ''].map((h) => (
+            {['Tittel', 'Prosjekt', 'Status', 'Svarfrist', 'Tilbud'].map((h) => (
               <th key={h} className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide whitespace-nowrap">
                 {h}
               </th>
@@ -84,9 +84,6 @@ export default function TendersList({ rows }: { rows: Row[] }) {
               <td className="px-4 py-2.5 text-[var(--color-text-muted)] whitespace-nowrap">{fmtDeadline(r.deadline_at)}</td>
               <td className="px-4 py-2.5 text-[var(--color-text-secondary)] whitespace-nowrap">
                 {r.answered} / {r.invited}
-              </td>
-              <td className="px-4 py-2.5 text-right">
-                <span className="text-xs text-primary hover:underline font-medium">Åpne →</span>
               </td>
             </tr>
           ))}

@@ -150,16 +150,16 @@ export default function PhasesSection({ projectId }: { projectId: string }) {
           <button
             type="button"
             onClick={() => { setDraft(emptyDraft(types[0]?.id)); setShowAdd((v) => !v) }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary-hover"
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-[var(--color-text-secondary)] hover:bg-muted"
           >
-            <Plus size={13} /> {showAdd ? 'Avbryt' : 'Legg til fase'}
+            {showAdd ? <X size={13} /> : <Plus size={13} />} {showAdd ? 'Avbryt' : 'Legg til fase'}
           </button>
         )}
       </div>
 
       {types.length === 0 ? (
         <p className="text-sm text-[var(--color-text-muted)] bg-warning-soft border border-amber-200 rounded-lg px-3 py-2">
-          Arbeidsfaser er ikke aktivert ennå (databasemigrasjonen for fasetyper må kjøres).
+          Arbeidsfaser er ikke tilgjengelig ennå.
         </p>
       ) : (
         <>
@@ -174,7 +174,7 @@ export default function PhasesSection({ projectId }: { projectId: string }) {
                 </select>
               </label>
               <label className="text-xs text-[var(--color-text-muted)] flex flex-col gap-1">Navn (valgfritt)
-                <input type="text" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Overstyr navn" className="px-2 py-1.5 text-sm border border-border rounded bg-white" />
+                <input type="text" value={draft.name} onChange={(e) => setDraft((d) => ({ ...d, name: e.target.value }))} placeholder="F.eks. Etappe 2" className="px-2 py-1.5 text-sm border border-border rounded bg-white" />
               </label>
               <label className="text-xs text-[var(--color-text-muted)] flex flex-col gap-1">Start
                 <input required type="date" value={draft.start_date} onChange={(e) => setDraft((d) => ({ ...d, start_date: e.target.value }))} className="px-2 py-1.5 text-sm border border-border rounded bg-white" />
@@ -250,7 +250,7 @@ export default function PhasesSection({ projectId }: { projectId: string }) {
                           {isEditing ? (
                             <input type="number" min={0} max={100} value={editDraft.progress_percent} onChange={(e) => setEditDraft((d) => ({ ...d, progress_percent: e.target.value }))} className="w-16 px-1.5 py-1 text-sm text-right border border-primary rounded" />
                           ) : (
-                            <span className="text-[var(--color-text-secondary)]">{p.progress_percent}%</span>
+                            <span className="text-[var(--color-text-secondary)]">{p.progress_percent > 0 ? `${p.progress_percent}%` : '–'}</span>
                           )}
                         </td>
                         <td className="px-4 py-2.5">

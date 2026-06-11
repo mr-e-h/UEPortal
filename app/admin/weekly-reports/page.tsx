@@ -59,7 +59,7 @@ export default async function WeeklyReportsPage() {
       {pending.length > 0 && (
         <Card>
           <div className="px-6 py-4 border-b border-border flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Venter godkjenning</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Til godkjenning</h2>
             <span className="bg-primary text-white text-xs font-medium px-1.5 py-0.5 rounded-full">
               {pending.length}
             </span>
@@ -68,11 +68,13 @@ export default async function WeeklyReportsPage() {
         </Card>
       )}
 
+      {/* Ventende rader bor i køen over — her vises kun ferdigbehandlede,
+          så ingen rapport står to ganger på samme skjerm. */}
       <Card>
         <div className="px-6 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Alle innsendte rapporter</h2>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Behandlede rapporter</h2>
         </div>
-        <ReportTable reports={reports} projMap={projMap} subMap={subMap} />
+        <ReportTable reports={reports.filter((r) => r.status !== 'submitted')} projMap={projMap} subMap={subMap} />
       </Card>
     </div>
   )
@@ -95,7 +97,7 @@ function ReportTable({
       <table className="w-full text-sm">
         <thead>
           <tr className="border-b border-border">
-            {['Prosjekt', 'Underentreprenør', 'Uke', '#', 'Innsendt', 'Status', ''].map((h) => (
+            {['Prosjekt', 'Underentreprenør', 'Uke', 'Innsendt', 'Status', ''].map((h) => (
               <th
                 key={h}
                 className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide"
@@ -117,14 +119,14 @@ function ReportTable({
               <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
                 {formatWeekLabel(r.year, r.week_number)}
               </td>
-              <td className="px-4 py-2.5 text-[var(--color-text-muted)]">#{r.submission_number ?? 1}</td>
               <td className="px-4 py-2.5 text-[var(--color-text-muted)]">
                 {r.submitted_at ? r.submitted_at.split('T')[0] : '–'}
               </td>
               <td className="px-4 py-2.5">
+                {/* Delvis godkjent er ferdigbehandlet — grønn, ikke gul «Venter». */}
                 <Badge
                   status={
-                    r.status === 'approved' ? 'approved'
+                    r.status === 'approved' || r.status === 'partially_approved' ? 'approved'
                     : r.status === 'rejected' ? 'rejected'
                     : 'pending'
                   }

@@ -148,7 +148,7 @@ export default function AdminWeeklyReportPage() {
     <main className="px-4 sm:px-6 py-8 space-y-6">
       {/* Header */}
       <div className="flex items-start gap-3">
-        <Link href="/admin" className="text-gray-400 hover:text-gray-600 text-sm mt-1">← Dashboard</Link>
+        <Link href="/admin/weekly-reports" className="text-gray-400 hover:text-gray-600 text-sm mt-1">← Ukesrapporter</Link>
         <div className="flex-1">
           <h1 className="text-xl font-bold text-gray-900">
             {project?.name ?? '–'} — {formatWeekLabel(report.year, report.week_number)} — Innsending #{report.submission_number ?? 1}
@@ -173,12 +173,9 @@ export default function AdminWeeklyReportPage() {
         </div>
       </div>
 
-      {/* Summary cards — salgsverdi-kortet kun for økonomiroller */}
-      <div className={`grid gap-4 ${canSeeEconomy ? 'grid-cols-3' : 'grid-cols-2'}`}>
-        <Card className="p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Linjer</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{report.lines.length}</p>
-        </Card>
+      {/* Summary cards — salgsverdi-kortet kun for økonomiroller.
+          (Linjeantallet er synlig i tabellen — eget kort var bare støy.) */}
+      <div className={`grid gap-4 ${canSeeEconomy ? 'grid-cols-2' : 'grid-cols-1'}`}>
         <Card className="p-4">
           <p className="text-xs text-gray-500 uppercase tracking-wide">Total kostnad</p>
           <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalCost)}</p>
@@ -213,7 +210,7 @@ export default function AdminWeeklyReportPage() {
           <button
             onClick={() => bulkReview('reject_all')}
             disabled={saving}
-            className="px-4 py-1.5 bg-red-600 text-white text-sm rounded hover:bg-red-700 disabled:opacity-50"
+            className="px-4 py-1.5 border border-red-300 text-red-700 text-sm rounded hover:bg-red-50 disabled:opacity-50"
           >
             Avslå alle
           </button>
@@ -251,9 +248,11 @@ export default function AdminWeeklyReportPage() {
               key: 'actions',
               label: '',
               render: (r: LineRow) => r.status === 'pending' ? (
+                // Outline-stil — bulk-knappene øverst er primærhandlingen,
+                // per-linje-knappene skal ikke rope på hver rad.
                 <div className="flex gap-1.5">
-                  <button onClick={() => reviewLine(r.id, 'approved')} className="px-2 py-1 bg-green-600 text-white text-xs rounded hover:bg-green-700">Godkjenn</button>
-                  <button onClick={() => reviewLine(r.id, 'rejected')} className="px-2 py-1 bg-red-600 text-white text-xs rounded hover:bg-red-700">Avslå</button>
+                  <button onClick={() => reviewLine(r.id, 'approved')} className="px-2 py-1 border border-green-300 text-green-700 text-xs rounded hover:bg-green-50">Godkjenn</button>
+                  <button onClick={() => reviewLine(r.id, 'rejected')} className="px-2 py-1 border border-red-300 text-red-700 text-xs rounded hover:bg-red-50">Avslå</button>
                 </div>
               ) : null,
             },
@@ -265,7 +264,7 @@ export default function AdminWeeklyReportPage() {
 
       {/* Activity log + comments */}
       <Card className="p-6 space-y-4">
-        <h2 className="text-sm font-semibold text-gray-900">Handlingslogg</h2>
+        <h2 className="text-sm font-semibold text-gray-900">Historikk</h2>
         {activity.length === 0 ? (
           <p className="text-sm text-gray-400">Ingen handlinger ennå</p>
         ) : (
@@ -336,7 +335,7 @@ export default function AdminWeeklyReportPage() {
                       },
                     },
                     { key: 'line_count', label: 'Antall linjer', sortable: true },
-                    { key: 'total_cost', label: 'Verdi', sortable: true, getValue: (r: SibRow) => r.total_cost, render: (r: SibRow) => fmt(r.total_cost) },
+                    { key: 'total_cost', label: 'Kostnad', sortable: true, getValue: (r: SibRow) => r.total_cost, render: (r: SibRow) => fmt(r.total_cost) },
                   ]}
                   data={sibRows}
                   emptyText="Ingen andre innsendinger"

@@ -152,7 +152,7 @@ export default function SubcontractorProjectsPage() {
     },
     {
       key: 'approved_value',
-      label: 'Omsatt pdd',
+      label: 'Godkjent hittil',
       sortable: true,
       getValue: (row) => row.approved_value,
       render: (row) => (
