@@ -10,6 +10,7 @@ import NumberInput from '@/components/NumberInput'
 import { MONTHS_SHORT as MONTH_NAMES, fmtNOK as fmt } from '@/lib/format'
 import { forecastStatus } from '@/lib/statuses'
 import { useMe } from '@/lib/useMe'
+import ForecastTabs from '../ForecastTabs'
 import type {
   Project,
   ProjectBudgetLine,
@@ -361,6 +362,7 @@ export default function ForecastPeriodPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Header */}
+      <ForecastTabs />
       <div className="flex items-start justify-between">
         <div>
           <div className="flex items-center gap-3">

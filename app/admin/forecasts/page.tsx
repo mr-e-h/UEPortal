@@ -10,6 +10,7 @@ import EmptyState from '@/components/ui/EmptyState'
 import { fmtNOK as fmt } from '@/lib/format'
 import { forecastPeriodStatus } from '@/lib/statuses'
 import CreatePeriodsButton from './CreatePeriodsButton'
+import ForecastTabs from './ForecastTabs'
 
 export const dynamic = 'force-dynamic'
 
@@ -80,6 +81,7 @@ export default async function ForecastsOverviewPage({
             {projects.length} aktive prosjekter
           </p>
         </div>
+        <ForecastTabs />
         <Card>
           <EmptyState
             title={`Ingen prognoseperioder for ${year} ennå`}
@@ -122,11 +124,13 @@ export default async function ForecastsOverviewPage({
               href="/admin/forecasts"
               className="ml-1 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary-soft rounded-md"
             >
-              I dag ({currentYear})
+              I år ({currentYear})
             </Link>
           )}
         </div>
       </div>
+
+      <ForecastTabs />
 
       {/* Period cards */}
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">

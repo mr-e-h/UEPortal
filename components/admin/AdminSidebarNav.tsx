@@ -15,7 +15,6 @@ import {
   Trash2,
   Settings,
   TrendingUp,
-  BarChart2,
   Receipt,
   UserPlus,
   PieChart,
@@ -29,60 +28,52 @@ import {
 // manager) sees. Everything WITHOUT the flag is hidden for that role —
 // economy, prognoser, price lists, tenders and all admin/config pages.
 // (Nav hiding is UX only; the pages/APIs enforce access server-side.)
+// Gruppert etter arbeidsmåte: daglig prosjektoppfølging øverst (inkl.
+// godkjenningskøene — de ER prosjektarbeid), periodisk økonomi, sjeldnere
+// innkjøp/register, og «sett én gang»-oppsett nederst. Byggeleder ser hele
+// Prosjekt-gruppen + Min konto — én sammenhengende blokk.
 const sections = [
   {
-    label: 'OVERSIKT',
+    label: 'PROSJEKT',
     links: [
       { href: '/admin', label: 'Dashboard', icon: LayoutDashboard, exact: true, siteVisible: true as const },
       { href: '/admin/projects', label: 'Prosjekter', icon: FolderKanban, siteVisible: true as const },
       { href: '/admin/fremdriftsplan', label: 'Fremdriftsplan', icon: CalendarRange, siteVisible: true as const },
-      { href: '/admin/tenders', label: 'Anbud', icon: Gavel },
-      { href: '/admin/subcontractors', label: 'Underentreprenører', icon: Users },
-      { href: '/admin/products', label: 'Produkter', icon: Package },
-    ],
-  },
-  {
-    label: 'GODKJENNINGER',
-    links: [
       { href: '/admin/weekly-reports', label: 'Ukesrapporter', icon: CheckSquare, siteVisible: true as const },
       { href: '/admin/change-orders', label: 'Endringsmeldinger', icon: FileText, siteVisible: true as const },
-    ],
-  },
-  {
-    label: 'PROGNOSER',
-    links: [
-      { href: '/admin/forecasts', label: 'Oversikt', icon: TrendingUp, exact: true },
-      { href: '/admin/forecasts/p1', label: 'P1', icon: BarChart2 },
-      { href: '/admin/forecasts/p2', label: 'P2', icon: BarChart2 },
-      { href: '/admin/forecasts/p3', label: 'P3', icon: BarChart2 },
-      { href: '/admin/forecasts/p4', label: 'P4', icon: BarChart2 },
     ],
   },
   {
     label: 'ØKONOMI',
     links: [
       { href: '/admin/totalokonomi', label: 'Totaløkonomi', icon: PieChart },
+      // P1–P4 velges via faner inne på prognosesiden — ett menypunkt holder.
+      { href: '/admin/forecasts', label: 'Prognoser', icon: TrendingUp },
       { href: '/admin/invoice-basis', label: 'Fakturagrunnlag', icon: Receipt },
     ],
   },
   {
-    label: 'INNSTILLINGER',
-    // 'Brukere' and 'Tilgangsforespørsler' are admin-only — gated by the
-    // userAdminOnly flag below. Min konto is for everyone.
+    // Anbud bor her: et anbud er måten UE-priser hentes inn på (sammenlign →
+    // tildel → priser i budsjett), og prosessen starter ofte før prosjektet
+    // er bemannet.
+    label: 'INNKJØP & REGISTER',
     links: [
-      { href: '/admin/users', label: 'Brukere', icon: Users, userAdminOnly: true as const },
-      { href: '/admin/access-requests', label: 'Tilgangsforespørsler', icon: UserPlus, badgeKey: 'access-requests' as const, userAdminOnly: true as const },
-      { href: '/admin/account', label: 'Min konto', icon: Settings, siteVisible: true as const },
+      { href: '/admin/tenders', label: 'Anbud', icon: Gavel },
+      { href: '/admin/subcontractors', label: 'Underentreprenører', icon: Users },
+      { href: '/admin/products', label: 'Produkter', icon: Package },
     ],
   },
   {
-    // Catch-all for admin/system-level config tables. Sits at the bottom
-    // because these are "set once, look at rarely" pages, not daily work.
-    label: 'GENERELT',
+    // Samlet oppsett-gruppe (tidligere INNSTILLINGER + GENERELT). Admin-only
+    // gated per lenke; Min konto er for alle roller.
+    label: 'OPPSETT',
     links: [
+      { href: '/admin/users', label: 'Brukere', icon: Users, userAdminOnly: true as const },
+      { href: '/admin/access-requests', label: 'Tilgangsforespørsler', icon: UserPlus, badgeKey: 'access-requests' as const, userAdminOnly: true as const },
       { href: '/admin/project-types', label: 'Type prosjekt', icon: ClipboardList, userAdminOnly: true as const },
       { href: '/admin/time-types', label: 'Timetyper', icon: Clock, userAdminOnly: true as const },
       { href: '/admin/trash', label: 'Papirkurv', icon: Trash2, userAdminOnly: true as const },
+      { href: '/admin/account', label: 'Min konto', icon: Settings, siteVisible: true as const },
     ],
   },
 ]
@@ -173,7 +164,7 @@ export default function AdminSidebarNav({ isUserAdmin, isSiteManager = false }: 
               {visibleLinks.map((link) => {
                 const { href, label, icon: Icon } = link
                 const exact = 'exact' in link ? link.exact : false
-                const badgeKey = 'badgeKey' in link ? link.badgeKey : undefined
+                const badgeKey = 'badgeKey' in link ? (link.badgeKey as string) : undefined
                 const active = exact ? pathname === href : pathname.startsWith(href)
                 const count = badgeFor(badgeKey)
                 return (
