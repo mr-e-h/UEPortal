@@ -1,13 +1,11 @@
 import { redirect } from 'next/navigation'
-import Link from 'next/link'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { getProjectScope } from '@/lib/api-guard'
 import type { WeeklyReport, Project, Subcontractor } from '@/types'
 import { formatWeekLabel } from '@/lib/utils/weeks'
-import Card from '@/components/ui/Card'
-import Badge from '@/components/ui/Badge'
+import WeeklyReportsListClient, { type ReportRow, type ReportStatus } from './WeeklyReportsListClient'
 
 export const dynamic = 'force-dynamic'
 
@@ -45,6 +43,30 @@ export default async function WeeklyReportsPage() {
   const approved = reports.filter((r) => r.status === 'approved' || r.status === 'partially_approved')
   const rejected = reports.filter((r) => r.status === 'rejected')
 
+  // Flate, serialiserbare rader til klientfilteret — ingen økonomitall.
+  const rows: ReportRow[] = reports.map((r) => ({
+    id: r.id,
+    project_name: projMap.get(r.project_id)?.name ?? '–',
+    project_id: r.project_id,
+    sub_name: subMap.get(r.subcontractor_id)?.company_name ?? '–',
+    sub_id: r.subcontractor_id,
+    week_label: formatWeekLabel(r.year, r.week_number),
+    submitted: r.submitted_at ? r.submitted_at.split('T')[0] : '–',
+    status: r.status as ReportStatus,
+  }))
+
+  // Filtermenyene viser kun prosjekter/UE-er som faktisk har rapporter.
+  const repProjectIds = new Set(reports.map((r) => r.project_id))
+  const filterProjects = projects
+    .filter((p) => repProjectIds.has(p.id))
+    .map((p) => ({ id: p.id, name: p.name }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'nb'))
+  const repSubIds = new Set(reports.map((r) => r.subcontractor_id))
+  const filterSubs = subcontractors
+    .filter((s) => repSubIds.has(s.id))
+    .map((s) => ({ id: s.id, name: s.company_name }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'nb'))
+
   return (
     <div className="p-6 space-y-6">
       <div className="flex items-center justify-between">
@@ -56,94 +78,7 @@ export default async function WeeklyReportsPage() {
         </div>
       </div>
 
-      {pending.length > 0 && (
-        <Card>
-          <div className="px-6 py-4 border-b border-border flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Til godkjenning</h2>
-            <span className="bg-primary text-white text-xs font-medium px-1.5 py-0.5 rounded-full">
-              {pending.length}
-            </span>
-          </div>
-          <ReportTable reports={pending} projMap={projMap} subMap={subMap} />
-        </Card>
-      )}
-
-      {/* Ventende rader bor i køen over — her vises kun ferdigbehandlede,
-          så ingen rapport står to ganger på samme skjerm. */}
-      <Card>
-        <div className="px-6 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Behandlede rapporter</h2>
-        </div>
-        <ReportTable reports={reports.filter((r) => r.status !== 'submitted')} projMap={projMap} subMap={subMap} />
-      </Card>
-    </div>
-  )
-}
-
-function ReportTable({
-  reports,
-  projMap,
-  subMap,
-}: {
-  reports: WeeklyReport[]
-  projMap: Map<string, Project>
-  subMap: Map<string, Subcontractor>
-}) {
-  if (reports.length === 0) {
-    return <div className="py-10 text-center text-sm text-[var(--color-text-muted)]">Ingen rapporter</div>
-  }
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border">
-            {['Prosjekt', 'Underentreprenør', 'Uke', 'Innsendt', 'Status', ''].map((h) => (
-              <th
-                key={h}
-                className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide"
-              >
-                {h}
-              </th>
-            ))}
-          </tr>
-        </thead>
-        <tbody>
-          {reports.map((r) => (
-            <tr key={r.id} className="border-b border-border last:border-0 hover:bg-muted transition-colors">
-              <td className="px-4 py-2.5 font-medium text-[var(--color-text-primary)]">
-                {projMap.get(r.project_id)?.name ?? '–'}
-              </td>
-              <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
-                {subMap.get(r.subcontractor_id)?.company_name ?? '–'}
-              </td>
-              <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
-                {formatWeekLabel(r.year, r.week_number)}
-              </td>
-              <td className="px-4 py-2.5 text-[var(--color-text-muted)]">
-                {r.submitted_at ? r.submitted_at.split('T')[0] : '–'}
-              </td>
-              <td className="px-4 py-2.5">
-                {/* Delvis godkjent er ferdigbehandlet — grønn, ikke gul «Venter». */}
-                <Badge
-                  status={
-                    r.status === 'approved' || r.status === 'partially_approved' ? 'approved'
-                    : r.status === 'rejected' ? 'rejected'
-                    : 'pending'
-                  }
-                />
-              </td>
-              <td className="px-4 py-2.5 text-right">
-                <Link
-                  href={`/admin/weekly-reports/${r.id}`}
-                  className="text-xs text-primary hover:underline font-medium"
-                >
-                  Detaljer →
-                </Link>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <WeeklyReportsListClient rows={rows} projects={filterProjects} subs={filterSubs} />
     </div>
   )
 }

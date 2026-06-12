@@ -1,36 +1,31 @@
-import Link from 'next/link'
 import { redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { ADMIN_ROLES, PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { getProjectScope } from '@/lib/api-guard'
-import type { ChangeOrder, Project, Subcontractor, Product } from '@/types'
-import Card from '@/components/ui/Card'
-import Badge from '@/components/ui/Badge'
-import { fmtNOK as fmt, fmtChangeOrderTitle, fmtProductLabel } from '@/lib/format'
-import { changeOrderType } from '@/lib/statuses'
+import type { ChangeOrder, Project, Subcontractor } from '@/types'
+import { fmtNOK as fmt, fmtChangeOrderTitle } from '@/lib/format'
+import ChangeOrdersListClient, { type EmRow, type EmStatus } from './ChangeOrdersListClient'
 
 export const dynamic = 'force-dynamic'
 
 export default async function ChangeOrdersPage() {
   const me = await getSession()
-  // Project staff incl. byggeleder (oppfølgingsmodus). Kundeverdi-kolonnen og
-  // verdisummen i undertittelen rendres KUN for økonomiroller — betinget
-  // server-side, så tallene aldri når en byggeleders nettleser.
+  // Project staff incl. byggeleder (oppfølgingsmodus). Kundeverdi rendres og
+  // serialiseres KUN for økonomiroller — radene bygges server-side med
+  // value=null for andre, så tallene aldri når en byggeleders nettleser.
   if (!me || !PROJECT_STAFF_ROLES.includes(me.role)) redirect('/login')
   const canSeeEconomy = ADMIN_ROLES.includes(me.role)
 
   const sb = getSupabaseAdmin()
-  const [projRes, ordersRes, subsRes, prodsRes] = await Promise.all([
+  const [projRes, ordersRes, subsRes] = await Promise.all([
     sb.from('projects').select('*').neq('deleted', true),
     sb.from('change_orders').select('*').neq('status', 'draft'),
     sb.from('subcontractors').select('*'),
-    sb.from('products').select('*'),
   ])
 
   const projects = (projRes.data ?? []) as Project[]
   const subcontractors = (subsRes.data ?? []) as Subcontractor[]
-  const products = (prodsRes.data ?? []) as Product[]
   let orders = (ordersRes.data ?? []) as ChangeOrder[]
 
   const scope = await getProjectScope(me)
@@ -43,13 +38,38 @@ export default async function ChangeOrdersPage() {
 
   const projMap = new Map(projects.map((p) => [p.id, p]))
   const subMap = new Map(subcontractors.map((s) => [s.id, s]))
-  const prodMap = new Map(products.map((p) => [p.id, p]))
 
   const pending = orders.filter((o) => o.status === 'pending')
   const approved = orders.filter((o) => o.status === 'approved')
   const rejected = orders.filter((o) => o.status === 'rejected')
-
   const pendingValue = pending.reduce((s, o) => s + o.total_customer_value, 0)
+
+  // Flate, serialiserbare rader til klientfilteret — uten kundeverdi for
+  // ikke-økonomiroller.
+  const rows: EmRow[] = orders.map((o) => ({
+    id: o.id,
+    title: fmtChangeOrderTitle(o.change_order_number, projMap.get(o.project_id)?.name),
+    em_type: o.em_type,
+    sub_name: subMap.get(o.subcontractor_id)?.company_name ?? '–',
+    sub_id: o.subcontractor_id,
+    project_id: o.project_id,
+    value: canSeeEconomy ? o.total_customer_value : null,
+    cost: o.total_cost,
+    submitted: o.submitted_at ? o.submitted_at.split('T')[0] : '–',
+    status: o.status as EmStatus,
+  }))
+
+  // Filtermenyene viser kun prosjekter/UE-er som faktisk har EM-er.
+  const emProjectIds = new Set(orders.map((o) => o.project_id))
+  const filterProjects = projects
+    .filter((p) => emProjectIds.has(p.id))
+    .map((p) => ({ id: p.id, name: p.name }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'nb'))
+  const emSubIds = new Set(orders.map((o) => o.subcontractor_id))
+  const filterSubs = subcontractors
+    .filter((s) => emSubIds.has(s.id))
+    .map((s) => ({ id: s.id, name: s.company_name }))
+    .sort((a, b) => a.name.localeCompare(b.name, 'nb'))
 
   return (
     <div className="p-6 space-y-6">
@@ -64,111 +84,7 @@ export default async function ChangeOrdersPage() {
         </div>
       </div>
 
-      {pending.length > 0 && (
-        <Card>
-          <div className="px-6 py-4 border-b border-border flex items-center gap-2">
-            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Til godkjenning</h2>
-            <span className="bg-primary text-white text-xs font-medium px-1.5 py-0.5 rounded-full">
-              {pending.length}
-            </span>
-          </div>
-          <OrderTable orders={pending} projMap={projMap} subMap={subMap} prodMap={prodMap} showEconomy={canSeeEconomy} />
-        </Card>
-      )}
-
-      {/* Ventende (pending) rader bor i køen over — her vises resten
-          (behandlede + til revisjon), så ingen EM står to ganger. */}
-      <Card>
-        <div className="px-6 py-4 border-b border-border">
-          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Behandlede endringsmeldinger</h2>
-        </div>
-        <OrderTable orders={orders.filter((o) => o.status !== 'pending')} projMap={projMap} subMap={subMap} prodMap={prodMap} showEconomy={canSeeEconomy} />
-      </Card>
-    </div>
-  )
-}
-
-function OrderTable({
-  orders,
-  projMap,
-  subMap,
-  prodMap,
-  showEconomy,
-}: {
-  orders: ChangeOrder[]
-  projMap: Map<string, Project>
-  subMap: Map<string, Subcontractor>
-  prodMap: Map<string, Product>
-  /** Kundeverdi-kolonnen vises kun for økonomiroller (main/company/PM). */
-  showEconomy: boolean
-}) {
-  if (orders.length === 0) {
-    return <div className="py-10 text-center text-sm text-[var(--color-text-muted)]">Ingen endringsmeldinger</div>
-  }
-  const headers = ['Endringsmelding', 'Type', 'Underentreprenør', 'Produkt', 'Mengde', ...(showEconomy ? ['Kundeverdi'] : []), 'Kostnad', 'Innsendt', 'Status', '']
-  return (
-    <div className="overflow-x-auto">
-      <table className="w-full text-sm">
-        <thead>
-          <tr className="border-b border-border">
-            {headers.map(
-              (h) => (
-                <th
-                  key={h}
-                  className={`px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide ${
-                    h === 'Kundeverdi' || h === 'Kostnad' ? 'text-right' : ''
-                  }`}
-                >
-                  {h}
-                </th>
-              )
-            )}
-          </tr>
-        </thead>
-        <tbody>
-          {orders.map((o) => (
-            <tr key={o.id} className="border-b border-border last:border-0 hover:bg-muted transition-colors">
-              <td className="px-4 py-2.5 font-medium text-[var(--color-text-primary)]">
-                {fmtChangeOrderTitle(o.change_order_number, projMap.get(o.project_id)?.name)}
-              </td>
-              <td className="px-4 py-2.5">
-                {(() => {
-                  const t = changeOrderType(o.em_type)
-                  return <span className={`text-xs font-medium px-2 py-0.5 rounded ${t.cls}`}>{t.label}</span>
-                })()}
-              </td>
-              <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
-                {subMap.get(o.subcontractor_id)?.company_name ?? '–'}
-              </td>
-              <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">
-                {fmtProductLabel(prodMap.get(o.product_id))}
-              </td>
-              <td className="px-4 py-2.5 text-[var(--color-text-muted)]">
-                {o.requested_quantity} {o.unit}
-              </td>
-              {showEconomy && (
-                <td className="px-4 py-2.5 text-right text-[var(--color-text-primary)]">
-                  {fmt(o.total_customer_value)}
-                </td>
-              )}
-              <td className="px-4 py-2.5 text-right text-[var(--color-text-muted)]">{fmt(o.total_cost)}</td>
-              <td className="px-4 py-2.5 text-[var(--color-text-muted)]">
-                {o.submitted_at ? o.submitted_at.split('T')[0] : '–'}
-              </td>
-              <td className="px-4 py-2.5">
-                <Badge
-                  status={o.status === 'approved' ? 'approved' : o.status === 'rejected' ? 'rejected' : 'pending'}
-                />
-              </td>
-              <td className="px-4 py-2.5 text-right">
-                <Link href={`/admin/change-orders/${o.id}`} className="text-xs text-primary hover:underline font-medium">
-                  Detaljer →
-                </Link>
-              </td>
-            </tr>
-          ))}
-        </tbody>
-      </table>
+      <ChangeOrdersListClient rows={rows} projects={filterProjects} subs={filterSubs} showEconomy={canSeeEconomy} />
     </div>
   )
 }
