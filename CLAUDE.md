@@ -6,6 +6,40 @@ sørg for at den er konkret nok til å handles på.
 
 ---
 
+## RUNDEPROTOKOLL — gjelder ALLE meldinger, også korte/ustrukturerte
+
+Brukeren skal kunne skrive «fiks X» uten boilerplate. Disse defaultene
+gjelder alltid og kan KUN overstyres av eksplisitte ord i brukerens melding
+(«push», «commit», «kjør migrasjonen», «ok å endre testdata»). Godkjenning
+gjelder per melding — aldri generaliser et «ja» til senere runder.
+
+1. **Aldri push.** Push kun når meldingen sier «push». `git push` = prod-deploy.
+2. **Aldri commit** uten at meldingen ber om det. Foreslå heller
+   commit-oppdeling i sluttrapporten.
+3. **Aldri kjør migrasjoner mot live-DB** uten eksplisitt godkjenning i
+   meldingen. Migrasjons-*filer* kan opprettes fritt.
+4. **Aldri slett/endre produksjonsdata.** Testbrukere/testdata kun med
+   eksplisitt godkjenning, og rydd opp etterpå (eller dokumenter hva som
+   ligger igjen).
+5. **Scope:** gjør det meldingen ber om. Små, åpenbart trygge UI-/tekst-
+   fikser underveis er OK hvis de (a) ikke krever DB-endring, (b) ikke
+   rører økonomi-/rolle-/tilgangslogikk, (c) holder diffen oversiktlig.
+   Alt større → forslag i sluttrapporten, ikke kode.
+6. **Stopp umiddelbart og rapporter** ved funn av økonomilekkasje til
+   UE/byggeleder eller andre tilgangsfeil — før videre arbeid.
+7. **Verifisering etter kodeendringer:** `npx tsc --noEmit` + `npx next lint`
+   + `npx next build`, og visuell sjekk i nettleser når endringen er synlig.
+8. **Git-hygiene:** start runden med `git status --short` + `git status -sb`;
+   verifiser remote-påstander med `git ls-remote origin master`. Stage kun
+   filer som hører til runden.
+9. **Avslutt med kort sluttrapport:** hva er gjort, filer endret,
+   verifisering, git-status, anbefalt neste steg. **Ikke gjør noe etter
+   rapporten.**
+10. **Uklar melding:** velg minste fornuftige tolkning og noter antakelsene
+    i rapporten — ikke spør om alt, men spør før irreversible valg.
+
+---
+
 ## Hva dette er
 
 Norsk entreprenør-portal der hovedentreprenør (admin/PM) styrer prosjekter
@@ -13,8 +47,11 @@ og underentreprenører (UE) sender ukerapporter, endringsmeldinger (EM) og
 fakturagrunnlag. Deployes som `minue.app` på Vercel.
 
 Brukerroller:
-- `main` / `company` / `company-admin` — internt hos hovedentreprenør (admin-tier)
+- `main` / `company` — internt hos hovedentreprenør (admin-tier, full økonomi)
 - `project_manager` (PM) — admin-tier, men scope-begrenset til tildelte prosjekter
+- `byggeleder` — operativ rolle, prosjekt-scoped via `project_site_managers`.
+  Ser UE-kost, men ALDRI kundepris/fortjeneste/margin
+  (`canSeeCustomerEconomics()` i `lib/api-guard.ts`). Ingen tildeling = ser ingenting.
 - `sub` (UE) — underentreprenør, ser KUN egen virksomhet
 - Super-admin = hardkodet e-post `mhelsing94@gmail.com` (se `lib/view-as.ts`)
 
@@ -24,8 +61,10 @@ Brukerroller:
 
 - **Next.js 14** App Router. RSC for tunge admin-sider, client-islands
   markert `'use client'`. Ingen Pages-router.
-- **Supabase Postgres** med service_role-nøkkel fra server. **Ingen RLS** —
-  all autorisasjon skjer i API-rutene via `lib/api-guard.ts`.
+- **Supabase Postgres** med service_role-nøkkel fra server. **RLS er PÅ med
+  null policies** (default-deny-backstopp; service_role går utenom) — all
+  autorisasjon skjer i API-rutene via `lib/api-guard.ts`. INVARIANT: nye
+  tabeller skal ha `ENABLE ROW LEVEL SECURITY` i migrasjonen.
 - **Custom auth** med bcrypt (cost 12) + httpOnly session cookie. Sessions-
   tabellen lagrer SHA-256-hash av token, ikke selve cookien. Ingen
   Supabase Auth.
