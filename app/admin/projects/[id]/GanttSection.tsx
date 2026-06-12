@@ -232,7 +232,9 @@ export default function GanttSection({ projectId, projectStart, projectEnd, mile
 
       {/* Header */}
       <div className="flex items-center justify-between mb-3">
-        <h2 className="text-lg font-semibold text-gray-900">Fremdriftsplan</h2>
+        {/* «Milepæler», ikke «Fremdriftsplan» — den samlede planen (faser +
+            milepæler) rendres øverst på fanen; dette er milepæl-editoren. */}
+        <h2 className="text-lg font-semibold text-gray-900">Milepæler</h2>
         <div className="flex items-center gap-2">
           {isEditMode ? (
             <>

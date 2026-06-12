@@ -1,17 +1,17 @@
 'use client'
 
-import GanttSection from './GanttSection'
-import PhasesSection from './PhasesSection'
-import type { GanttMilestone, Subcontractor, ProjectMonthPlan } from '@/types'
+import { FileDown } from 'lucide-react'
+import PhasesMiniStrip from './PhasesMiniStrip'
+import type { GanttMilestone, ProjectMonthPlan } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
+import { printArea } from '@/lib/utils/print'
 
 interface Props {
   projectId: string
+  projectName: string
   projectStart: string
   projectEnd: string
   milestones: GanttMilestone[]
-  allSubs: Subcontractor[]
-  projectSubIds: string[]
   monthPlans: ProjectMonthPlan[]
   onRefresh: () => Promise<void> | void
 }
@@ -22,7 +22,7 @@ interface Props {
  * a single source of truth and can be re-mounted on Oversikt as well.
  */
 export default function FremdriftsplanSection({
-  projectId, projectStart, projectEnd, milestones, allSubs, projectSubIds,
+  projectId, projectName, projectStart, projectEnd, milestones,
   monthPlans, onRefresh,
 }: Props) {
   const totalPlannedRevenue = monthPlans.reduce((s, m) => s + (m.expected_revenue ?? 0), 0)
@@ -31,18 +31,38 @@ export default function FremdriftsplanSection({
     0,
   )
 
-  return (
-    <div className="space-y-8">
-      <PhasesSection projectId={projectId} />
 
-      <GanttSection
+  return (
+    <div className="space-y-8 print-area">
+      {/* PDF-eksport av hele fanen (faser + tidslinje + månedsplan).
+          Redigeringskontrollene skjules automatisk i utskriften. */}
+      <div className="flex items-center justify-end -mb-4 print:hidden">
+        <button
+          type="button"
+          onClick={printArea}
+          className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-[var(--color-text-secondary)] hover:bg-muted"
+        >
+          <FileDown size={13} /> Eksporter PDF
+        </button>
+      </div>
+
+      {/* Header kun i PDF-en */}
+      <div className="hidden print:block">
+        <h1 className="text-lg font-bold text-black">Fremdriftsplan — {projectName}</h1>
+        <p className="text-xs text-gray-600">Skrevet ut {new Date().toLocaleDateString('nb-NO')}</p>
+      </div>
+
+      {/* ÉN fremdriftsplan: tidslinjen ER editoren (faser + milepæler) —
+          dra i endene, blyant for detaljer, legg til/slett i headeren.
+          Den gamle Arbeidsfaser-tabellen og Gantt-editoren er slått sammen
+          inn hit. */}
+      <PhasesMiniStrip
         projectId={projectId}
         projectStart={projectStart}
         projectEnd={projectEnd}
         milestones={milestones}
-        allSubs={allSubs}
-        projectSubs={projectSubIds}
-        onRefresh={onRefresh}
+        onMilestonesChanged={onRefresh}
+        manage
       />
 
       {monthPlans.length > 0 && (

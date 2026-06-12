@@ -7,6 +7,7 @@ import type { Project } from '@/types'
 import FremdriftsplanClient, {
   type PhaseType,
   type ProjectPhase,
+  type TimelineMilestone,
   type TimelineProject,
 } from '@/components/admin/FremdriftsplanClient'
 
@@ -66,6 +67,18 @@ export default async function FremdriftsplanPage() {
     }
   }
 
+  // Gantt-milepæler (`milestones`-tabellen — samme kilde som /api/milestones
+  // og prosjektets Fremdriftsplan-fane) — alle fremdriftsvisninger skal vise
+  // samme innhold, uavhengig av hvilken av de to modellene dataene ligger i.
+  let milestones: TimelineMilestone[] = []
+  if (projects.length > 0) {
+    const { data: msData } = await sb
+      .from('milestones')
+      .select('id, project_id, title, start_date, end_date, color')
+      .in('project_id', projects.map((p) => p.id))
+    milestones = (msData ?? []) as TimelineMilestone[]
+  }
+
   const timelineProjects: TimelineProject[] = projects.map((p) => ({
     id: p.id,
     name: p.name,
@@ -81,6 +94,7 @@ export default async function FremdriftsplanPage() {
       projects={timelineProjects}
       phases={phases}
       phaseTypes={phaseTypes}
+      milestones={milestones}
       phasesAvailable={phasesAvailable}
     />
   )

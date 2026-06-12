@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, AlertCircle, CheckCircle2, Mail } from 'lucide-react'
-import type { Project, ProjectBudgetLine, ChangeOrder } from '@/types'
+import type { Project, ProjectBudgetLine, ChangeOrder, ProjectInternalCostEntry } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
 import type { WRWithLines, ProjectManagerRow } from './useProjectData'
 
@@ -28,6 +28,7 @@ interface Props {
   budgetLines: ProjectBudgetLine[]
   weeklyReportsWL: WRWithLines[]
   changeOrders: ChangeOrder[]
+  internalCosts: ProjectInternalCostEntry[]
   projectManagers: ProjectManagerRow[]
   onGoToTab: (tab: 'endringsmeldinger' | 'rapporteringer') => void
 }
@@ -61,6 +62,7 @@ export default function ProjectStatusHero({
   budgetLines,
   weeklyReportsWL,
   changeOrders,
+  internalCosts,
   projectManagers,
   onGoToTab,
 }: Props) {
@@ -103,6 +105,29 @@ export default function ProjectStatusHero({
     // a number a human can scan, not "47 lines waiting".
     const pendingReports = weeklyReportsWL.filter((r) => r.status === 'submitted').length
 
+    // UE-kost + forventet fortjeneste — samme formler som Kostnadsflyt brukte
+    // (kortene bodde der før; nå er ALL prosjektøkonomi samlet i heroen).
+    const ueLines = budgetLines.filter(
+      (bl) => bl.assigned_subcontractor_id && bl.assigned_subcontractor_id !== '__intern__',
+    )
+    const ueBudgetCost = ueLines.reduce(
+      (s, bl) => s + (bl.budget_quantity ?? 0) * (bl.subcontractor_cost_price_snapshot ?? 0),
+      0,
+    )
+    const ueLineIds = new Set(ueLines.map((bl) => bl.id))
+    const blCostMap = new Map(budgetLines.map((bl) => [bl.id, bl.subcontractor_cost_price_snapshot ?? 0]))
+    let ueReportedCost = 0
+    for (const report of weeklyReportsWL) {
+      if (report.status !== 'approved' && report.status !== 'partially_approved') continue
+      for (const line of report.lines) {
+        if (line.status === 'approved' && ueLineIds.has(line.project_budget_line_id)) {
+          ueReportedCost += line.reported_quantity * (blCostMap.get(line.project_budget_line_id) ?? 0)
+        }
+      }
+    }
+    const internCost = internalCosts.reduce((s, c) => s + c.amount, 0)
+    const expectedProfit = totalContract - ueBudgetCost - internCost
+
     // Bar segments (clamped to a sane stacking)
     const delivered = Math.min(deliveredValue, totalContract)
     const pendingDelivery = Math.min(pendingDeliveryValue, Math.max(0, totalContract - delivered))
@@ -124,8 +149,12 @@ export default function ProjectStatusHero({
       progressPct,
       overBudget,
       pendingReports,
+      ueBudgetCost,
+      ueReportedCost,
+      internCost,
+      expectedProfit,
     }
-  }, [budgetLines, changeOrders, weeklyReportsWL])
+  }, [budgetLines, changeOrders, weeklyReportsWL, internalCosts])
 
   // Bar widths as % of totalContract (or zeroed if no contract yet)
   const total = summary.totalContract
@@ -175,34 +204,24 @@ export default function ProjectStatusHero({
             {summary.overBudget && <span className="ml-2 text-red-600 text-xs">(overskredet)</span>}
           </p>
         </div>
+        {/* Tallene bor i KPI-kortene under — baren trenger ingen egen legend.
+            Segment-tooltips beholder detaljene ved hover (inkl. «til
+            godkjenning», som ikke har eget kort). */}
         <div className="flex w-full h-3 rounded-full overflow-hidden bg-muted">
           {wDelivered > 0 && <div className="h-full bg-green-500" style={{ width: `${wDelivered}%` }} title={`Levert: ${fmt(summary.delivered)}`} />}
           {wPending > 0 && <div className="h-full bg-amber-400" style={{ width: `${wPending}%` }} title={`Til godkjenning: ${fmt(summary.pendingDelivery)}`} />}
           {wRemaining > 0 && <div className="h-full bg-gray-200" style={{ width: `${wRemaining}%` }} title={`Gjenstår: ${fmt(summary.remaining)}`} />}
         </div>
-        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 mt-2 text-xs text-[var(--color-text-muted)]">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-sm bg-green-500" /> Levert {fmt(summary.delivered)}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-sm bg-amber-400" /> Til godkjenning {fmt(summary.pendingDelivery)}
-          </span>
-          <span className="inline-flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-sm bg-gray-300" /> Gjenstår {fmt(summary.remaining)}
-          </span>
-        </div>
       </div>
 
-      {/* KPI tiles */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 divide-x divide-y lg:divide-y-0 divide-border border-t border-border mt-5">
+      {/* KPI tiles — ALL prosjektøkonomi samlet her (UE-kost + fortjeneste
+          bodde tidligere i en egen Kostnadsflyt-rad som dupliserte totalen). */}
+      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 divide-x divide-y xl:divide-y-0 divide-border border-t border-border mt-5">
+        {/* EM-bidraget vises i EM netto-kortet — ingen duplisert undertekst her. */}
         <KpiTile
           label="Total ordreverdi"
           value={fmt(summary.totalContract)}
-          context={
-            summary.approvedEMValue > 0
-              ? `↗ +${fmt(summary.approvedEMValue)} fra ${summary.approvedEMCount} EM${summary.approvedEMCount === 1 ? '' : 'er'}`
-              : 'Original ordre, ingen godkjente EMer'
-          }
+          context="inkl. godkjente EM"
         />
         <KpiTile
           label="Levert til nå"
@@ -225,6 +244,17 @@ export default function ProjectStatusHero({
               : `${summary.approvedEMCount} godkjent`
           }
           tone={summary.approvedEMValue > 0 ? 'green' : 'default'}
+        />
+        <KpiTile
+          label="UE-kostnad"
+          value={fmt(summary.ueBudgetCost)}
+          context={`Rapportert ${fmt(summary.ueReportedCost)}`}
+        />
+        <KpiTile
+          label="Forventet fortjeneste"
+          value={fmt(summary.expectedProfit)}
+          context="ordre − UE − intern"
+          tone={summary.expectedProfit >= 0 ? 'green' : 'red'}
         />
       </div>
 

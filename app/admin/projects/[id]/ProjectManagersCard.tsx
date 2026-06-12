@@ -80,11 +80,13 @@ export default function ProjectManagersCard({ projectId }: { projectId: string }
   const availableUsers = eligibleUsers.filter((u) => !assignedIds.has(u.id))
 
   return (
-    <Card className="p-5 space-y-3">
-      <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Prosjektledere</h3>
-      <p className="text-xs text-[var(--color-text-muted)]">
-        PMs som ser dette prosjektet. main/company ser alle uansett.
-      </p>
+    <Card className="p-4 space-y-2">
+      <h3
+        className="text-sm font-semibold text-[var(--color-text-primary)]"
+        title="PL-er som ser dette prosjektet. main/company ser alle uansett."
+      >
+        Prosjektledere
+      </h3>
 
       {loading ? (
         <p className="text-sm text-[var(--color-text-muted)]">Laster...</p>

@@ -376,6 +376,7 @@ export default function ProjectDetailPage() {
           budgetLines={budgetLines}
           weeklyReportsWL={weeklyReportsWL}
           changeOrders={changeOrders}
+          internalCosts={internalCosts}
           projectManagers={projectManagers}
           onGoToTab={(tab) => setActiveTab(tab)}
         />
@@ -404,16 +405,16 @@ export default function ProjectDetailPage() {
       {activeTab === 'oversikt' && (
         <OverviewSection
           projectId={id}
-          project={project}
-          budgetLines={budgetLines}
-          changeOrders={changeOrders}
-          internalCosts={internalCosts}
+          projectStart={project.start_date}
+          projectEnd={project.end_date}
+          onOpenFremdriftsplan={() => setActiveTab('fremdriftsplan')}
           milestones={milestones}
+          budgetLines={budgetLines}
+          internalCosts={internalCosts}
           allProducts={allProducts}
           allSubs={allSubs}
           projectSubs={projectSubs}
           weeklyReportsWL={weeklyReportsWL}
-          fetchAll={fetchAll}
           addSubId={addSubId}
           setAddSubId={setAddSubId}
           onAddSub={addSubToProject}
@@ -471,11 +472,10 @@ export default function ProjectDetailPage() {
       {activeTab === 'fremdriftsplan' && project.start_date && project.end_date && (
         <FremdriftsplanSection
           projectId={id}
+          projectName={project.name}
           projectStart={project.start_date}
           projectEnd={project.end_date}
           milestones={milestones}
-          allSubs={allSubs}
-          projectSubIds={projectSubs.map((ps) => ps.subcontractor_id)}
           monthPlans={monthPlans}
           onRefresh={fetchAll}
         />

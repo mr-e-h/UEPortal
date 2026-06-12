@@ -2,15 +2,13 @@
 
 import { useMemo, useState } from 'react'
 import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
-import GanttSection from './GanttSection'
 import ProjectManagersCard from './ProjectManagersCard'
 import SiteManagersCard from './SiteManagersCard'
+import PhasesMiniStrip from './PhasesMiniStrip'
 import type {
-  Project,
   ProjectBudgetLine,
   ProjectSubcontractor,
   Subcontractor,
-  ChangeOrder,
   ProjectInternalCostEntry,
   GanttMilestone,
   Product,
@@ -22,16 +20,17 @@ type WRWithLines = WeeklyReport & { lines: WeeklyReportLine[] }
 
 interface Props {
   projectId: string
-  project: Project
-  budgetLines: ProjectBudgetLine[]
-  changeOrders: ChangeOrder[]
-  internalCosts: ProjectInternalCostEntry[]
+  projectStart: string | null
+  projectEnd: string | null
+  onOpenFremdriftsplan: () => void
+  /** Fra useProjectData — samme objekt Gantt-en på Fremdriftsplan-fanen får. */
   milestones: GanttMilestone[]
+  budgetLines: ProjectBudgetLine[]
+  internalCosts: ProjectInternalCostEntry[]
   allProducts: Product[]
   allSubs: Subcontractor[]
   projectSubs: ProjectSubcontractor[]
   weeklyReportsWL: WRWithLines[]
-  fetchAll: () => Promise<void> | void
   // Add-UE row state lives in the parent because the form spans tab boundaries
   // visually (it's a section, not the whole tab).
   addSubId: string
@@ -52,16 +51,16 @@ interface Props {
  */
 export default function OverviewSection({
   projectId,
-  project,
-  budgetLines,
-  changeOrders,
-  internalCosts,
+  projectStart,
+  projectEnd,
+  onOpenFremdriftsplan,
   milestones,
+  budgetLines,
+  internalCosts,
   allProducts,
   allSubs,
   projectSubs,
   weeklyReportsWL,
-  fetchAll,
   addSubId,
   setAddSubId,
   onAddSub,
@@ -72,28 +71,15 @@ export default function OverviewSection({
 
   // ── Derived totals ────────────────────────────────────────────────
   const {
-    totalSales,
     totalInternalCost,
-    totalUEBudgetCost,
-    totalUEReportedCost,
     subFlowData,
     internLines,
     internBudgetSales,
     internPct,
-    projectSubDetails,
     availableSubs,
   } = useMemo(() => {
-    const manualLines = budgetLines.filter((bl) => !bl.source || bl.source === 'manual')
-
-    const originalSales = manualLines.reduce(
-      (s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot,
-      0,
-    )
-
-    const approvedCOs = changeOrders.filter((co) => co.status === 'approved')
-    const coSales = approvedCOs.reduce((s, co) => s + co.total_customer_value, 0)
-
-    const totalSales = originalSales + coSales
+    // Summene (salgsverdi/UE-kost/fortjeneste) regnes i ProjectStatusHero —
+    // her trengs kun internkost (intern-kortet) + per-UE-flyt.
     const totalInternalCost = internalCosts.reduce((s, c) => s + c.amount, 0)
 
     const assignedSubIds = new Set(projectSubs.map((ps) => ps.subcontractor_id))
@@ -138,6 +124,8 @@ export default function OverviewSection({
       return {
         id: sub.id,
         name: sub.company_name,
+        contact: sub.contact_person,
+        linkId: projectSubs.find((ps) => ps.subcontractor_id === sub.id)?.id ?? null,
         budgetCost,
         reportedCost,
         remaining: Math.max(0, budgetCost - reportedCost),
@@ -145,9 +133,6 @@ export default function OverviewSection({
         products,
       }
     })
-
-    const totalUEBudgetCost = subFlowData.reduce((s, sf) => s + sf.budgetCost, 0)
-    const totalUEReportedCost = subFlowData.reduce((s, sf) => s + sf.reportedCost, 0)
 
     const internLines = budgetLines.filter((bl) => bl.assigned_subcontractor_id === '__intern__')
     const internBudgetSales = internLines.reduce(
@@ -159,54 +144,51 @@ export default function OverviewSection({
       : 0
 
     return {
-      totalSales, totalInternalCost,
-      totalUEBudgetCost, totalUEReportedCost,
+      totalInternalCost,
       subFlowData, internLines, internBudgetSales, internPct,
-      projectSubDetails, availableSubs,
+      availableSubs,
     }
-  }, [budgetLines, changeOrders, internalCosts, projectSubs, allSubs, weeklyReportsWL, allProducts])
+  }, [budgetLines, internalCosts, projectSubs, allSubs, weeklyReportsWL, allProducts])
 
   return (
     <div className="space-y-8">
-      {/* Prosjektstatistikk → moved to Kost-tab.
-          Budsjettversjonhistorikk + Excel-import → moved to Budsjett-tab.
-          Oversikt now leads with contacts + flow + Gantt only. */}
+      {/* Prosjektstatistikk → Kost-fanen. Budsjettversjonhistorikk +
+          Excel-import → Budsjett-fanen. Redigerbar plan → Fremdriftsplan-
+          fanen. Oversikt = hero (all økonomi) + røff fase-stripe + UE + team. */}
 
-      {/* Gantt */}
-      {project.start_date && project.end_date && (
-        <GanttSection
-          projectId={projectId}
-          projectStart={project.start_date}
-          projectEnd={project.end_date}
-          milestones={milestones}
-          allSubs={allSubs}
-          projectSubs={projectSubs.map((ps) => ps.subcontractor_id)}
-          onRefresh={fetchAll}
-        />
-      )}
+      <PhasesMiniStrip
+        projectId={projectId}
+        projectStart={projectStart}
+        projectEnd={projectEnd}
+        milestones={milestones}
+        onOpenFremdriftsplan={onOpenFremdriftsplan}
+      />
 
-      {/* Kostnadsflyt */}
-      {(subFlowData.length > 0 || internLines.length > 0) && (
-        <section>
-          <h2 className="text-lg font-semibold text-gray-900 mb-4">Kostnadsflyt</h2>
-          <div className="grid grid-cols-3 gap-4 mb-6">
-            <div className="bg-blue-50 border border-blue-200 rounded-xl p-4">
-              <p className="text-xs text-blue-700 font-semibold uppercase tracking-wide mb-1">Salgsverdi</p>
-              <p className="text-xl font-bold text-blue-900">{fmt(totalSales)}</p>
-              <p className="text-xs text-blue-500 mt-0.5">inkl. godkjente EM</p>
-            </div>
-            <div className="bg-gray-50 border border-gray-200 rounded-xl p-4">
-              <p className="text-xs text-gray-600 font-semibold uppercase tracking-wide mb-1">UE-kostnad</p>
-              <p className="text-xl font-bold text-gray-900">{fmt(totalUEBudgetCost)}</p>
-              <p className="text-xs text-gray-500 mt-0.5">Rapportert: {fmt(totalUEReportedCost)}</p>
-            </div>
-            <div className={`border rounded-xl p-4 ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-              <p className={`text-xs font-semibold uppercase tracking-wide mb-1 ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'text-green-700' : 'text-red-700'}`}>Forventet fortjeneste</p>
-              <p className={`text-xl font-bold ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'text-green-900' : 'text-red-900'}`}>{fmt(totalSales - totalUEBudgetCost - totalInternalCost)}</p>
-              <p className={`text-xs mt-0.5 ${(totalSales - totalUEBudgetCost - totalInternalCost) >= 0 ? 'text-green-500' : 'text-red-500'}`}>salg − UE − intern</p>
+      {/* UE-seksjonen: per-UE-kortene bærer både fremdrift (rapportert/
+          budsjett/gjenstår + produktdrilldown) og administrasjon (kontakt +
+          fjern); legg-til bor i seksjonsheaderen. Summene (salgsverdi/UE-kost/
+          fortjeneste) bor i status-heroen — IKKE dupliser dem her. */}
+      <section>
+          <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
+            <h2 className="text-lg font-semibold text-gray-900">Underentreprenører</h2>
+            <div className="flex gap-2 items-center">
+              <select
+                value={addSubId}
+                onChange={(e) => setAddSubId(e.target.value)}
+                className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-blue-500"
+              >
+                <option value="">+ Legg til UE</option>
+                {availableSubs.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
+              </select>
+              <button
+                onClick={() => onAddSub()}
+                disabled={!addSubId}
+                className="px-2.5 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-40"
+              >
+                Legg til
+              </button>
             </div>
           </div>
-
           <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
             {internLines.length > 0 && (
               <div className="bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
@@ -254,6 +236,19 @@ export default function OverviewSection({
                     <span className="text-gray-500">Budsjett: <span className="font-medium text-gray-900">{fmt(sf.budgetCost)}</span></span>
                   </div>
                 </button>
+                {/* Kontakt + fjern utenfor expand-knappen (gyldig HTML, og
+                    ingen utilsiktede klikk på destruktiv handling). */}
+                <div className="border-t border-gray-100 px-4 py-2 flex items-center justify-between gap-2">
+                  <span className="text-xs text-gray-500 truncate">{sf.contact || ''}</span>
+                  {sf.linkId && (
+                    <button
+                      onClick={() => onRequestRemoveSub(sf.linkId!)}
+                      className="text-xs text-red-500 hover:text-red-700 flex-none"
+                    >
+                      Fjern
+                    </button>
+                  )}
+                </div>
                 {expandedSub === sf.id && (
                   <div className="border-t border-gray-100 overflow-x-auto">
                     <table className="w-full text-xs">
@@ -287,69 +282,17 @@ export default function OverviewSection({
               </div>
             ))}
           </div>
+          {subFlowData.length === 0 && internLines.length === 0 && (
+            <p className="text-sm text-gray-400">Ingen UE-er tildelt ennå — bruk «Legg til UE» over.</p>
+          )}
         </section>
-      )}
 
-      {/* PM + UE side by side — they were each taking a full row's worth
-          of vertical space, but they're both compact "who's on this
-          project" lists and read better next to each other. */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="space-y-4">
-          <div>
-            <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Prosjektledere</h3>
-            <ProjectManagersCard projectId={projectId} />
-          </div>
-          <div>
-            <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Byggeledere</h3>
-            <SiteManagersCard projectId={projectId} />
-          </div>
-        </div>
-
-        <div>
-          <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Underentreprenører</h3>
-          <div className="bg-white rounded-lg shadow p-3 space-y-2">
-            <div className="flex gap-2 items-center">
-              <select
-                value={addSubId}
-                onChange={(e) => setAddSubId(e.target.value)}
-                className="flex-1 text-sm text-gray-900 border border-gray-300 rounded px-2 py-1 focus:outline-none focus:ring-blue-500"
-              >
-                <option value="">+ Legg til UE</option>
-                {availableSubs.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
-              </select>
-              <button
-                onClick={() => onAddSub()}
-                disabled={!addSubId}
-                className="px-2.5 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-40"
-              >
-                Legg til
-              </button>
-            </div>
-            {projectSubDetails.length > 0 ? (
-              <ul className="divide-y divide-gray-100">
-                {projectSubDetails.map((s) => {
-                  const link = projectSubs.find((ps) => ps.subcontractor_id === s.id)!
-                  return (
-                    <li key={s.id} className="flex justify-between items-center py-1.5">
-                      <div className="min-w-0 flex-1">
-                        <span className="text-sm font-medium text-gray-900 truncate">{s.company_name}</span>
-                        <span className="text-xs text-gray-500 ml-2 truncate">{s.contact_person}</span>
-                      </div>
-                      <button
-                        onClick={() => onRequestRemoveSub(link.id)}
-                        className="ml-2 text-xs text-red-500 hover:text-red-700 flex-none"
-                      >
-                        Fjern
-                      </button>
-                    </li>
-                  )
-                })}
-              </ul>
-            ) : (
-              <p className="text-xs text-gray-400 py-2">Ingen UE-er tildelt ennå</p>
-            )}
-          </div>
-        </div>
+      {/* Team: PL + byggeledere side ved side. Kortene har egne titler —
+          ingen ekstra caps-etiketter over. UE-administrasjonen bor i
+          Kostnadsflyt-seksjonen (ett sted per aktør, ikke to). */}
+      <section className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
+        <ProjectManagersCard projectId={projectId} />
+        <SiteManagersCard projectId={projectId} />
       </section>
     </div>
   )

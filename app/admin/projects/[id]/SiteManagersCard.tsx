@@ -83,12 +83,13 @@ export default function SiteManagersCard({ projectId }: { projectId: string }) {
   const availableUsers = eligibleUsers.filter((u) => !assignedIds.has(u.id))
 
   return (
-    <Card className="p-5 space-y-3">
-      <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Byggeledere</h3>
-      <p className="text-xs text-[var(--color-text-muted)]">
-        Byggeledere som følger opp dette prosjektet. De ser kun tildelte
-        prosjekter, uten kundepris/økonomi.
-      </p>
+    <Card className="p-4 space-y-2">
+      <h3
+        className="text-sm font-semibold text-[var(--color-text-primary)]"
+        title="Byggeledere som følger opp prosjektet. De ser kun tildelte prosjekter, uten kundepris/økonomi."
+      >
+        Byggeledere
+      </h3>
 
       {loading ? (
         <p className="text-sm text-[var(--color-text-muted)]">Laster...</p>

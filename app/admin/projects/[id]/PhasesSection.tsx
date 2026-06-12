@@ -5,6 +5,7 @@ import { Plus, Trash2, Pencil, Check, X } from 'lucide-react'
 import { useMe } from '@/lib/useMe'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import type { PhaseType, ProjectPhase } from '@/components/admin/FremdriftsplanClient'
+import type { GanttMilestone } from '@/types'
 
 const STATUS_LABEL: Record<ProjectPhase['status'], string> = {
   planned: 'Planlagt',
@@ -36,7 +37,24 @@ const emptyDraft = (typeId = ''): Draft => ({
  * endre status/fremdrift (API-et håndhever det; UI-et speiler det).
  * Tåler at 0002 ikke er kjørt: fasetyper = [] → viser aktiveringshint.
  */
-export default function PhasesSection({ projectId }: { projectId: string }) {
+function fmtDate(iso: string): string {
+  const [y, m, d] = iso.split('-')
+  return `${d}.${m}.${y.slice(2)}`
+}
+
+export default function PhasesSection({
+  projectId,
+  onChanged,
+  milestones = [],
+  onMilestonesChanged,
+}: {
+  projectId: string
+  onChanged?: () => void
+  /** Legacy-milepæler — vises og redigeres i SAMME tabell som fasene
+      (én fremdriftsplan, ikke to). Nye elementer opprettes som faser. */
+  milestones?: GanttMilestone[]
+  onMilestonesChanged?: () => Promise<void> | void
+}) {
   const { me } = useMe()
   const canManage = !!me && ['main', 'company', 'project_manager'].includes(me.role)
   const canTouchStatus = canManage || me?.role === 'byggeleder'
@@ -53,6 +71,41 @@ export default function PhasesSection({ projectId }: { projectId: string }) {
   const [saving, setSaving] = useState(false)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
 
+  // Milepæl-rader (legacy-modellen) i samme tabell: egen redigeringstilstand
+  // siden feltene er færre (navn + datoer) og API-et er et annet.
+  const [msEditingId, setMsEditingId] = useState<string | null>(null)
+  const [msDraft, setMsDraft] = useState({ title: '', start_date: '', end_date: '' })
+  const [msConfirmDeleteId, setMsConfirmDeleteId] = useState<string | null>(null)
+
+  async function submitMsEdit(id: string) {
+    setSaving(true); setError('')
+    const res = await fetch('/api/milestones', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id, title: msDraft.title, start_date: msDraft.start_date, end_date: msDraft.end_date || msDraft.start_date }),
+    })
+    setSaving(false)
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      setError((d as { error?: string }).error ?? 'Lagring feilet')
+      return
+    }
+    setMsEditingId(null)
+    await onMilestonesChanged?.()
+    onChanged?.()
+  }
+
+  async function doMsDelete(id: string) {
+    setMsConfirmDeleteId(null)
+    const res = await fetch(`/api/milestones?id=${id}`, { method: 'DELETE' })
+    if (!res.ok) {
+      setError('Sletting feilet')
+      return
+    }
+    await onMilestonesChanged?.()
+    onChanged?.()
+  }
+
   const refresh = useCallback(async () => {
     const [t, p] = await Promise.all([
       fetch('/api/phase-types').then((r) => (r.ok ? r.json() : [])),
@@ -61,11 +114,31 @@ export default function PhasesSection({ projectId }: { projectId: string }) {
     setTypes(Array.isArray(t) ? t : [])
     setPhases(Array.isArray(p) ? p : [])
     setLoaded(true)
-  }, [projectId])
+    // Varsle forelderen (samlet tidslinje på fanen leser samme data).
+    onChanged?.()
+  }, [projectId, onChanged])
 
   useEffect(() => { refresh() }, [refresh])
 
   const typeById = new Map(types.map((t) => [t.id, t]))
+
+  // Oppretter standardfasene (prosjekttypens mal, ellers alle aktive
+  // fasetyper). Additiv — typer som allerede har fase hoppes over server-side.
+  async function applyStandard() {
+    setSaving(true); setError('')
+    const res = await fetch('/api/project-phases/apply-standard', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: projectId }),
+    })
+    setSaving(false)
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}))
+      setError((d as { error?: string }).error ?? 'Kunne ikke legge til standardfaser')
+      return
+    }
+    refresh()
+  }
 
   async function submitAdd(e: React.FormEvent) {
     e.preventDefault()
@@ -147,13 +220,24 @@ export default function PhasesSection({ projectId }: { projectId: string }) {
       <div className="flex items-center justify-between mb-3">
         <h2 className="text-lg font-semibold text-gray-900">Arbeidsfaser</h2>
         {canManage && types.length > 0 && (
-          <button
-            type="button"
-            onClick={() => { setDraft(emptyDraft(types[0]?.id)); setShowAdd((v) => !v) }}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-[var(--color-text-secondary)] hover:bg-muted"
-          >
-            {showAdd ? <X size={13} /> : <Plus size={13} />} {showAdd ? 'Avbryt' : 'Legg til fase'}
-          </button>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={applyStandard}
+              disabled={saving}
+              title="Oppretter standardfasene for prosjekttypen (eller alle fasetyper). Typer som allerede har fase hoppes over."
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-[var(--color-text-secondary)] hover:bg-muted disabled:opacity-50"
+            >
+              Legg til standardfaser
+            </button>
+            <button
+              type="button"
+              onClick={() => { setDraft(emptyDraft(types[0]?.id)); setShowAdd((v) => !v) }}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-[var(--color-text-secondary)] hover:bg-muted"
+            >
+              {showAdd ? <X size={13} /> : <Plus size={13} />} {showAdd ? 'Avbryt' : 'Legg til fase'}
+            </button>
+          </div>
         )}
       </div>
 
@@ -193,7 +277,7 @@ export default function PhasesSection({ projectId }: { projectId: string }) {
             </form>
           )}
 
-          {phases.length === 0 ? (
+          {phases.length === 0 && milestones.length === 0 ? (
             <p className="text-sm text-[var(--color-text-muted)] py-2">
               Ingen arbeidsfaser registrert{canManage ? ' — legg til den første.' : '.'}
             </p>
@@ -210,6 +294,62 @@ export default function PhasesSection({ projectId }: { projectId: string }) {
                   </tr>
                 </thead>
                 <tbody>
+                  {/* Milepæler (legacy) i samme tabell — én plan, ikke to. */}
+                  {[...milestones].sort((a, b) => a.start_date.localeCompare(b.start_date)).map((m) => {
+                    const isMsEditing = msEditingId === m.id
+                    return (
+                      <tr key={`ms-${m.id}`} className="border-b border-gray-100 last:border-0">
+                        <td className="px-4 py-2.5">
+                          {isMsEditing && canManage ? (
+                            <input
+                              type="text"
+                              value={msDraft.title}
+                              onChange={(e) => setMsDraft((d) => ({ ...d, title: e.target.value }))}
+                              className="px-2 py-1 text-sm border border-primary rounded w-44"
+                            />
+                          ) : (
+                            <span className="inline-flex items-center gap-2 font-medium text-gray-900">
+                              <span className="w-2.5 h-2.5 rounded-full flex-none" style={{ backgroundColor: m.color || '#94A3B8' }} />
+                              {m.title}
+                            </span>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5 text-[var(--color-text-secondary)] whitespace-nowrap">
+                          {isMsEditing && canManage ? (
+                            <span className="inline-flex gap-1">
+                              <input type="date" value={msDraft.start_date} onChange={(e) => setMsDraft((d) => ({ ...d, start_date: e.target.value }))} className="px-1.5 py-1 text-xs border border-primary rounded" />
+                              <input type="date" value={msDraft.end_date} onChange={(e) => setMsDraft((d) => ({ ...d, end_date: e.target.value }))} className="px-1.5 py-1 text-xs border border-primary rounded" />
+                            </span>
+                          ) : (
+                            <>{fmtDate(m.start_date)} – {fmtDate(m.end_date)}</>
+                          )}
+                        </td>
+                        <td className="px-4 py-2.5">
+                          <span className="inline-flex px-2 py-0.5 rounded-full text-xs font-medium bg-muted text-[var(--color-text-muted)]">Milepæl</span>
+                        </td>
+                        <td className="px-4 py-2.5 text-right text-[var(--color-text-secondary)]">–</td>
+                        <td className="px-4 py-2.5">
+                          <div className="flex items-center justify-end gap-1.5">
+                            {isMsEditing ? (
+                              <>
+                                <button onClick={() => submitMsEdit(m.id)} disabled={saving} title="Lagre" className="p-1 text-success hover:bg-success-soft rounded"><Check size={14} /></button>
+                                <button onClick={() => setMsEditingId(null)} title="Avbryt" className="p-1 text-gray-400 hover:bg-muted rounded"><X size={14} /></button>
+                              </>
+                            ) : canManage ? (
+                              <>
+                                <button
+                                  onClick={() => { setMsEditingId(m.id); setMsDraft({ title: m.title, start_date: m.start_date, end_date: m.end_date }) }}
+                                  title="Rediger"
+                                  className="p-1 text-gray-400 hover:text-primary hover:bg-primary-soft rounded"
+                                ><Pencil size={14} /></button>
+                                <button onClick={() => setMsConfirmDeleteId(m.id)} title="Slett" className="p-1 text-gray-400 hover:text-danger hover:bg-danger-soft rounded"><Trash2 size={14} /></button>
+                              </>
+                            ) : null}
+                          </div>
+                        </td>
+                      </tr>
+                    )
+                  })}
                   {phases.map((p) => {
                     const t = typeById.get(p.phase_type_id)
                     const isEditing = editingId === p.id
@@ -234,7 +374,7 @@ export default function PhasesSection({ projectId }: { projectId: string }) {
                               <input type="date" value={editDraft.end_date} onChange={(e) => setEditDraft((d) => ({ ...d, end_date: e.target.value }))} className="px-1.5 py-1 text-xs border border-primary rounded" />
                             </span>
                           ) : (
-                            <>{p.start_date} – {p.end_date ?? 'pågående'}</>
+                            <>{fmtDate(p.start_date)} – {p.end_date ? fmtDate(p.end_date) : 'pågående'}</>
                           )}
                         </td>
                         <td className="px-4 py-2.5">
@@ -289,6 +429,15 @@ export default function PhasesSection({ projectId }: { projectId: string }) {
           confirmLabel="Slett"
           onConfirm={() => doDelete(confirmDeleteId)}
           onCancel={() => setConfirmDeleteId(null)}
+        />
+      )}
+      {msConfirmDeleteId && (
+        <ConfirmDialog
+          title="Slett milepæl?"
+          message="Milepælen fjernes fra fremdriftsplanen. Dette kan ikke angres."
+          confirmLabel="Slett"
+          onConfirm={() => doMsDelete(msConfirmDeleteId)}
+          onCancel={() => setMsConfirmDeleteId(null)}
         />
       )}
     </section>
