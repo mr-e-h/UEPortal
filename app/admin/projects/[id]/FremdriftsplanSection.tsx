@@ -18,7 +18,7 @@ interface Props {
 
 /**
  * Dedicated Fremdriftsplan tab — Gantt + a compact summary of the monthly
- * spending plan. The Gantt itself still lives in GanttSection so it stays
+ * spending plan. The unified timeline lives in PhasesMiniStrip so it stays
  * a single source of truth and can be re-mounted on Oversikt as well.
  */
 export default function FremdriftsplanSection({

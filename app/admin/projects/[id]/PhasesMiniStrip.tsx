@@ -230,9 +230,11 @@ export default function PhasesMiniStrip({
 
   const changeCount = new Set([...Object.keys(drafts), ...Array.from(deleted)]).size
 
+  // Én dato (tom sluttdato) = punkthendelse, f.eks. leveringsdato — vises
+  // som en smal markør, ikke en 7-dagers strek.
   const pos = (startISO: string, endISO: string | null) => {
     const s = Date.parse(startISO)
-    const e = endISO ? Date.parse(endISO) : s + 7 * DAY
+    const e = endISO ? Date.parse(endISO) : s + DAY
     return {
       left: `${Math.max(0, ((s - min) / span) * 100)}%`,
       width: `${Math.max(1.5, ((Math.max(e, s + DAY) - s) / span) * 100)}%`,
@@ -257,7 +259,7 @@ export default function PhasesMiniStrip({
     const width = track.getBoundingClientRect().width
     if (width <= 0) return
     const origStart = Date.parse(row.start)
-    const origEnd = row.end ? Date.parse(row.end) : origStart + 7 * DAY
+    const origEnd = row.end ? Date.parse(row.end) : origStart + DAY
     dragRef.current = {
       row, edge, startX: e.clientX, msPerPx: span / width,
       origStart, origEnd, curStart: origStart, curEnd: origEnd,

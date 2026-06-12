@@ -380,11 +380,33 @@ export default function FremdriftsplanClient({
     return `${d}.${m}.${y.slice(2)}`
   }
 
-  /** Overlapper valgt år? Åpen slutt = pågår ut året. Hele perioden = alt. */
+  /**
+   * Prosjektets varighet SLIK PLANEN SIER DET: fra første fase-/milepælstart
+   * til siste slutt. Prosjektets egne datoer brukes kun som fallback når
+   * planen er tom.
+   */
+  function planSpan(projectId: string): { start: string; end: string | null } | null {
+    const items = [
+      ...(phasesByProject.get(projectId) ?? []).map((ph) => ({ s: ph.start_date, e: ph.end_date })),
+      ...(milestonesByProject.get(projectId) ?? []).map((ms) => ({ s: ms.start_date, e: ms.end_date as string | null })),
+    ]
+    if (items.length === 0) return null
+    let start = items[0].s
+    let end: string | null = null
+    for (const it of items) {
+      if (it.s < start) start = it.s
+      // Én dato (tom slutt) teller som punkt på startdatoen.
+      const e = it.e ?? it.s
+      if (!end || e > end) end = e
+    }
+    return { start, end }
+  }
+
+  /** Overlapper valgt år? Én dato (tom slutt) = punkthendelse på startdatoen. */
   function inYear(startISO: string, endISO: string | null): boolean {
     if (fullSpan) return true
     const start = Date.parse(startISO)
-    const end = endISO ? Date.parse(endISO) : yearEndMs
+    const end = endISO ? Date.parse(endISO) : start + DAY
     return end >= yearStartMs && start <= yearEndMs
   }
 
@@ -467,9 +489,11 @@ export default function FremdriftsplanClient({
     // Med aktivt fasefilter vises ALLE prosjekter — også de uten matchende
     // fase. Tomme rader er selve poenget: der er hullet hvor neste jobb
     // (f.eks. graving) kan legges inn.
-    return [...list].sort((a, b) => (a.start_date ?? '').localeCompare(b.start_date ?? ''))
+    // Sortering: tidligst PLANLAGT start øverst (planen, ikke prosjektdatoen).
+    return [...list].sort((a, b) =>
+      (planSpan(a.id)?.start ?? a.start_date ?? '').localeCompare(planSpan(b.id)?.start ?? b.start_date ?? ''))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, projectFilter, countyFilter, year, onlyChecked, checked, fullSpan])
+  }, [projects, projectFilter, countyFilter, year, onlyChecked, checked, fullSpan, phases, milestones, addedPhases])
 
   // Tidslinjens spenn + månedskolonner (basisverdier — utkast flytter ikke
   // skalaen under hånden).
@@ -478,12 +502,17 @@ export default function FremdriftsplanClient({
     if (!fullSpan) return { startMs: yearStartMs, endMs: yearEndMs, months: yearMonths }
     let min = Infinity
     let max = -Infinity
+    // KUN de synlige radene styrer spennet (avhukede prosjekter med «Vis kun
+    // valgte» = aksen tilpasser seg deres varighet) — og varigheten er
+    // PLANENS spenn, ikke prosjektets sluttdato.
     for (const p of rows) {
-      min = Math.min(min, Date.parse(p.start_date))
-      max = Math.max(max, p.end_date ? Date.parse(p.end_date) : Date.now())
+      const ps = planSpan(p.id)
+      min = Math.min(min, Date.parse(ps?.start ?? p.start_date))
+      const endIso = ps?.end ?? p.end_date
+      max = Math.max(max, endIso ? Date.parse(endIso) : Date.now())
       for (const it of visibleItems(p.id, false)) {
         min = Math.min(min, Date.parse(it.start))
-        if (it.end) max = Math.max(max, Date.parse(it.end))
+        max = Math.max(max, it.end ? Date.parse(it.end) : Date.parse(it.start) + DAY)
       }
     }
     if (!Number.isFinite(min) || !Number.isFinite(max)) {
@@ -505,10 +534,10 @@ export default function FremdriftsplanClient({
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [fullSpan, rows, yearStartMs, yearEndMs, phases, milestones, selectedTypes, addedPhases])
 
+  // Alt klemmes inn i sidebredden uansett lengde — ingen horisontal scroll.
+  // Ved mange måneder vises ikke hver etikett (gitterlinjene beholdes).
   const monthGridStyle = { gridTemplateColumns: `repeat(${span.months.length}, minmax(0, 1fr))` }
-  const timelineColStyle = fullSpan
-    ? { width: `${span.months.length * 56}px`, flex: '0 0 auto' as const }
-    : undefined
+  const labelEvery = Math.max(1, Math.ceil(span.months.length / 12))
 
   // ── Draing på barene (kun redigeringsmodus) → utkast ved slipp ──────
   function startDrag(e: React.PointerEvent, it: TimelineItem, edge: 'start' | 'end' | 'move') {
@@ -521,7 +550,7 @@ export default function FremdriftsplanClient({
     if (width <= 0) return
     const spanMs = span.endMs - span.startMs
     const origStart = Date.parse(it.start)
-    const origEnd = it.end ? Date.parse(it.end) : origStart + 7 * DAY
+    const origEnd = it.end ? Date.parse(it.end) : origStart + DAY
     dragRef.current = {
       item: it, edge, startX: e.clientX, msPerPx: spanMs / width,
       origStart, origEnd, curStart: origStart, curEnd: origEnd,
@@ -784,16 +813,16 @@ export default function FremdriftsplanClient({
             {rows.length} prosjekt{rows.length !== 1 ? 'er' : ''} · skrevet ut {new Date().toLocaleDateString('nb-NO')}
           </p>
         </div>
-      <div className={`bg-card border border-border rounded-2xl ${fullSpan ? 'overflow-x-auto' : 'overflow-hidden'} ${dragging ? 'select-none' : ''}`}>
+      <div className={`bg-card border border-border rounded-2xl overflow-hidden ${dragging ? 'select-none' : ''}`}>
         {/* Månedsheader + detaljkolonne */}
         <div className="flex border-b border-border bg-muted/40">
           <div className="w-56 flex-none px-4 py-2 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest">
             Prosjekt
           </div>
-          <div className="flex-1 grid" style={{ ...monthGridStyle, ...timelineColStyle }}>
+          <div className="flex-1 grid" style={monthGridStyle}>
             {span.months.map((m, i) => (
               <div key={`${m.label}-${i}`} className="px-1 py-2 text-[10px] font-medium text-[var(--color-text-muted)] uppercase text-center border-l border-border/60 whitespace-nowrap overflow-hidden">
-                {m.label}
+                {i % labelEvery === 0 ? m.label : ''}
               </div>
             ))}
           </div>
@@ -809,12 +838,19 @@ export default function FremdriftsplanClient({
         ) : (
           rows.map((p) => {
             const isOpen = expanded.has(p.id)
-            const projStart = Date.parse(p.start_date)
-            const projEnd = p.end_date ? Date.parse(p.end_date) : span.endMs
+            // Lukket visning: varigheten PLANEN sier (første fasestart →
+            // siste slutt) — prosjektets egne datoer kun som fallback.
+            const ps = planSpan(p.id)
+            const durStart = ps?.start ?? p.start_date
+            const durEnd = ps ? ps.end : p.end_date
+            const projStart = Date.parse(durStart)
+            const projEnd = durEnd ? Date.parse(durEnd) : span.endMs
             const left = pct(projStart, span.startMs, span.endMs)
             const right = pct(projEnd, span.startMs, span.endMs)
             const items = visibleItems(p.id)
-            const projDates = `${fmtD(p.start_date)}${p.end_date ? ` – ${fmtD(p.end_date)}` : ' – pågående'}`
+            const projDates = durEnd
+              ? (durEnd === durStart ? fmtD(durStart) : `${fmtD(durStart)} – ${fmtD(durEnd)}`)
+              : `${fmtD(durStart)} – pågående`
 
             // Ett spor per element i ekspandert visning — barer og detalj-
             // tabellen til høyre deler rekkefølge, så linje N = bar N.
@@ -855,7 +891,7 @@ export default function FremdriftsplanClient({
                 </div>
 
                 {/* Tidslinjecelle */}
-                <div data-track className="flex-1 relative" style={{ minHeight: `${cellH}px`, ...timelineColStyle }}>
+                <div data-track className="flex-1 relative" style={{ minHeight: `${cellH}px` }}>
                   {/* Månedsgitter */}
                   <div className="absolute inset-0 grid pointer-events-none" style={monthGridStyle}>
                     {span.months.map((m, i) => (
@@ -879,7 +915,7 @@ export default function FremdriftsplanClient({
                             className="absolute h-[7px] rounded-full opacity-20"
                             style={{
                               left: `${pct(Date.parse(it.start), span.startMs, span.endMs)}%`,
-                              width: `${Math.max(pct(it.end ? Date.parse(it.end) : span.endMs, span.startMs, span.endMs) - pct(Date.parse(it.start), span.startMs, span.endMs), 0.8)}%`,
+                              width: `${Math.max(pct(it.end ? Date.parse(it.end) : Date.parse(it.start) + DAY, span.startMs, span.endMs) - pct(Date.parse(it.start), span.startMs, span.endMs), 0.8)}%`,
                               top: `${PAD / 2 + i * LANE_H + (LANE_H - 7) / 2}px`,
                               backgroundColor: it.color,
                             }}
@@ -887,7 +923,8 @@ export default function FremdriftsplanClient({
                         )
                       }
                       const s = Date.parse(it.start)
-                      const e = it.end ? Date.parse(it.end) : span.endMs
+                      // Én dato (tom slutt) = punkthendelse — smal markør.
+                      const e = it.end ? Date.parse(it.end) : s + DAY
                       const l = pct(s, span.startMs, span.endMs)
                       const r = pct(e, span.startMs, span.endMs)
                       if (r <= l && !(s >= span.startMs && s <= span.endMs)) return null
