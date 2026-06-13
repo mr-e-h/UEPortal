@@ -151,7 +151,7 @@ export default async function ForecastsOverviewPage({
                 <div className="flex items-center justify-between mb-3">
                   <span className="text-base font-bold text-[var(--color-text-primary)]">{pName}</span>
                   <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${
-                    period.locked ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-700'
+                    period.locked ? 'bg-muted text-[var(--color-text-muted)]' : 'bg-green-50 text-green-700'
                   }`}>
                     {forecastPeriodStatus(period.status).label}
                   </span>
@@ -229,7 +229,7 @@ export default async function ForecastsOverviewPage({
                     <td className={`px-4 py-2.5 font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(profit)}</td>
                     <td className="px-4 py-2.5">
                       <span className={`text-xs px-2 py-0.5 rounded-full ${
-                        period.locked ? 'bg-gray-100 text-gray-500' : 'bg-green-50 text-green-700'
+                        period.locked ? 'bg-muted text-[var(--color-text-muted)]' : 'bg-green-50 text-green-700'
                       }`}>
                         {forecastPeriodStatus(period.status).label}
                       </span>

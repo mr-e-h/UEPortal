@@ -5,7 +5,7 @@ import { useRouter } from 'next/navigation'
 import { useMe } from '@/lib/useMe'
 import Card from '@/components/ui/Card'
 import { tenderInvitationStatus } from '@/lib/statuses'
-import { fmtNOK } from '@/lib/format'
+import { fmtNOK, fmtDeadline } from '@/lib/format'
 
 type Row = {
   id: string
@@ -19,13 +19,6 @@ type Row = {
   my_bid_status: string | null
   my_bid_total: number | null
   my_bid_submitted_at: string | null
-}
-
-function fmtDeadline(iso: string | null): string {
-  if (!iso) return 'Ingen frist'
-  const d = new Date(iso)
-  return d.toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
-    + ' kl. ' + d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
 }
 
 export default function SubcontractorTendersPage() {

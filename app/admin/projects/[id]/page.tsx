@@ -9,6 +9,8 @@ import { useMe } from '@/lib/useMe'
 import type { Product } from '@/types'
 import { fmtProductLabel } from '@/lib/format'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import ErrorBox from '@/components/ui/ErrorBox'
+import { useConfirm } from '@/components/ui/useConfirm'
 
 // Tab content lazy-loaded — most users land on the default tab and don't
 // touch Gantt/Invoices/Change orders right away. Defers ~30-60 KB of JS.
@@ -75,6 +77,8 @@ export default function ProjectDetailPage() {
   }, [isSiteManager, activeTab])
 
   const [showAddLine, setShowAddLine] = useState(false)
+  const [statusError, setStatusError] = useState<string | null>(null)
+  const { confirm: confirmAction, confirmDialog } = useConfirm()
   const [newLine, setNewLine] = useState({ product_id: '', budget_quantity: '', line_type: 'subcontractor_work' })
   const [savingLine, setSavingLine] = useState(false)
 
@@ -233,8 +237,8 @@ export default function ProjectDetailPage() {
     setImporting(false)
   }
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-gray-500">Laster...</div>
-  if (!project) return <div className="flex items-center justify-center h-64 text-gray-500">Prosjekt ikke funnet</div>
+  if (loading) return <div className="flex items-center justify-center h-64 text-[var(--color-text-muted)]">Laster...</div>
+  if (!project) return <div className="flex items-center justify-center h-64 text-[var(--color-text-muted)]">Prosjekt ikke funnet</div>
 
   const manualLines = budgetLines.filter((bl) => !bl.source || bl.source === 'manual')
 
@@ -280,16 +284,18 @@ export default function ProjectDetailPage() {
 
   return (
     <main className="px-4 sm:px-6 py-8 space-y-6">
+      {confirmDialog}
+      {statusError && <ErrorBox>{statusError}</ErrorBox>}
       {/* Missing price dialog */}
       {missingPriceDialog && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg shadow-xl p-6 max-w-md w-full space-y-4 mx-4">
-            <h2 className="text-base font-semibold text-gray-900">Manglende priser</h2>
-            <p className="text-sm text-gray-600">
+            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Manglende priser</h2>
+            <p className="text-sm text-[var(--color-text-secondary)]">
               Disse produktene mangler pris hos{' '}
               <strong>{missingPriceDialog.subName}</strong>:
             </p>
-            <ul className="text-sm text-gray-700 space-y-1 bg-orange-50 border border-orange-200 rounded p-3">
+            <ul className="text-sm text-[var(--color-text-secondary)] space-y-1 bg-orange-50 border border-orange-200 rounded p-3">
               {missingPriceDialog.products.map((p) => (
                 <li key={p.id} className="flex items-center gap-2">
                   <span className="w-2 h-2 rounded-full bg-orange-400 flex-shrink-0" />
@@ -297,9 +303,9 @@ export default function ProjectDetailPage() {
                 </li>
               ))}
             </ul>
-            <p className="text-sm text-gray-600">Vil du gå til prislisten for å legge inn manglende priser?</p>
+            <p className="text-sm text-[var(--color-text-secondary)]">Vil du gå til prislisten for å legge inn manglende priser?</p>
             <div className="flex gap-3 justify-end">
-              <button onClick={() => setMissingPriceDialog(null)} className="px-3 py-1.5 text-sm text-gray-600 border border-gray-300 rounded hover:bg-gray-50">Avbryt</button>
+              <button onClick={() => setMissingPriceDialog(null)} className="px-3 py-1.5 text-sm text-[var(--color-text-secondary)] border border-border rounded hover:bg-muted">Avbryt</button>
               <button
                 onClick={() => {
                   const productIds = missingPriceDialog.products.map((p) => p.id).join(',')
@@ -318,10 +324,10 @@ export default function ProjectDetailPage() {
 
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href="/admin" className="text-gray-400 hover:text-gray-600 text-sm">← Admin</Link>
+        <Link href="/admin" className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-sm">← Admin</Link>
         <div className="flex-1">
-          <h1 className="text-xl font-bold text-gray-900">{project.name}</h1>
-          <p className="text-sm text-gray-500">
+          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">{project.name}</h1>
+          <p className="text-sm text-[var(--color-text-muted)]">
             {project.project_number}
             {project.order_number && ` · Ordre: ${project.order_number}`}
             {` · ${project.customer} · ${project.county}`}
@@ -337,10 +343,10 @@ export default function ProjectDetailPage() {
           onClick={async () => {
             const closing = project.status === 'active'
             const next = closing ? 'completed' : 'active'
-            const confirmMsg = closing
-              ? 'Lukk prosjektet? UE-er kan ikke sende nye ukesrapporter eller endringsmeldinger på det. Du kan åpne det igjen når som helst.'
-              : 'Åpne prosjektet på nytt? UE-er får tilbake muligheten til å sende rapporter og EMer.'
-            if (!confirm(confirmMsg)) return
+            const ok = await confirmAction(closing
+              ? { title: 'Lukk prosjektet?', message: 'UE-er kan ikke sende nye ukesrapporter eller endringsmeldinger på det. Du kan åpne det igjen når som helst.', confirmLabel: 'Lukk prosjekt' }
+              : { title: 'Åpne prosjektet på nytt?', message: 'UE-er får tilbake muligheten til å sende rapporter og EMer.', confirmLabel: 'Åpne på nytt' })
+            if (!ok) return
             const res = await fetch(`/api/projects/${id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
@@ -348,9 +354,10 @@ export default function ProjectDetailPage() {
             })
             if (!res.ok) {
               const d = await res.json().catch(() => ({}))
-              alert(d.error ?? 'Kunne ikke endre status')
+              setStatusError(d.error ?? 'Kunne ikke endre status')
               return
             }
+            setStatusError(null)
             fetchAll()
           }}
           className={`text-sm px-3 py-1 rounded border transition-colors ${
@@ -363,7 +370,7 @@ export default function ProjectDetailPage() {
         </button>
         )}
         {!isSiteManager && (
-          <Link href={`/admin/projects/${id}/edit`} className="text-sm text-gray-600 border border-gray-200 px-3 py-1 rounded hover:bg-gray-50">Rediger</Link>
+          <Link href={`/admin/projects/${id}/edit`} className="text-sm text-[var(--color-text-secondary)] border border-border px-3 py-1 rounded hover:bg-muted">Rediger</Link>
         )}
       </div>
 
@@ -383,7 +390,7 @@ export default function ProjectDetailPage() {
       )}
 
       {/* Tab navigation */}
-      <div className="border-b border-gray-200 -mb-2">
+      <div className="border-b border-border -mb-2">
         <nav className="flex gap-1 overflow-x-auto">
           {visibleTabs.map((tab) => (
             <button
@@ -392,7 +399,7 @@ export default function ProjectDetailPage() {
               className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
                 activeTab === tab.id
                   ? 'border-blue-600 text-blue-600'
-                  : 'border-transparent text-gray-500 hover:text-gray-700 hover:border-gray-300'
+                  : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:border-border'
               }`}
             >
               {tab.label}

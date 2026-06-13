@@ -162,11 +162,11 @@ function FieldDiffRow({
   if (!changed) return null
   return (
     <tr className="bg-yellow-50/60">
-      <td className="px-3 py-2 text-xs font-medium text-gray-600">{label}</td>
-      <td className="px-3 py-2 text-xs text-gray-700 tabular-nums">
+      <td className="px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)]">{label}</td>
+      <td className="px-3 py-2 text-xs text-[var(--color-text-secondary)] tabular-nums">
         {formatValue(fieldKey, oldVal, productNameLookup)}
       </td>
-      <td className="px-3 py-2 text-xs font-semibold text-gray-900 tabular-nums">
+      <td className="px-3 py-2 text-xs font-semibold text-[var(--color-text-primary)] tabular-nums">
         {formatValue(fieldKey, newVal, productNameLookup)}
       </td>
     </tr>
@@ -201,16 +201,16 @@ function LineDiffRow({
     const qty = diff.after.requested_quantity ?? diff.after.quantity
     const unit = diff.after.unit
     details = (
-      <span className="text-gray-700">
-        {formatLineValue('requested_quantity', qty)} <span className="text-gray-400">{typeof unit === 'string' ? unit : ''}</span>
+      <span className="text-[var(--color-text-secondary)]">
+        {formatLineValue('requested_quantity', qty)} <span className="text-[var(--color-text-muted)]">{typeof unit === 'string' ? unit : ''}</span>
       </span>
     )
   } else if (diff.type === 'removed') {
     const qty = diff.before.requested_quantity ?? diff.before.quantity
     const unit = diff.before.unit
     details = (
-      <span className="text-gray-500 line-through">
-        {formatLineValue('requested_quantity', qty)} <span className="text-gray-400">{typeof unit === 'string' ? unit : ''}</span>
+      <span className="text-[var(--color-text-muted)] line-through">
+        {formatLineValue('requested_quantity', qty)} <span className="text-[var(--color-text-muted)]">{typeof unit === 'string' ? unit : ''}</span>
       </span>
     )
   } else {
@@ -218,10 +218,10 @@ function LineDiffRow({
       <ul className="space-y-0.5">
         {diff.changedKeys.map((k) => (
           <li key={k} className="text-xs">
-            <span className="text-gray-600">{LINE_FIELDS[k] ?? k}: </span>
-            <span className="text-gray-500 line-through">{formatLineValue(k, diff.before[k])}</span>
-            <span className="text-gray-400 mx-1">→</span>
-            <span className="font-semibold text-gray-900">{formatLineValue(k, diff.after[k])}</span>
+            <span className="text-[var(--color-text-secondary)]">{LINE_FIELDS[k] ?? k}: </span>
+            <span className="text-[var(--color-text-muted)] line-through">{formatLineValue(k, diff.before[k])}</span>
+            <span className="text-[var(--color-text-muted)] mx-1">→</span>
+            <span className="font-semibold text-[var(--color-text-primary)]">{formatLineValue(k, diff.after[k])}</span>
           </li>
         ))}
       </ul>
@@ -229,8 +229,8 @@ function LineDiffRow({
   }
 
   return (
-    <tr className="border-t border-gray-100">
-      <td className="px-3 py-2 text-xs font-medium text-gray-900 align-top">{productLabel}</td>
+    <tr className="border-t border-border">
+      <td className="px-3 py-2 text-xs font-medium text-[var(--color-text-primary)] align-top">{productLabel}</td>
       <td className="px-3 py-2 align-top"><ChangeBadge type={diff.type} /></td>
       <td className="px-3 py-2 text-xs align-top">{details}</td>
     </tr>
@@ -282,13 +282,13 @@ export default function VersionDiffModal({ entry, productNameLookup, onClose }: 
         className="bg-white rounded-xl shadow-xl max-w-2xl w-full max-h-[85vh] overflow-hidden flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
-        <header className="px-5 py-3 border-b border-gray-100 flex items-start justify-between gap-3">
+        <header className="px-5 py-3 border-b border-border flex items-start justify-between gap-3">
           <div>
-            <p className="text-xs text-gray-400 uppercase tracking-wide">Versjon</p>
-            <h2 className="text-base font-semibold text-gray-900">
+            <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Versjon</p>
+            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
               {activityActionLabel(entry.action)}
             </h2>
-            <p className="text-xs text-gray-500 mt-0.5">
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
               {entry.actor} · {new Date(entry.created_at).toLocaleString('nb-NO', {
                 day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit',
               })}
@@ -297,7 +297,7 @@ export default function VersionDiffModal({ entry, productNameLookup, onClose }: 
           <button
             type="button"
             onClick={onClose}
-            className="text-gray-400 hover:text-gray-600 p-1"
+            className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] p-1"
             aria-label="Lukk"
           >
             <X size={18} />
@@ -306,9 +306,9 @@ export default function VersionDiffModal({ entry, productNameLookup, onClose }: 
 
         <div className="flex-1 overflow-y-auto px-5 py-4 space-y-5">
           {entry.comment && (
-            <div className="text-sm bg-gray-50 border border-gray-200 rounded p-3">
-              <p className="text-xs text-gray-500 uppercase tracking-wide mb-1">Sammendrag</p>
-              <p className="text-gray-700">{entry.comment}</p>
+            <div className="text-sm bg-muted border border-border rounded p-3">
+              <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide mb-1">Sammendrag</p>
+              <p className="text-[var(--color-text-secondary)]">{entry.comment}</p>
             </div>
           )}
 
@@ -331,11 +331,11 @@ export default function VersionDiffModal({ entry, productNameLookup, onClose }: 
           )}
         </div>
 
-        <footer className="px-5 py-3 border-t border-gray-100 flex justify-end">
+        <footer className="px-5 py-3 border-t border-border flex justify-end">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 text-sm font-medium bg-gray-100 hover:bg-gray-200 text-gray-700 rounded"
+            className="px-4 py-2 text-sm font-medium bg-muted hover:bg-gray-200 text-[var(--color-text-secondary)] rounded"
           >
             Lukk
           </button>
@@ -363,15 +363,15 @@ function SubmittedView({
       </div>
 
       <section>
-        <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Hovedfelter</h3>
+        <h3 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">Hovedfelter</h3>
         <table className="w-full text-sm">
-          <tbody className="divide-y divide-gray-100">
+          <tbody className="divide-y divide-border">
             {Object.keys(CHANGE_ORDER_FIELDS).map((k) => {
               if (!(k in co)) return null
               return (
                 <tr key={k}>
-                  <td className="px-3 py-2 text-xs font-medium text-gray-600 w-1/3">{CHANGE_ORDER_FIELDS[k]}</td>
-                  <td className="px-3 py-2 text-xs text-gray-900 tabular-nums">
+                  <td className="px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)] w-1/3">{CHANGE_ORDER_FIELDS[k]}</td>
+                  <td className="px-3 py-2 text-xs text-[var(--color-text-primary)] tabular-nums">
                     {formatValue(k, co[k], productNameLookup)}
                   </td>
                 </tr>
@@ -383,25 +383,25 @@ function SubmittedView({
 
       {lines.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Produktlinjer</h3>
+          <h3 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">Produktlinjer</h3>
           <table className="w-full text-sm">
-            <thead className="bg-gray-50">
+            <thead className="bg-muted">
               <tr>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Produkt</th>
-                <th className="px-3 py-2 text-right text-xs font-semibold text-gray-600">Mengde</th>
-                <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Enhet</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-[var(--color-text-secondary)]">Produkt</th>
+                <th className="px-3 py-2 text-right text-xs font-semibold text-[var(--color-text-secondary)]">Mengde</th>
+                <th className="px-3 py-2 text-left text-xs font-semibold text-[var(--color-text-secondary)]">Enhet</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-gray-100">
+            <tbody className="divide-y divide-border">
               {lines.map((l, i) => (
                 <tr key={`${l.product_id}-${i}`}>
-                  <td className="px-3 py-2 text-xs text-gray-900">
+                  <td className="px-3 py-2 text-xs text-[var(--color-text-primary)]">
                     {productNameLookup ? productNameLookup(l.product_id) : l.product_id}
                   </td>
-                  <td className="px-3 py-2 text-xs text-right tabular-nums text-gray-900">
+                  <td className="px-3 py-2 text-xs text-right tabular-nums text-[var(--color-text-primary)]">
                     {formatLineValue('requested_quantity', l.requested_quantity ?? l.quantity)}
                   </td>
-                  <td className="px-3 py-2 text-xs text-gray-700">{typeof l.unit === 'string' ? l.unit : '–'}</td>
+                  <td className="px-3 py-2 text-xs text-[var(--color-text-secondary)]">{typeof l.unit === 'string' ? l.unit : '–'}</td>
                 </tr>
               ))}
             </tbody>
@@ -441,24 +441,24 @@ function NestedDiffView({
   const hasAny = fieldKeys.length > 0 || linesDiff.length > 0 || conseqDiff.length > 0
 
   if (!hasAny) {
-    return <p className="text-sm text-gray-400 italic">Ingen endringer registrert.</p>
+    return <p className="text-sm text-[var(--color-text-muted)] italic">Ingen endringer registrert.</p>
   }
 
   return (
     <div className="space-y-5">
       {fieldKeys.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Hovedfelter</h3>
-          <div className="overflow-x-auto rounded border border-gray-100">
+          <h3 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">Hovedfelter</h3>
+          <div className="overflow-x-auto rounded border border-border">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-muted">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Felt</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Før</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Etter</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-[var(--color-text-secondary)]">Felt</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-[var(--color-text-secondary)]">Før</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-[var(--color-text-secondary)]">Etter</th>
                 </tr>
               </thead>
-              <tbody className="divide-y divide-gray-100">
+              <tbody className="divide-y divide-border">
                 {fieldKeys.map((k) => (
                   <FieldDiffRow
                     key={k}
@@ -477,14 +477,14 @@ function NestedDiffView({
 
       {linesDiff.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Produktlinjer</h3>
-          <div className="overflow-x-auto rounded border border-gray-100">
+          <h3 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">Produktlinjer</h3>
+          <div className="overflow-x-auto rounded border border-border">
             <table className="w-full text-sm">
-              <thead className="bg-gray-50">
+              <thead className="bg-muted">
                 <tr>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600 w-2/5">Produkt</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Endring</th>
-                  <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Detaljer</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-[var(--color-text-secondary)] w-2/5">Produkt</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-[var(--color-text-secondary)]">Endring</th>
+                  <th className="px-3 py-2 text-left text-xs font-semibold text-[var(--color-text-secondary)]">Detaljer</th>
                 </tr>
               </thead>
               <tbody>
@@ -499,7 +499,7 @@ function NestedDiffView({
 
       {conseqDiff.length > 0 && (
         <section>
-          <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide mb-2">Konsekvens ved avslag</h3>
+          <h3 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">Konsekvens ved avslag</h3>
           <div className="overflow-x-auto rounded border border-orange-200 bg-orange-50/30">
             <table className="w-full text-sm">
               <thead className="bg-orange-100/50">
@@ -536,31 +536,31 @@ function FlatDiffView({
     .sort((a, b) => Object.keys(CHANGE_ORDER_FIELDS).indexOf(a) - Object.keys(CHANGE_ORDER_FIELDS).indexOf(b))
 
   if (allKeys.length === 0) {
-    return <p className="text-sm text-gray-400 italic">Ingen detaljert diff lagret for denne hendelsen</p>
+    return <p className="text-sm text-[var(--color-text-muted)] italic">Ingen detaljert diff lagret for denne hendelsen</p>
   }
 
   return (
-    <div className="overflow-x-auto rounded border border-gray-100">
+    <div className="overflow-x-auto rounded border border-border">
       <table className="w-full text-sm">
-        <thead className="bg-gray-50">
+        <thead className="bg-muted">
           <tr>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Felt</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Gammel verdi</th>
-            <th className="px-3 py-2 text-left text-xs font-semibold text-gray-600">Ny verdi</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-[var(--color-text-secondary)]">Felt</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-[var(--color-text-secondary)]">Gammel verdi</th>
+            <th className="px-3 py-2 text-left text-xs font-semibold text-[var(--color-text-secondary)]">Ny verdi</th>
           </tr>
         </thead>
-        <tbody className="divide-y divide-gray-100">
+        <tbody className="divide-y divide-border">
           {allKeys.map((key) => {
             const oldVal = before[key]
             const newVal = after[key]
             const changed = JSON.stringify(oldVal) !== JSON.stringify(newVal)
             return (
               <tr key={key} className={changed ? 'bg-yellow-50/60' : ''}>
-                <td className="px-3 py-2 text-xs font-medium text-gray-600">{CHANGE_ORDER_FIELDS[key] ?? key}</td>
-                <td className="px-3 py-2 text-xs text-gray-700 tabular-nums">
+                <td className="px-3 py-2 text-xs font-medium text-[var(--color-text-secondary)]">{CHANGE_ORDER_FIELDS[key] ?? key}</td>
+                <td className="px-3 py-2 text-xs text-[var(--color-text-secondary)] tabular-nums">
                   {formatValue(key, oldVal, productNameLookup)}
                 </td>
-                <td className={`px-3 py-2 text-xs tabular-nums ${changed ? 'font-semibold text-gray-900' : 'text-gray-700'}`}>
+                <td className={`px-3 py-2 text-xs tabular-nums ${changed ? 'font-semibold text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)]'}`}>
                   {formatValue(key, newVal, productNameLookup)}
                 </td>
               </tr>

@@ -5,6 +5,7 @@ import { Download, Plus, Trash2 } from 'lucide-react'
 import type { Project } from '@/types'
 import { fmtNOK as fmt, fmtNumber } from '@/lib/format'
 import { useMe } from '@/lib/useMe'
+import { useConfirm } from '@/components/ui/useConfirm'
 import Field from '@/components/ui/Field'
 import Card from '@/components/ui/Card'
 import StatusPill from '@/components/ui/StatusPill'
@@ -44,6 +45,7 @@ type UEInvoice = {
 
 export default function UEInvoiceBasisPage() {
   const { me } = useMe()
+  const { confirm: confirmAction, confirmDialog } = useConfirm()
   const subId = me?.subcontractor_id ?? ''
   const [projects, setProjects] = useState<Project[]>([])
   const [lines, setLines] = useState<LineItem[]>([])
@@ -120,7 +122,7 @@ export default function UEInvoiceBasisPage() {
   }
 
   async function deleteInvoice(id: string) {
-    if (!confirm('Slett denne fakturaregistreringen?')) return
+    if (!(await confirmAction({ title: 'Slett fakturaregistrering?', message: 'Registreringen fjernes og «Gjenstår å fakturere» oppdateres.', confirmLabel: 'Slett' }))) return
     await fetch(`/api/subcontractor/ue-invoices?id=${id}&subcontractor_id=${subId}`, { method: 'DELETE' })
     await fetchInvoices()
   }
@@ -388,6 +390,7 @@ export default function UEInvoiceBasisPage() {
           )}
         </table>
       </div>
+      {confirmDialog}
     </main>
   )
 }

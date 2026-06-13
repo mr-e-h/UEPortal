@@ -72,7 +72,7 @@ export default function ReportingsSection({ reportLines, budgetLines, allProduct
 
   return (
     <section className="space-y-4">
-      <h2 className="text-lg font-semibold text-gray-900">Rapporteringer</h2>
+      <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Rapporteringer</h2>
       <div className="bg-white rounded-lg shadow">
         <SortableTable columns={rlColumns} data={rlRows} emptyText="Ingen rapporteringer ennå" />
       </div>

@@ -3,7 +3,9 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import Card from '@/components/ui/Card'
-import Badge from '@/components/ui/Badge'
+import FilterBar from '@/components/lists/FilterBar'
+import StatusPill from '@/components/ui/StatusPill'
+import { weeklyReportStatus } from '@/lib/statuses'
 
 /**
  * Klientdel av ukesrapport-oversikten: tekstsøk + prosjekt-/UE-/statusfilter
@@ -45,7 +47,6 @@ export default function WeeklyReportsListClient({
   const [projectId, setProjectId] = useState<string>('all')
   const [subId, setSubId] = useState<string>('all')
   const [status, setStatus] = useState<'all' | ReportStatus>('all')
-  const hasFilter = search.trim() !== '' || projectId !== 'all' || subId !== 'all' || status !== 'all'
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -63,52 +64,24 @@ export default function WeeklyReportsListClient({
   const pending = filtered.filter((r) => r.status === 'submitted')
   const processed = filtered.filter((r) => r.status !== 'submitted')
 
-  const selectCls = 'px-3 py-1.5 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary'
-
   return (
     <div className="space-y-6">
-      {/* Filterbar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Søk i rapporter…"
-          aria-label="Søk i rapporter"
-          className={`${selectCls} w-56`}
-        />
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={selectCls} aria-label="Filtrer på prosjekt">
-          <option value="all">Alle prosjekter</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-        <select value={subId} onChange={(e) => setSubId(e.target.value)} className={selectCls} aria-label="Filtrer på underentreprenør">
-          <option value="all">Alle UE</option>
-          {subs.map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value as 'all' | ReportStatus)} className={selectCls} aria-label="Filtrer på status">
-          {STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        {hasFilter && (
-          <button
-            type="button"
-            onClick={() => { setSearch(''); setProjectId('all'); setSubId('all'); setStatus('all') }}
-            className="px-2 py-1 text-xs font-medium text-primary hover:bg-primary-soft rounded-md"
-          >
-            Nullstill
-          </button>
-        )}
-        {hasFilter && (
-          <span className="text-xs text-[var(--color-text-muted)]">
-            {filtered.length} treff
-          </span>
-        )}
-      </div>
+      <FilterBar
+        search={search}
+        onSearch={setSearch}
+        searchPlaceholder="Søk i rapporter…"
+        searchLabel="Søk i rapporter"
+        projects={projects}
+        projectId={projectId}
+        onProject={setProjectId}
+        subs={subs}
+        subId={subId}
+        onSub={setSubId}
+        statusOptions={STATUS_OPTIONS}
+        status={status}
+        onStatus={(v) => setStatus(v as 'all' | ReportStatus)}
+        matchCount={filtered.length}
+      />
 
       {pending.length > 0 && (
         <Card>
@@ -161,14 +134,8 @@ function ReportTable({ rows }: { rows: ReportRow[] }) {
               <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{r.week_label}</td>
               <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{r.submitted}</td>
               <td className="px-4 py-2.5">
-                {/* Delvis godkjent er ferdigbehandlet — grønn, ikke gul «Venter». */}
-                <Badge
-                  status={
-                    r.status === 'approved' || r.status === 'partially_approved' ? 'approved'
-                    : r.status === 'rejected' ? 'rejected'
-                    : 'pending'
-                  }
-                />
+                {/* Ord og farger fra status-modulen — én kilde for alle statuser. */}
+                <StatusPill meta={weeklyReportStatus(r.status)} />
               </td>
               <td className="px-4 py-2.5 text-right">
                 <Link

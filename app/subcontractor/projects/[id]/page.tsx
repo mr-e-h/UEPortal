@@ -13,6 +13,7 @@ import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
 import { useMe } from '@/lib/useMe'
+import { api } from '@/lib/api'
 
 // Lazy-load heavy interactive components — they're only shown after a click
 // (modal opens, budget line expands, Gantt tab activated). Keeps the initial
@@ -190,7 +191,7 @@ export default function SubcontractorProjectPage() {
   }, [id])
 
   const loadMilestones = useCallback(async () => {
-    const ms = await fetch(`/api/milestones?project_id=${id}`).then((r) => r.json()) as GanttMilestone[]
+    const ms = await api.milestones.list(id).catch(() => [] as GanttMilestone[])
     setMilestones(ms)
   }, [id])
 
@@ -509,7 +510,7 @@ export default function SubcontractorProjectPage() {
             <span className="font-medium text-[var(--color-text-primary)]">Fremdrift (godkjent arbeid)</span>
             <span className="font-semibold text-[var(--color-text-primary)]">{progressPct}%</span>
           </div>
-          <div className="h-2.5 w-full bg-gray-100 rounded-full overflow-hidden">
+          <div className="h-2.5 w-full bg-muted rounded-full overflow-hidden">
             <div
               className="h-full rounded-full transition-all"
               style={{
@@ -611,7 +612,7 @@ export default function SubcontractorProjectPage() {
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1.5">
-                          <div className="flex-1 h-1.5 bg-gray-100 rounded-full overflow-hidden">
+                          <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                             <div className="h-full rounded-full" style={{ width: `${usedPct}%`, backgroundColor: barColor }} />
                           </div>
                           <span className="text-[10px] text-[var(--color-text-muted)] w-7 text-right">{usedPct}%</span>
@@ -741,7 +742,7 @@ export default function SubcontractorProjectPage() {
                               value={qty}
                               onChange={(raw) => setInputs((prev) => ({ ...prev, [bl.id]: { ...prev[bl.id], quantity: raw, comment: prev[bl.id]?.comment ?? '' } }))}
                               onBlur={saveLines}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded text-right focus:outline-none focus:border-primary"
+                              className="w-full px-2 py-1 text-sm border border-border rounded text-right focus:outline-none focus:border-primary"
                             />
                           </td>
                           <td className="px-3 py-2">
@@ -751,7 +752,7 @@ export default function SubcontractorProjectPage() {
                               value={comment}
                               onChange={(e) => setInputs((prev) => ({ ...prev, [bl.id]: { quantity: prev[bl.id]?.quantity ?? '', comment: e.target.value } }))}
                               onBlur={saveLines}
-                              className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-primary"
+                              className="w-full px-2 py-1 text-sm border border-border rounded focus:outline-none focus:border-primary"
                             />
                           </td>
                         </tr>

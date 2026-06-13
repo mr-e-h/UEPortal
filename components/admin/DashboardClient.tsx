@@ -16,11 +16,11 @@ import type { ProjectStatus } from '@/types'
 // component). KPI cards, period switcher and the projects list stay eager.
 const DashboardChart = dynamic(() => import('./DashboardChart'), {
   ssr: false,
-  loading: () => <div className="h-[200px] w-full animate-pulse rounded-lg bg-gray-100" />,
+  loading: () => <div className="h-[200px] w-full animate-pulse rounded-lg bg-muted" />,
 })
 const MonthlyBarChart = dynamic(() => import('./MonthlyBarChart'), {
   ssr: false,
-  loading: () => <div className="h-[280px] w-full animate-pulse rounded-lg bg-gray-100" />,
+  loading: () => <div className="h-[280px] w-full animate-pulse rounded-lg bg-muted" />,
 })
 
 type PeriodKey = '4w' | '12w' | 'ytd'
@@ -130,7 +130,7 @@ export default function DashboardClient({
           <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
             Omsetning over tid
           </h2>
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+          <div className="flex gap-1 bg-muted rounded-lg p-0.5">
             {(Object.keys(PERIOD_LABELS) as PeriodKey[]).map((k) => (
               <button
                 key={k}

@@ -120,15 +120,15 @@ export default function NewProjectPage() {
   return (
     <main className="px-4 sm:px-6 py-8">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/admin" className="text-gray-400 hover:text-gray-600 text-sm">← Admin</Link>
-        <h1 className="text-xl font-bold text-gray-900">Nytt prosjekt</h1>
+        <Link href="/admin" className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-sm">← Admin</Link>
+        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Nytt prosjekt</h1>
       </div>
 
       {/* Excel upload */}
       <Card className="p-6 mb-6">
-        <p className="text-sm font-medium text-gray-700 mb-3">Last opp Excel-underlag fra kunde (valgfritt)</p>
+        <p className="text-sm font-medium text-[var(--color-text-secondary)] mb-3">Last opp Excel-underlag fra kunde (valgfritt)</p>
         <div
-          className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${dragging ? 'border-blue-400 bg-blue-50' : 'border-gray-300 hover:border-blue-400 hover:bg-gray-50'}`}
+          className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${dragging ? 'border-blue-400 bg-blue-50' : 'border-border hover:border-blue-400 hover:bg-muted'}`}
           onClick={() => fileInputRef.current?.click()}
           onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
           onDragLeave={() => setDragging(false)}
@@ -147,8 +147,8 @@ export default function NewProjectPage() {
             </p>
           ) : (
             <>
-              <p className="text-sm text-gray-500">Dra og slipp .xlsx-fil hit, eller klikk for å velge</p>
-              <p className="text-xs text-gray-400 mt-1">Forhåndsutfyller prosjektnummer, navn og ordrenummer</p>
+              <p className="text-sm text-[var(--color-text-muted)]">Dra og slipp .xlsx-fil hit, eller klikk for å velge</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-1">Forhåndsutfyller prosjektnummer, navn og ordrenummer</p>
             </>
           )}
         </div>
@@ -182,7 +182,7 @@ export default function NewProjectPage() {
               required
               value={form.project_number}
               onChange={(e) => set('project_number', e.target.value)}
-              className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full px-3 py-2 text-[var(--color-text-primary)] border border-border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             />
           </Field>
           <Field label="Prosjektnavn">
@@ -191,7 +191,7 @@ export default function NewProjectPage() {
               required
               value={form.name}
               onChange={(e) => set('name', e.target.value)}
-              className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full px-3 py-2 text-[var(--color-text-primary)] border border-border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             />
           </Field>
           <Field label="Ordrenummer">
@@ -199,7 +199,7 @@ export default function NewProjectPage() {
               type="text"
               value={form.order_number}
               onChange={(e) => set('order_number', e.target.value)}
-              className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full px-3 py-2 text-[var(--color-text-primary)] border border-border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             />
           </Field>
           <Field label="Kunde">
@@ -208,7 +208,7 @@ export default function NewProjectPage() {
               required
               value={form.customer}
               onChange={(e) => set('customer', e.target.value)}
-              className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full px-3 py-2 text-[var(--color-text-primary)] border border-border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             />
           </Field>
           <Field label="Fylke">
@@ -216,7 +216,7 @@ export default function NewProjectPage() {
               type="text"
               value={form.county}
               onChange={(e) => set('county', e.target.value)}
-              className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+              className="block w-full px-3 py-2 text-[var(--color-text-primary)] border border-border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
             />
           </Field>
           <div className="grid grid-cols-2 gap-4">
@@ -226,7 +226,7 @@ export default function NewProjectPage() {
                   type="date"
                   value={form[key]}
                   onChange={(e) => set(key, e.target.value)}
-                  className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full px-3 py-2 text-[var(--color-text-primary)] border border-border rounded-md focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                 />
               </Field>
             ))}
@@ -238,11 +238,11 @@ export default function NewProjectPage() {
                 type="checkbox"
                 checked={importLines}
                 onChange={(e) => setImportLines(e.target.checked)}
-                className="w-4 h-4 text-blue-600 border-gray-300 rounded"
+                className="w-4 h-4 text-blue-600 border-border rounded"
               />
-              <span className="text-sm text-gray-700">
+              <span className="text-sm text-[var(--color-text-secondary)]">
                 Importer budsjettlinjer fra Excel-filen
-                <span className="text-gray-400 ml-1">({excelData.lines.length} linjer)</span>
+                <span className="text-[var(--color-text-muted)] ml-1">({excelData.lines.length} linjer)</span>
               </span>
             </label>
           )}

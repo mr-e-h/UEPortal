@@ -7,6 +7,7 @@ import type { WeeklyReport, WeeklyReportLine, ActivityEntry } from '@/types'
 import { formatWeekLabel } from '@/lib/utils/weeks'
 import SortableTable from '@/components/SortableTable'
 import { fmtNOK as fmt } from '@/lib/format'
+import { ADMIN_ROLES } from '@/lib/roles'
 import { weeklyReportStatus, weeklyReportLineStatus } from '@/lib/statuses'
 import { activityActionLabel } from '@/lib/activity-actions'
 import { useMe } from '@/lib/useMe'
@@ -45,7 +46,7 @@ export default function AdminWeeklyReportPage() {
   // er customer_price_snapshot uansett strippet server-side i
   // /api/weekly-reports/[id] — dette styrer bare at UI-et ikke viser
   // tomme/NaN-kolonner. Frontend-skjuling er UX; serveren er sikkerheten.
-  const canSeeEconomy = me ? ['main', 'company', 'project_manager'].includes(me.role) : true
+  const canSeeEconomy = me ? ADMIN_ROLES.includes(me.role) : true
   const [bulkComment, setBulkComment] = useState('')
   const [newComment, setNewComment] = useState('')
   const [saving, setSaving] = useState(false)
@@ -126,8 +127,8 @@ export default function AdminWeeklyReportPage() {
     await load()
   }
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-gray-500">Laster...</div>
-  if (!report) return <div className="flex items-center justify-center h-64 text-gray-500">Rapport ikke funnet</div>
+  if (loading) return <div className="flex items-center justify-center h-64 text-[var(--color-text-muted)]">Laster...</div>
+  if (!report) return <div className="flex items-center justify-center h-64 text-[var(--color-text-muted)]">Rapport ikke funnet</div>
 
   const totalCost = report.lines.reduce((s, l) => s + l.reported_quantity * l.subcontractor_cost_price_snapshot, 0)
   const totalSales = report.lines.reduce((s, l) => s + l.reported_quantity * l.customer_price_snapshot, 0)
@@ -148,12 +149,12 @@ export default function AdminWeeklyReportPage() {
     <main className="px-4 sm:px-6 py-8 space-y-6">
       {/* Header */}
       <div className="flex items-start gap-3">
-        <Link href="/admin/weekly-reports" className="text-gray-400 hover:text-gray-600 text-sm mt-1">← Ukesrapporter</Link>
+        <Link href="/admin/weekly-reports" className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-sm mt-1">← Ukesrapporter</Link>
         <div className="flex-1">
-          <h1 className="text-xl font-bold text-gray-900">
+          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">
             {project?.name ?? '–'} — {formatWeekLabel(report.year, report.week_number)} — Innsending #{report.submission_number ?? 1}
           </h1>
-          <p className="text-sm text-gray-500">
+          <p className="text-sm text-[var(--color-text-muted)]">
             {project?.project_number && `${project.project_number} · `}
             {sub?.company_name ?? '–'}
             {report.submitted_at && ` · Innsendt ${new Date(report.submitted_at).toLocaleDateString('nb-NO')}`}
@@ -165,7 +166,7 @@ export default function AdminWeeklyReportPage() {
             <button
               onClick={revert}
               disabled={saving}
-              className="px-3 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 disabled:opacity-50"
+              className="px-3 py-1 text-xs bg-muted text-[var(--color-text-secondary)] rounded hover:bg-gray-200 disabled:opacity-50"
             >
               Angre
             </button>
@@ -177,27 +178,27 @@ export default function AdminWeeklyReportPage() {
           (Linjeantallet er synlig i tabellen — eget kort var bare støy.) */}
       <div className={`grid gap-4 ${canSeeEconomy ? 'grid-cols-2' : 'grid-cols-1'}`}>
         <Card className="p-4">
-          <p className="text-xs text-gray-500 uppercase tracking-wide">Total kostnad</p>
-          <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalCost)}</p>
+          <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Total kostnad</p>
+          <p className="text-2xl font-bold text-[var(--color-text-primary)] mt-1">{fmt(totalCost)}</p>
         </Card>
         {canSeeEconomy && (
           <Card className="p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Total salgsverdi</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(totalSales)}</p>
+            <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Total salgsverdi</p>
+            <p className="text-2xl font-bold text-[var(--color-text-primary)] mt-1">{fmt(totalSales)}</p>
           </Card>
         )}
       </div>
 
       {/* Bulk actions */}
       {report.status === 'submitted' && (
-        <div className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex flex-wrap gap-4 items-end">
+        <div className="bg-muted border border-border rounded-lg p-4 flex flex-wrap gap-4 items-end">
           <Field label="Kommentar (valgfri)" className="flex-1 min-w-48">
             <input
               type="text"
               value={bulkComment}
               onChange={(e) => setBulkComment(e.target.value)}
               placeholder="Melding til underentreprenør..."
-              className="w-full px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-blue-500"
+              className="w-full px-3 py-1.5 text-sm border border-border rounded focus:outline-none focus:ring-blue-500"
             />
           </Field>
           <button
@@ -264,22 +265,22 @@ export default function AdminWeeklyReportPage() {
 
       {/* Activity log + comments */}
       <Card className="p-6 space-y-4">
-        <h2 className="text-sm font-semibold text-gray-900">Historikk</h2>
+        <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Historikk</h2>
         {activity.length === 0 ? (
-          <p className="text-sm text-gray-400">Ingen handlinger ennå</p>
+          <p className="text-sm text-[var(--color-text-muted)]">Ingen handlinger ennå</p>
         ) : (
           <ol className="space-y-2">
             {activity.map((entry) => (
               <li key={entry.id} className="flex gap-3 text-sm">
-                <span className="text-gray-400 text-xs mt-0.5 whitespace-nowrap">
+                <span className="text-[var(--color-text-muted)] text-xs mt-0.5 whitespace-nowrap">
                   {new Date(entry.created_at).toLocaleString('nb-NO', { dateStyle: 'short', timeStyle: 'short' })}
                 </span>
                 <span>
-                  <span className="font-medium text-gray-800">{entry.actor}</span>
+                  <span className="font-medium text-[var(--color-text-primary)]">{entry.actor}</span>
                   {' '}
-                  <span className="text-gray-600">{activityActionLabel(entry.action)}</span>
+                  <span className="text-[var(--color-text-secondary)]">{activityActionLabel(entry.action)}</span>
                   {entry.comment && (
-                    <span className="text-gray-500"> — &quot;{entry.comment}&quot;</span>
+                    <span className="text-[var(--color-text-muted)]"> — &quot;{entry.comment}&quot;</span>
                   )}
                 </span>
               </li>
@@ -288,13 +289,13 @@ export default function AdminWeeklyReportPage() {
         )}
 
         {/* Comment input */}
-        <form onSubmit={submitComment} className="flex gap-2 pt-2 border-t border-gray-100">
+        <form onSubmit={submitComment} className="flex gap-2 pt-2 border-t border-border">
           <input
             type="text"
             value={newComment}
             onChange={(e) => setNewComment(e.target.value)}
             placeholder="Skriv en kommentar..."
-            className="flex-1 px-3 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:ring-blue-500"
+            className="flex-1 px-3 py-1.5 text-sm border border-border rounded focus:outline-none focus:ring-blue-500"
           />
           <Button type="submit" disabled={!newComment.trim()}>
             Send
@@ -305,7 +306,7 @@ export default function AdminWeeklyReportPage() {
       {/* Other submissions this week */}
       {siblings.length > 0 && (
         <section>
-          <h2 className="text-base font-semibold text-gray-900 mb-3">Andre innsendinger denne uken</h2>
+          <h2 className="text-base font-semibold text-[var(--color-text-primary)] mb-3">Andre innsendinger denne uken</h2>
           {(() => {
             type SibRow = { id: string; submission_number: number; submitted_at: string; status: string; line_count: number; total_cost: number }
             const sibRows: SibRow[] = siblings.map((s) => ({
@@ -340,7 +341,7 @@ export default function AdminWeeklyReportPage() {
                   data={sibRows}
                   emptyText="Ingen andre innsendinger"
                   onRowClick={(r: SibRow) => router.push(`/admin/weekly-reports/${r.id}`)}
-                  rowClassName={() => 'border-b border-gray-100 hover:bg-blue-50 cursor-pointer'}
+                  rowClassName={() => 'border-b border-border hover:bg-blue-50 cursor-pointer'}
                 />
               </div>
             )

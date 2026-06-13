@@ -1,6 +1,7 @@
 'use client'
 
 import { useState } from 'react'
+import { fmtDayMonth as fmtDate } from '@/lib/format'
 import type { GanttMilestone } from '@/types'
 
 function toMs(date: string) { return new Date(date).getTime() }
@@ -30,10 +31,6 @@ function buildMonthHeaders(startDate: string, endDate: string) {
     cursor.setMonth(cursor.getMonth() + 1)
   }
   return headers
-}
-
-function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short' })
 }
 
 interface Props {
@@ -152,7 +149,7 @@ export default function GanttView({ milestones, projectStart, projectEnd }: Prop
                     isActive
                       ? 'bg-green-100 text-green-700'
                       : isPast
-                      ? 'bg-gray-100 text-gray-500'
+                      ? 'bg-muted text-[var(--color-text-muted)]'
                       : 'bg-blue-100 text-blue-700'
                   }`}
                 >

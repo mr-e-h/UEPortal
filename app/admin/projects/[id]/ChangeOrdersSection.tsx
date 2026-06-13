@@ -66,7 +66,7 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
       key: 'number',
       label: 'Nr',
       sortable: true,
-      render: (row: CORow) => <span className="font-semibold tabular-nums text-gray-700">#{row.number}</span>,
+      render: (row: CORow) => <span className="font-semibold tabular-nums text-[var(--color-text-secondary)]">#{row.number}</span>,
     },
     {
       key: 'em_type',
@@ -92,7 +92,7 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
       sortable: true,
       render: (row: CORow) => (
         <div>
-          <div className="text-xs text-gray-500 truncate" title={row.sub_name}>{row.sub_name}</div>
+          <div className="text-xs text-[var(--color-text-muted)] truncate" title={row.sub_name}>{row.sub_name}</div>
           <div className="truncate" title={row.product_label}>{row.product_label}</div>
         </div>
       ),
@@ -138,14 +138,14 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
 
   return (
     <section>
-      <h2 className="text-lg font-semibold text-gray-900 mb-3">
-        Endringsmeldinger <span className="font-normal text-gray-500">({changeOrders.length})</span>
+      <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-3">
+        Endringsmeldinger <span className="font-normal text-[var(--color-text-muted)]">({changeOrders.length})</span>
       </h2>
       <div className="flex gap-3 mb-3">
         <select
           value={coStatusFilter}
           onChange={(e) => setCoStatusFilter(e.target.value)}
-          className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
+          className="text-sm text-[var(--color-text-primary)] border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
         >
           <option value="all">Alle statuser</option>
           <option value="pending">Venter</option>
@@ -155,7 +155,7 @@ export default function ChangeOrdersSection({ changeOrders, allProducts, allSubs
         <select
           value={coSubFilter}
           onChange={(e) => setCoSubFilter(e.target.value)}
-          className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
+          className="text-sm text-[var(--color-text-primary)] border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
         >
           <option value="all">Alle UE-er</option>
           {coSubOptions.map((s) => (

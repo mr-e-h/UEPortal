@@ -3,9 +3,10 @@
 import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import Card from '@/components/ui/Card'
-import Badge from '@/components/ui/Badge'
+import FilterBar from '@/components/lists/FilterBar'
 import { fmtNOK as fmt } from '@/lib/format'
-import { changeOrderType } from '@/lib/statuses'
+import { changeOrderType, changeOrderStatus } from '@/lib/statuses'
+import StatusPill from '@/components/ui/StatusPill'
 
 /**
  * Klientdel av EM-oversikten: prosjekt- og statusfilter over de to listene
@@ -53,7 +54,6 @@ export default function ChangeOrdersListClient({
   const [projectId, setProjectId] = useState<string>('all')
   const [subId, setSubId] = useState<string>('all')
   const [status, setStatus] = useState<'all' | EmStatus>('all')
-  const hasFilter = search.trim() !== '' || projectId !== 'all' || subId !== 'all' || status !== 'all'
 
   const filtered = useMemo(() => {
     const q = search.trim().toLowerCase()
@@ -68,52 +68,24 @@ export default function ChangeOrdersListClient({
   const pending = filtered.filter((r) => r.status === 'pending')
   const processed = filtered.filter((r) => r.status !== 'pending')
 
-  const selectCls = 'px-3 py-1.5 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary'
-
   return (
     <div className="space-y-6">
-      {/* Filterbar */}
-      <div className="flex items-center gap-2 flex-wrap">
-        <input
-          type="search"
-          value={search}
-          onChange={(e) => setSearch(e.target.value)}
-          placeholder="Søk i endringsmeldinger…"
-          aria-label="Søk i endringsmeldinger"
-          className={`${selectCls} w-56`}
-        />
-        <select value={projectId} onChange={(e) => setProjectId(e.target.value)} className={selectCls} aria-label="Filtrer på prosjekt">
-          <option value="all">Alle prosjekter</option>
-          {projects.map((p) => (
-            <option key={p.id} value={p.id}>{p.name}</option>
-          ))}
-        </select>
-        <select value={subId} onChange={(e) => setSubId(e.target.value)} className={selectCls} aria-label="Filtrer på underentreprenør">
-          <option value="all">Alle UE</option>
-          {subs.map((s) => (
-            <option key={s.id} value={s.id}>{s.name}</option>
-          ))}
-        </select>
-        <select value={status} onChange={(e) => setStatus(e.target.value as 'all' | EmStatus)} className={selectCls} aria-label="Filtrer på status">
-          {STATUS_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>{o.label}</option>
-          ))}
-        </select>
-        {hasFilter && (
-          <button
-            type="button"
-            onClick={() => { setSearch(''); setProjectId('all'); setSubId('all'); setStatus('all') }}
-            className="px-2 py-1 text-xs font-medium text-primary hover:bg-primary-soft rounded-md"
-          >
-            Nullstill
-          </button>
-        )}
-        {hasFilter && (
-          <span className="text-xs text-[var(--color-text-muted)]">
-            {filtered.length} treff
-          </span>
-        )}
-      </div>
+      <FilterBar
+        search={search}
+        onSearch={setSearch}
+        searchPlaceholder="Søk i endringsmeldinger…"
+        searchLabel="Søk i endringsmeldinger"
+        projects={projects}
+        projectId={projectId}
+        onProject={setProjectId}
+        subs={subs}
+        subId={subId}
+        onSub={setSubId}
+        statusOptions={STATUS_OPTIONS}
+        status={status}
+        onStatus={(v) => setStatus(v as 'all' | EmStatus)}
+        matchCount={filtered.length}
+      />
 
       {pending.length > 0 && (
         <Card>
@@ -183,9 +155,7 @@ function OrderTable({ rows, showEconomy }: { rows: EmRow[]; showEconomy: boolean
               <td className="px-4 py-2.5 text-right text-[var(--color-text-muted)]">{fmt(r.cost)}</td>
               <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{r.submitted}</td>
               <td className="px-4 py-2.5">
-                <Badge
-                  status={r.status === 'approved' ? 'approved' : r.status === 'rejected' ? 'rejected' : 'pending'}
-                />
+                <StatusPill meta={changeOrderStatus(r.status)} />
               </td>
               <td className="px-4 py-2.5 text-right">
                 <Link href={`/admin/change-orders/${r.id}`} className="text-xs text-primary hover:underline font-medium">

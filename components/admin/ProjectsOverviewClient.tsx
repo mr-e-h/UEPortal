@@ -144,11 +144,7 @@ export default function ProjectsOverviewClient({
   )
 }
 
-function fmtDate(d: string | null): string {
-  if (!d) return '–'
-  const [y, m, day] = d.split('-')
-  return `${day}.${m}.${y.slice(2)}`
-}
+import { fmtDateShort as fmtDate } from '@/lib/format'
 
 function ProjectCard({ card }: { card: ProjectCardData }) {
   const maxChips = 3

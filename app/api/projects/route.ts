@@ -3,6 +3,7 @@ import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import type { Project, ProjectBudgetLine, BudgetVersion, ProjectSubcontractor } from '@/types'
 import { importExcelLines } from '@/lib/excel-import'
+import { budgetSalesValue, budgetCostValue } from '@/lib/project-economy'
 import type { ParsedExcelLine } from '@/lib/excel'
 import { getSession } from '@/lib/auth'
 import { requireAdmin, getProjectScope } from '@/lib/api-guard'
@@ -86,8 +87,8 @@ export async function POST(request: NextRequest) {
       .eq('project_id', newProject.id)
     const budgetLines = ((blData ?? []) as ProjectBudgetLine[])
       .filter((bl) => !bl.source || bl.source === 'manual')
-    const totalSalesValue = budgetLines.reduce((s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot, 0)
-    const totalCostValue = budgetLines.reduce((s, bl) => s + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0)
+    const totalSalesValue = budgetSalesValue(budgetLines)
+    const totalCostValue = budgetCostValue(budgetLines)
 
     const versionRow: BudgetVersion = {
       id: randomUUID(),

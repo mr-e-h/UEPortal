@@ -59,16 +59,16 @@ export default function SortableTable<T extends { id: string }>({ columns, data,
           </colgroup>
         )}
         <thead>
-          <tr className="border-b border-gray-200">
+          <tr className="border-b border-border">
             {columns.map((col) => (
               <th
                 key={col.key}
                 onClick={() => col.sortable && handleSort(col.key)}
-                className={`px-3 py-2 text-left text-xs font-medium text-gray-500 uppercase tracking-wide whitespace-nowrap ${col.sortable ? 'cursor-pointer select-none hover:text-gray-800' : ''}`}
+                className={`px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide whitespace-nowrap ${col.sortable ? 'cursor-pointer select-none hover:text-[var(--color-text-primary)]' : ''}`}
               >
                 {col.label}
                 {col.sortable && sortKey === col.key && (
-                  <span className="ml-1 text-gray-400">{sortDir === 'asc' ? '↑' : '↓'}</span>
+                  <span className="ml-1 text-[var(--color-text-muted)]">{sortDir === 'asc' ? '↑' : '↓'}</span>
                 )}
               </th>
             ))}
@@ -77,7 +77,7 @@ export default function SortableTable<T extends { id: string }>({ columns, data,
         <tbody>
           {sorted.length === 0 && (
             <tr>
-              <td colSpan={columns.length} className="px-3 py-6 text-center text-gray-400 text-sm">
+              <td colSpan={columns.length} className="px-3 py-6 text-center text-[var(--color-text-muted)] text-sm">
                 {emptyText ?? 'Ingen data'}
               </td>
             </tr>
@@ -95,10 +95,10 @@ export default function SortableTable<T extends { id: string }>({ columns, data,
               <React.Fragment key={row.id}>
                 <tr
                   onClick={handleClick}
-                  className={`${rowClassName ? rowClassName(row) : 'border-b border-gray-100 hover:bg-gray-50'}${(expandedRowRender || onRowClick) ? ' cursor-pointer' : ''}`}
+                  className={`${rowClassName ? rowClassName(row) : 'border-b border-border hover:bg-muted'}${(expandedRowRender || onRowClick) ? ' cursor-pointer' : ''}`}
                 >
                   {columns.map((col) => (
-                    <td key={col.key} className={`px-3 py-2 text-sm text-gray-700${col.tdClassName ? ` ${col.tdClassName}` : ''}`}>
+                    <td key={col.key} className={`px-3 py-2 text-sm text-[var(--color-text-secondary)]${col.tdClassName ? ` ${col.tdClassName}` : ''}`}>
                       {col.render
                         ? col.render(row)
                         : String((row as Record<string, unknown>)[col.key] ?? '')}
@@ -106,7 +106,7 @@ export default function SortableTable<T extends { id: string }>({ columns, data,
                   ))}
                 </tr>
                 {isExpanded && expandedRowRender && (
-                  <tr className="bg-gray-50">
+                  <tr className="bg-muted">
                     <td colSpan={columns.length} className="px-0 py-0">
                       {expandedRowRender(row)}
                     </td>

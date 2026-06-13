@@ -404,7 +404,7 @@ export default function ChangeOrderModal({
             <select
               value={emType}
               onChange={(e) => setEmType(e.target.value as 'economic' | 'spec_deviation' | 'time')}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:border-primary"
             >
               <option value="economic">Økonomisk</option>
               <option value="spec_deviation">Avvik kravspec</option>
@@ -419,7 +419,7 @@ export default function ChangeOrderModal({
             <select
               value={productId}
               onChange={(e) => setProductId(e.target.value)}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:border-primary"
             >
               {budgetLines.map((bl) => (
                 <option key={bl.product_id} value={bl.product_id}>
@@ -437,7 +437,7 @@ export default function ChangeOrderModal({
               value={quantity}
               onChange={(raw) => setQuantity(raw)}
               placeholder="0"
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary"
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:border-primary"
             />
             {(() => {
               const selectedLine = budgetLines.find((bl) => bl.product_id === productId)
@@ -470,7 +470,7 @@ export default function ChangeOrderModal({
               onChange={(e) => setReason(e.target.value)}
               rows={3}
               placeholder="Hva er endringen?"
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary resize-none"
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:border-primary resize-none"
             />
           </div>
 
@@ -483,7 +483,7 @@ export default function ChangeOrderModal({
               onChange={(e) => setSolution(e.target.value)}
               rows={3}
               placeholder="Hvordan løses det / hva blir gjort?"
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-primary resize-none"
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:border-primary resize-none"
             />
           </div>
 
@@ -498,7 +498,7 @@ export default function ChangeOrderModal({
               className={`rounded-lg border-2 p-4 text-center transition-colors ${
                 isDragOver
                   ? 'border-primary bg-primary-soft'
-                  : 'border-dashed border-gray-300 bg-[var(--color-bg-muted)]'
+                  : 'border-dashed border-border bg-[var(--color-bg-muted)]'
               }`}
             >
               {hasAttachment ? (
@@ -531,7 +531,7 @@ export default function ChangeOrderModal({
                   ) : existingAttachmentUrl ? (
                     <div className="flex items-center justify-center gap-2">
                       <svg
-                        className="w-5 h-5 text-gray-400 flex-none"
+                        className="w-5 h-5 text-[var(--color-text-muted)] flex-none"
                         fill="none"
                         viewBox="0 0 24 24"
                         stroke="currentColor"
@@ -567,7 +567,7 @@ export default function ChangeOrderModal({
                     Dra fil hit eller lim inn bilde (Ctrl+V)
                   </p>
                   <label className="cursor-pointer inline-block">
-                    <span className="inline-flex items-center px-3 py-1.5 text-xs font-medium bg-white border border-gray-300 rounded-lg hover:bg-gray-50 text-[var(--color-text-primary)] transition-colors">
+                    <span className="inline-flex items-center px-3 py-1.5 text-xs font-medium bg-white border border-border rounded-lg hover:bg-muted text-[var(--color-text-primary)] transition-colors">
                       Velg fil
                     </span>
                     <input

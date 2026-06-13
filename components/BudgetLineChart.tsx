@@ -3,6 +3,7 @@
 import { memo } from 'react'
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, ReferenceLine } from 'recharts'
 import { CHART_AXIS_TICK, CHART_LINE_ACCENT, CHART_REFERENCE_LINE } from '@/lib/chart-colors'
+import { fmtDateLong as fmtDate } from '@/lib/format'
 
 type COEvent = {
   id: string
@@ -29,10 +30,6 @@ type ChartPoint = {
   label: string
   delta?: number
   reviewedBy?: string | null
-}
-
-function fmtDate(d: string) {
-  return new Date(d).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: '2-digit' })
 }
 
 // Memoized — when a user expands different budget lines the parent re-renders

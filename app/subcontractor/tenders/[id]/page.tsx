@@ -7,7 +7,7 @@ import { useMe } from '@/lib/useMe'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import ErrorBox from '@/components/ui/ErrorBox'
-import { fmtNOK } from '@/lib/format'
+import { fmtNOK, fmtDeadline } from '@/lib/format'
 import type { TenderLine, TenderBid, TenderBidLine } from '@/types'
 
 type TenderView = {
@@ -24,13 +24,6 @@ type Payload = {
   lines: TenderLine[]
   bid: TenderBid | null
   bidLines: TenderBidLine[]
-}
-
-function fmtDeadline(iso: string | null): string {
-  if (!iso) return 'Ingen frist'
-  const d = new Date(iso)
-  return d.toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
-    + ' kl. ' + d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
 }
 
 export default function SubcontractorTenderDetailPage() {
@@ -130,7 +123,7 @@ export default function SubcontractorTenderDetailPage() {
   return (
     <div className="p-6 space-y-6 max-w-3xl">
       <div className="flex items-center gap-3">
-        <Link href="/subcontractor/tenders" className="text-gray-400 hover:text-gray-600 text-sm">← Tilbud</Link>
+        <Link href="/subcontractor/tenders" className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-sm">← Tilbud</Link>
       </div>
 
       <div>
@@ -186,7 +179,7 @@ export default function SubcontractorTenderDetailPage() {
                         value={prices[line.id] ?? ''}
                         onChange={(e) => setPrices((prev) => ({ ...prev, [line.id]: e.target.value }))}
                         placeholder="0"
-                        className="w-28 px-2 py-1 text-sm text-right border border-gray-300 rounded focus:outline-none focus:border-blue-500 disabled:bg-gray-50 disabled:text-gray-500"
+                        className="w-28 px-2 py-1 text-sm text-right border border-border rounded focus:outline-none focus:border-blue-500 disabled:bg-muted disabled:text-[var(--color-text-muted)]"
                       />
                     </td>
                     <td className="px-4 py-2.5 text-right font-medium text-[var(--color-text-primary)] whitespace-nowrap">
@@ -213,7 +206,7 @@ export default function SubcontractorTenderDetailPage() {
           disabled={locked}
           onChange={(e) => setComment(e.target.value)}
           rows={2}
-          className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-blue-500 disabled:bg-gray-50"
+          className="block w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:border-blue-500 disabled:bg-muted"
           placeholder="Forutsetninger, forbehold, leveringstid…"
         />
       </Card>

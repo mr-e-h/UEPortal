@@ -473,6 +473,30 @@ export interface BudgetVersion {
   file_name?: string
 }
 
+// ─── Fremdriftsplan (faser + milepæler) ─────────────────────────────────────
+
+/** Fasetype-registeret (globalt) — navn/farge slår gjennom overalt. */
+export interface PhaseType {
+  id: string
+  name: string
+  color: string | null
+  is_active: boolean
+  sort_order: number
+}
+
+/** Arbeidsfase på et prosjekt. end_date = null betyr punkthendelse (én dag). */
+export interface ProjectPhase {
+  id: string
+  project_id: string
+  phase_type_id: string
+  name: string | null
+  start_date: string
+  end_date: string | null
+  status: 'planned' | 'in_progress' | 'done'
+  progress_percent: number
+  sort_order: number
+}
+
 export interface GanttMilestone {
   id: string
   project_id: string

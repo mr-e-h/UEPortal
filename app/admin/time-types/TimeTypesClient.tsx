@@ -110,8 +110,8 @@ export default function TimeTypesClient({
       sortable: true,
       render: (row: TimeType) =>
         editingId === row.id
-          ? <input value={editValues.name} onChange={(e) => setEditValues((p) => ({ ...p, name: e.target.value }))} className="px-2 py-1 text-sm border border-gray-300 rounded w-48 focus:outline-none focus:ring-blue-500" />
-          : <span className={row.active ? 'text-gray-900' : 'text-gray-400 line-through'}>{row.name}</span>,
+          ? <input value={editValues.name} onChange={(e) => setEditValues((p) => ({ ...p, name: e.target.value }))} className="px-2 py-1 text-sm border border-border rounded w-48 focus:outline-none focus:ring-blue-500" />
+          : <span className={row.active ? 'text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)] line-through'}>{row.name}</span>,
     },
     {
       key: 'cost_per_hour',
@@ -119,7 +119,7 @@ export default function TimeTypesClient({
       sortable: true,
       render: (row: TimeType) =>
         editingId === row.id
-          ? <NumberInput value={editValues.cost_per_hour} onChange={(raw) => setEditValues((p) => ({ ...p, cost_per_hour: raw }))} className="px-2 py-1 text-sm border border-gray-300 rounded w-28 focus:outline-none focus:ring-blue-500" />
+          ? <NumberInput value={editValues.cost_per_hour} onChange={(raw) => setEditValues((p) => ({ ...p, cost_per_hour: raw }))} className="px-2 py-1 text-sm border border-border rounded w-28 focus:outline-none focus:ring-blue-500" />
           : fmt(row.cost_per_hour),
     },
     {
@@ -139,13 +139,13 @@ export default function TimeTypesClient({
         editingId === row.id ? (
           <div className="flex gap-2">
             <button onClick={() => saveEdit(row.id)} className="px-2 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700">Lagre</button>
-            <button onClick={() => setEditingId(null)} className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded hover:bg-gray-200">Avbryt</button>
+            <button onClick={() => setEditingId(null)} className="px-2 py-1 bg-muted text-[var(--color-text-secondary)] text-xs rounded hover:bg-gray-200">Avbryt</button>
           </div>
         ) : (
           <div className="flex gap-2">
             <button
               onClick={() => { setEditingId(row.id); setEditValues({ name: row.name, cost_per_hour: String(row.cost_per_hour) }) }}
-              className="px-2 py-1 bg-gray-100 text-gray-700 text-xs rounded hover:bg-gray-200"
+              className="px-2 py-1 bg-muted text-[var(--color-text-secondary)] text-xs rounded hover:bg-gray-200"
             >
               Rediger
             </button>
@@ -162,18 +162,18 @@ export default function TimeTypesClient({
 
   return (
     <main className="px-4 sm:px-6 py-8 space-y-8">
-      <h1 className="text-xl font-bold text-gray-900">Timetyper</h1>
+      <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Timetyper</h1>
 
       {/* Section 1: Interntyper */}
       <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-3">Interntyper</h2>
+        <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-3">Interntyper</h2>
         <form onSubmit={addTimeType} className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex gap-4 items-end mb-4">
           <Field label="Navn">
             <input
               required
               value={newType.name}
               onChange={(e) => setNewType((p) => ({ ...p, name: e.target.value }))}
-              className="px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500 w-48"
+              className="px-2 py-1.5 text-sm text-[var(--color-text-primary)] border border-border rounded focus:outline-none focus:ring-blue-500 w-48"
               placeholder="F.eks. Prosjektleder"
             />
           </Field>
@@ -182,7 +182,7 @@ export default function TimeTypesClient({
               required
               value={newType.cost_per_hour}
               onChange={(raw) => setNewType((p) => ({ ...p, cost_per_hour: raw }))}
-              className="px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500 w-28"
+              className="px-2 py-1.5 text-sm text-[var(--color-text-primary)] border border-border rounded focus:outline-none focus:ring-blue-500 w-28"
               placeholder="950"
             />
           </Field>
@@ -197,14 +197,14 @@ export default function TimeTypesClient({
 
       {/* Section 2: UE-innleie timer */}
       <section>
-        <h2 className="text-lg font-semibold text-gray-900 mb-1">UE-innleie timer</h2>
-        <p className="text-sm text-gray-500 mb-3">Legg til timetype for innleid UE — navn og kostnad foreslås automatisk fra snittprisen.</p>
-        <form onSubmit={addInnleieType} className="bg-gray-50 border border-gray-200 rounded-lg p-4 flex flex-wrap gap-4 items-end">
+        <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-1">UE-innleie timer</h2>
+        <p className="text-sm text-[var(--color-text-muted)] mb-3">Legg til timetype for innleid UE — navn og kostnad foreslås automatisk fra snittprisen.</p>
+        <form onSubmit={addInnleieType} className="bg-muted border border-border rounded-lg p-4 flex flex-wrap gap-4 items-end">
           <Field label="Underentreprenør">
             <select
               value={selectedSubId}
               onChange={(e) => selectSub(e.target.value)}
-              className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
+              className="text-sm text-[var(--color-text-primary)] border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
             >
               <option value="">Velg UE</option>
               {subcontractors.filter((s) => s.active).map((s) => (
@@ -217,7 +217,7 @@ export default function TimeTypesClient({
               required
               value={innleieForm.name}
               onChange={(e) => setInnleieForm((p) => ({ ...p, name: e.target.value }))}
-              className="px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500 w-48"
+              className="px-2 py-1.5 text-sm text-[var(--color-text-primary)] border border-border rounded focus:outline-none focus:ring-blue-500 w-48"
             />
           </Field>
           <Field label="Timekostnad (kr)">
@@ -225,7 +225,7 @@ export default function TimeTypesClient({
               required
               value={innleieForm.cost_per_hour}
               onChange={(raw) => setInnleieForm((p) => ({ ...p, cost_per_hour: raw }))}
-              className="px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500 w-28"
+              className="px-2 py-1.5 text-sm text-[var(--color-text-primary)] border border-border rounded focus:outline-none focus:ring-blue-500 w-28"
             />
           </Field>
           <Button type="submit" disabled={savingInnleie || !selectedSubId}>

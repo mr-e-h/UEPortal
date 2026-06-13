@@ -57,19 +57,19 @@ export default function ProductPriceModal({
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-gray-100 flex-none">
+        <div className="flex items-start justify-between gap-4 px-6 py-4 border-b border-border flex-none">
           <div className="min-w-0">
-            <h2 className="text-base font-bold text-gray-900 truncate">
+            <h2 className="text-base font-bold text-[var(--color-text-primary)] truncate">
               {product.description ? `${product.description} – ` : ''}{product.name}
             </h2>
-            <p className="text-sm text-gray-500 mt-0.5">
+            <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
               Utsalgspris {fmt(customerPrice)} · enhet {product.unit}
               {product.county ? ` · ${product.county}` : ''}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-1 -mr-1 text-gray-400 hover:text-gray-700 flex-none"
+            className="p-1 -mr-1 text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] flex-none"
             aria-label="Lukk"
           >
             <X size={18} />
@@ -79,15 +79,15 @@ export default function ProductPriceModal({
         {/* Body */}
         <div className="overflow-y-auto px-6 py-4 space-y-5">
           <section>
-            <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+            <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
               UE-priser ({rows.length})
             </h3>
             {rows.length === 0 ? (
-              <p className="text-sm text-gray-400">Ingen underentreprenører har registrert pris på dette produktet ennå.</p>
+              <p className="text-sm text-[var(--color-text-muted)]">Ingen underentreprenører har registrert pris på dette produktet ennå.</p>
             ) : (
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-100 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  <tr className="border-b border-border text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
                     <th className="py-2 pr-3">Underentreprenør</th>
                     <th className="py-2 px-3 text-right">Kostpris</th>
                     <th className="py-2 px-3 text-right">Margin</th>
@@ -102,7 +102,7 @@ export default function ProductPriceModal({
                     return (
                       <tr key={price.id} className="border-b border-gray-50 last:border-0">
                         <td className="py-2 pr-3">
-                          <span className="font-medium text-gray-900">{sub?.company_name ?? 'Ukjent UE'}</span>
+                          <span className="font-medium text-[var(--color-text-primary)]">{sub?.company_name ?? 'Ukjent UE'}</span>
                           {i === 0 && (
                             <span className="ml-2 align-middle">
                               <StatusPill tone="green">Billigst</StatusPill>
@@ -114,12 +114,12 @@ export default function ProductPriceModal({
                             </span>
                           )}
                         </td>
-                        <td className="py-2 px-3 text-right font-medium text-gray-900 whitespace-nowrap">{fmt(price.cost_price)}</td>
+                        <td className="py-2 px-3 text-right font-medium text-[var(--color-text-primary)] whitespace-nowrap">{fmt(price.cost_price)}</td>
                         <td className={`py-2 px-3 text-right whitespace-nowrap ${margin >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                           {fmt(margin)}
-                          <span className="text-xs text-gray-400 ml-1">({marginPct.toFixed(0)}%)</span>
+                          <span className="text-xs text-[var(--color-text-muted)] ml-1">({marginPct.toFixed(0)}%)</span>
                         </td>
-                        <td className="py-2 pl-3 text-right whitespace-nowrap text-gray-500">
+                        <td className="py-2 pl-3 text-right whitespace-nowrap text-[var(--color-text-muted)]">
                           {diff === 0 ? '–' : `+${fmt(diff)}`}
                         </td>
                       </tr>
@@ -132,7 +132,7 @@ export default function ProductPriceModal({
 
           {missing.length > 0 && (
             <section>
-              <h3 className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+              <h3 className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
                 Aktive UE uten pris ({missing.length})
               </h3>
               <div className="flex flex-wrap gap-1.5">

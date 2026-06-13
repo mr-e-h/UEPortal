@@ -58,6 +58,23 @@ export function changeOrderStatus(status: string): StatusMeta {
   return CHANGE_ORDER_STATUSES[status as ChangeOrderStatus] ?? { ...FALLBACK, label: status }
 }
 
+/**
+ * EM-pillen med pending-nyansen: en ventende EM er enten «Ubehandlet» eller
+ * «Sendt kunde» (sent_to_customer_at satt). Brukes av EM-detalj og dashboard
+ * så nyansen får samme ord og farger overalt.
+ */
+export function changeOrderPill(status: string, sentToCustomer: boolean): StatusMeta {
+  if (status === 'pending') {
+    return sentToCustomer
+      ? { label: 'Sendt kunde', cls: 'bg-blue-50 text-blue-700' }
+      : { label: 'Ubehandlet', cls: 'bg-amber-50 text-amber-700' }
+  }
+  if (status === 'revision_requested') {
+    return { label: 'Trenger revisjon hos UE', cls: 'bg-orange-100 text-orange-700' }
+  }
+  return changeOrderStatus(status)
+}
+
 // ─── Change Order Type ─────────────────────────────────────────────────────────
 
 export const CHANGE_ORDER_TYPES: Record<ChangeOrderType, StatusMeta> = {

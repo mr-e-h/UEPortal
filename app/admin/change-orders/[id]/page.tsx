@@ -6,7 +6,8 @@ import Link from 'next/link'
 import { Pencil, X, Save, Printer, History, Plus, Trash2 } from 'lucide-react'
 import type { ChangeOrder, ChangeOrderLine, ChangeOrderConsequenceLine, Project, Product, Subcontractor, ActivityEntry } from '@/types'
 import { fmtNOK as fmt, fmtProductLabel, fmtChangeOrderTitle } from '@/lib/format'
-import { changeOrderType } from '@/lib/statuses'
+import { ADMIN_ROLES } from '@/lib/roles'
+import { changeOrderType, changeOrderPill } from '@/lib/statuses'
 import { activityActionLabel } from '@/lib/activity-actions'
 import { useMe } from '@/lib/useMe'
 import VersionDiffModal from '@/components/admin/VersionDiffModal'
@@ -42,7 +43,7 @@ export default function ChangeOrderDetailPage() {
   // fortjeneste/margin (allerede strippet server-side i /api/change-orders),
   // og ingen endelig godkjenn/avslå/send-til-kunde (API-ene 403'er uansett —
   // dette skjuler bare knappene/kortene). UE-kost vises.
-  const canSeeEconomy = me ? ['main', 'company', 'project_manager'].includes(me.role) : true
+  const canSeeEconomy = me ? ADMIN_ROLES.includes(me.role) : true
   const [co, setCo] = useState<ChangeOrder | null>(null)
   const [project, setProject] = useState<Project | null>(null)
   const [sub, setSub] = useState<Subcontractor | null>(null)
@@ -69,6 +70,7 @@ export default function ChangeOrderDetailPage() {
   const [editEmType, setEditEmType] = useState<'economic' | 'spec_deviation' | 'time'>('economic')
   const [editError, setEditError] = useState<string | null>(null)
   const [editSaving, setEditSaving] = useState(false)
+  const [revisionError, setRevisionError] = useState<string | null>(null)
 
   // Versjonslogg diff popup
   const [diffEntry, setDiffEntry] = useState<ActivityEntry | null>(null)
@@ -127,9 +129,10 @@ export default function ChangeOrderDetailPage() {
   async function requestRevision() {
     if (!comment.trim()) {
       // Krev kommentar — uten den vet ikke UE hva som mangler.
-      window.alert('Skriv en kommentar som forklarer UE hva som mangler eller må endres.')
+      setRevisionError('Skriv en kommentar som forklarer UE hva som mangler eller må endres.')
       return
     }
+    setRevisionError(null)
     setSubmitting(true)
     await fetch(`/api/change-orders/${id}/request-revision`, {
       method: 'POST',
@@ -270,8 +273,8 @@ export default function ChangeOrderDetailPage() {
     setTimeout(() => window.print(), 50)
   }
 
-  if (loading) return <div className="min-h-screen flex items-center justify-center text-gray-500">Laster...</div>
-  if (!co) return <div className="min-h-screen flex items-center justify-center text-gray-500">Endringsmelding ikke funnet</div>
+  if (loading) return <div className="min-h-screen flex items-center justify-center text-[var(--color-text-muted)]">Laster...</div>
+  if (!co) return <div className="min-h-screen flex items-center justify-center text-[var(--color-text-muted)]">Endringsmelding ikke funnet</div>
 
   const isReviewed = co.status !== 'pending'
   const sentToCustomer = co.status === 'pending' && !!co.sent_to_customer_at
@@ -279,16 +282,9 @@ export default function ChangeOrderDetailPage() {
     ? Math.round((co.profit / co.total_customer_value) * 100)
     : 0
 
-  // Status pill — flere tilstander for pending (ubehandlet, sent-til-kunde),
-  // pluss kladd, godkjent, avslått og 'Trenger revisjon' (returnert til UE).
-  const statusPill: { label: string; cls: string } = (() => {
-    if (co.status === 'approved') return { label: 'Godkjent', cls: 'bg-green-100 text-green-700' }
-    if (co.status === 'rejected') return { label: 'Avvist', cls: 'bg-red-100 text-red-700' }
-    if (co.status === 'draft') return { label: 'Kladd', cls: 'bg-gray-100 text-gray-500' }
-    if (co.status === 'revision_requested') return { label: 'Trenger revisjon hos UE', cls: 'bg-orange-100 text-orange-700' }
-    if (sentToCustomer) return { label: 'Sendt kunde', cls: 'bg-blue-50 text-blue-700' }
-    return { label: 'Ubehandlet', cls: 'bg-amber-50 text-amber-700' }
-  })()
+  // Status pill — ord og farger fra status-modulen (lib/statuses), inkl.
+  // pending-nyansen Ubehandlet/Sendt kunde.
+  const statusPill = changeOrderPill(co.status, sentToCustomer)
 
   // Versjonslogg events — every non-comment activity entry. Newest first.
   const versionEvents = activity
@@ -296,7 +292,7 @@ export default function ChangeOrderDetailPage() {
     .sort((a, b) => b.created_at.localeCompare(a.created_at))
 
   return (
-    <div className="min-h-screen bg-gray-50 print:bg-white">
+    <div className="min-h-screen bg-muted print:bg-white">
       <style jsx global>{`
         @media print {
           .print\\:hidden { display: none !important; }
@@ -306,12 +302,12 @@ export default function ChangeOrderDetailPage() {
 
       <header className="bg-white shadow print:hidden">
         <div className="px-4 sm:px-6 py-4 flex items-center gap-3 flex-wrap">
-          <Link href="/admin/change-orders" className="text-gray-400 hover:text-gray-600 text-sm">← Endringsmeldinger</Link>
+          <Link href="/admin/change-orders" className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-sm">← Endringsmeldinger</Link>
           <div>
-            <h1 className="text-xl font-bold text-gray-900">
+            <h1 className="text-xl font-bold text-[var(--color-text-primary)]">
               {fmtChangeOrderTitle(co.change_order_number, project?.name)}
             </h1>
-            <p className="text-sm text-gray-500">{sub?.company_name ?? '–'}</p>
+            <p className="text-sm text-[var(--color-text-muted)]">{sub?.company_name ?? '–'}</p>
           </div>
           <div className="ml-auto flex items-center gap-2 flex-wrap">
             <span className={`text-xs px-2 py-0.5 rounded ${statusPill.cls}`}>{statusPill.label}</span>
@@ -319,7 +315,7 @@ export default function ChangeOrderDetailPage() {
               <button
                 onClick={() => handleStatus('pending')}
                 disabled={submitting}
-                className="px-3 py-1 text-xs bg-gray-100 text-gray-600 rounded hover:bg-gray-200 disabled:opacity-50"
+                className="px-3 py-1 text-xs bg-muted text-[var(--color-text-secondary)] rounded hover:bg-gray-200 disabled:opacity-50"
               >
                 Angre
               </button>
@@ -332,17 +328,17 @@ export default function ChangeOrderDetailPage() {
         {/* CENTER — Kundedel (printable) */}
         <section className="lg:col-span-9 space-y-6">
           <div className="bg-white rounded-lg shadow p-6 space-y-5">
-            <div className="border-b border-gray-100 pb-3 flex items-start justify-between gap-3">
+            <div className="border-b border-border pb-3 flex items-start justify-between gap-3">
               <div>
                 <div className="flex items-center gap-2 mb-0.5">
-                  <p className="text-xs text-gray-400">Endringsmelding {co.change_order_number}</p>
+                  <p className="text-xs text-[var(--color-text-muted)]">Endringsmelding {co.change_order_number}</p>
                   {(() => {
                     const t = changeOrderType(co.em_type)
                     return <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${t.cls}`}>{t.label}</span>
                   })()}
                 </div>
-                <h2 className="text-lg font-bold text-gray-900">{project?.name ?? '–'}</h2>
-                <p className="text-xs text-gray-500">
+                <h2 className="text-lg font-bold text-[var(--color-text-primary)]">{project?.name ?? '–'}</h2>
+                <p className="text-xs text-[var(--color-text-muted)]">
                   Prosjektnummer: {project?.project_number ?? '–'}
                   {co.submitted_at && ` · Innsendt ${co.submitted_at.split('T')[0]}`}
                 </p>
@@ -354,7 +350,7 @@ export default function ChangeOrderDetailPage() {
                   <button
                     onClick={startEdit}
                     disabled={submitting}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white border border-border text-[var(--color-text-secondary)] rounded hover:bg-muted disabled:opacity-50"
                   >
                     <Pencil size={12} /> Rediger
                   </button>
@@ -378,17 +374,17 @@ export default function ChangeOrderDetailPage() {
                 Internt-kortet til høyre. Totalbeløpet sitter som tfoot-rad
                 under produktene istedenfor som egen blå boks. */}
             <div>
-              <p className="text-xs text-gray-400 mb-2">Produkter</p>
-              <div className="overflow-x-auto rounded border border-gray-200">
+              <p className="text-xs text-[var(--color-text-muted)] mb-2">Produkter</p>
+              <div className="overflow-x-auto rounded border border-border">
                 <table className="w-full text-sm">
-                  <thead className="bg-gray-50 text-xs text-gray-500 uppercase tracking-wide">
+                  <thead className="bg-muted text-xs text-[var(--color-text-muted)] uppercase tracking-wide">
                     <tr>
                       <th className="px-3 py-2 text-left font-medium">Produkt</th>
                       <th className="px-3 py-2 text-right font-medium">Mengde</th>
                       {canSeeEconomy && <th className="px-3 py-2 text-right font-medium">Total</th>}
                     </tr>
                   </thead>
-                  <tbody className="divide-y divide-gray-100">
+                  <tbody className="divide-y divide-border">
                     {(lines.length > 0
                       ? lines
                       : [{
@@ -405,13 +401,13 @@ export default function ChangeOrderDetailPage() {
                       return (
                         <tr key={ln.id}>
                           <td className="px-3 py-2">
-                            <p className="font-medium text-gray-900">{fmtProductLabel(p)}</p>
+                            <p className="font-medium text-[var(--color-text-primary)]">{fmtProductLabel(p)}</p>
                           </td>
-                          <td className="px-3 py-2 text-right tabular-nums text-gray-700">
-                            {ln.requested_quantity} <span className="text-gray-400">{ln.unit}</span>
+                          <td className="px-3 py-2 text-right tabular-nums text-[var(--color-text-secondary)]">
+                            {ln.requested_quantity} <span className="text-[var(--color-text-muted)]">{ln.unit}</span>
                           </td>
                           {canSeeEconomy && (
-                            <td className="px-3 py-2 text-right tabular-nums text-gray-700">
+                            <td className="px-3 py-2 text-right tabular-nums text-[var(--color-text-secondary)]">
                               {fmt(lineSales)}
                             </td>
                           )}
@@ -436,13 +432,13 @@ export default function ChangeOrderDetailPage() {
             </div>
 
             <div>
-              <p className="text-xs text-gray-400 mb-1">Beskrivelse</p>
-              <p className="text-sm text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-line">{co.reason || '–'}</p>
+              <p className="text-xs text-[var(--color-text-muted)] mb-1">Beskrivelse</p>
+              <p className="text-sm text-[var(--color-text-secondary)] bg-muted rounded p-3 whitespace-pre-line">{co.reason || '–'}</p>
             </div>
 
             <div>
-              <p className="text-xs text-gray-400 mb-1">Løsning</p>
-              <p className="text-sm text-gray-700 bg-gray-50 rounded p-3 whitespace-pre-line">{co.solution || '–'}</p>
+              <p className="text-xs text-[var(--color-text-muted)] mb-1">Løsning</p>
+              <p className="text-sm text-[var(--color-text-secondary)] bg-muted rounded p-3 whitespace-pre-line">{co.solution || '–'}</p>
             </div>
 
             {/* Konsekvens ved avslag — PL/admin-definert. Vises også på PDF
@@ -451,7 +447,7 @@ export default function ChangeOrderDetailPage() {
                 konsekvens" — det er forvirrende). */}
             {consequenceLines.length > 0 && (
               <div>
-                <p className="text-xs text-gray-400 mb-1">Konsekvens ved å avslå</p>
+                <p className="text-xs text-[var(--color-text-muted)] mb-1">Konsekvens ved å avslå</p>
                 <div className="overflow-x-auto rounded border border-orange-200 bg-orange-50/50">
                   <table className="w-full text-sm">
                     <thead className="bg-orange-100/50 text-xs text-orange-900 uppercase tracking-wide">
@@ -466,10 +462,10 @@ export default function ChangeOrderDetailPage() {
                         return (
                           <tr key={ln.id}>
                             <td className="px-3 py-2">
-                              <p className="font-medium text-gray-900">{fmtProductLabel(p)}</p>
+                              <p className="font-medium text-[var(--color-text-primary)]">{fmtProductLabel(p)}</p>
                             </td>
-                            <td className="px-3 py-2 text-right tabular-nums text-gray-700">
-                              − {ln.quantity} <span className="text-gray-400">{ln.unit}</span>
+                            <td className="px-3 py-2 text-right tabular-nums text-[var(--color-text-secondary)]">
+                              − {ln.quantity} <span className="text-[var(--color-text-muted)]">{ln.unit}</span>
                             </td>
                           </tr>
                         )
@@ -477,7 +473,7 @@ export default function ChangeOrderDetailPage() {
                     </tbody>
                   </table>
                 </div>
-                <p className="mt-1 text-[10px] text-gray-400">
+                <p className="mt-1 text-[10px] text-[var(--color-text-muted)]">
                   Hvis EM avvises, trekkes disse mengdene automatisk fra prosjektbudsjettet.
                 </p>
               </div>
@@ -504,10 +500,10 @@ export default function ChangeOrderDetailPage() {
                     each product's customer_price + the UE's price list. */}
                 <div className="overflow-x-auto bg-white rounded border border-primary/30">
                   <table className="w-full text-xs">
-                    <thead className="bg-gray-50">
+                    <thead className="bg-muted">
                       <tr>
-                        <th className="px-3 py-2 text-left font-semibold text-gray-600">Produkt</th>
-                        <th className="px-3 py-2 text-right font-semibold text-gray-600 w-32">Mengde</th>
+                        <th className="px-3 py-2 text-left font-semibold text-[var(--color-text-secondary)]">Produkt</th>
+                        <th className="px-3 py-2 text-right font-semibold text-[var(--color-text-secondary)] w-32">Mengde</th>
                         <th className="px-3 py-2 w-12"></th>
                       </tr>
                     </thead>
@@ -515,12 +511,12 @@ export default function ChangeOrderDetailPage() {
                       {editLines.map((ln) => {
                         const prod = products.find((p) => p.id === ln.product_id) ?? null
                         return (
-                          <tr key={ln.tempId} className="border-t border-gray-100">
+                          <tr key={ln.tempId} className="border-t border-border">
                             <td className="px-3 py-2">
                               <select
                                 value={ln.product_id}
                                 onChange={(e) => updateEditLine(ln.tempId, { product_id: e.target.value })}
-                                className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+                                className="w-full px-2 py-1 text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary bg-white"
                               >
                                 <option value="">Velg produkt...</option>
                                 {products.map((p) => (
@@ -537,9 +533,9 @@ export default function ChangeOrderDetailPage() {
                                   min="0"
                                   value={ln.requested_quantity}
                                   onChange={(e) => updateEditLine(ln.tempId, { requested_quantity: e.target.value })}
-                                  className="w-20 px-2 py-1 text-right text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary tabular-nums"
+                                  className="w-20 px-2 py-1 text-right text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary tabular-nums"
                                 />
-                                <span className="text-gray-400 text-xs w-8">{prod?.unit ?? ''}</span>
+                                <span className="text-[var(--color-text-muted)] text-xs w-8">{prod?.unit ?? ''}</span>
                               </div>
                             </td>
                             <td className="px-3 py-2 text-center">
@@ -547,7 +543,7 @@ export default function ChangeOrderDetailPage() {
                                 type="button"
                                 onClick={() => removeEditLine(ln.tempId)}
                                 disabled={editLines.length <= 1}
-                                className="p-1 text-gray-400 hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
+                                className="p-1 text-[var(--color-text-muted)] hover:text-red-600 disabled:opacity-30 disabled:cursor-not-allowed"
                                 title={editLines.length <= 1 ? 'Minst én linje må være igjen' : 'Fjern linje'}
                               >
                                 <Trash2 size={14} />
@@ -561,11 +557,11 @@ export default function ChangeOrderDetailPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
+                  <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Type</label>
                   <select
                     value={editEmType}
                     onChange={(e) => setEditEmType(e.target.value as 'economic' | 'spec_deviation' | 'time')}
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary bg-white"
+                    className="block w-full px-3 py-2 text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary bg-white"
                   >
                     <option value="economic">Økonomisk</option>
                     <option value="spec_deviation">Avvik kravspec</option>
@@ -574,24 +570,24 @@ export default function ChangeOrderDetailPage() {
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Beskrivelse</label>
+                  <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Beskrivelse</label>
                   <textarea
                     rows={3}
                     value={editReason}
                     onChange={(e) => setEditReason(e.target.value)}
                     placeholder="Hva er endringen?"
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="block w-full px-3 py-2 text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
 
                 <div>
-                  <label className="block text-xs font-medium text-gray-700 mb-1">Løsning</label>
+                  <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Løsning</label>
                   <textarea
                     rows={3}
                     value={editSolution}
                     onChange={(e) => setEditSolution(e.target.value)}
                     placeholder="Hvordan løses det / hva blir gjort?"
-                    className="block w-full px-3 py-2 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-primary"
+                    className="block w-full px-3 py-2 text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-primary"
                   />
                 </div>
 
@@ -600,7 +596,7 @@ export default function ChangeOrderDetailPage() {
                     avvises. Tom liste tillatt: ingen konsekvens definert. */}
                 <div className="space-y-2">
                   <div className="flex items-center justify-between">
-                    <label className="block text-xs font-medium text-gray-700">Konsekvens ved å avslå</label>
+                    <label className="block text-xs font-medium text-[var(--color-text-secondary)]">Konsekvens ved å avslå</label>
                     <button
                       type="button"
                       onClick={addConsequenceLine}
@@ -609,7 +605,7 @@ export default function ChangeOrderDetailPage() {
                       <Plus size={12} /> Legg til konsekvens
                     </button>
                   </div>
-                  <p className="text-[10px] text-gray-500">
+                  <p className="text-[10px] text-[var(--color-text-muted)]">
                     Produkter + mengder som vil trekkes fra prosjektbudsjettet hvis EMen avvises (samme UE som EMen).
                   </p>
                   {editConsequenceLines.length > 0 && (
@@ -631,7 +627,7 @@ export default function ChangeOrderDetailPage() {
                                   <select
                                     value={ln.product_id}
                                     onChange={(e) => updateConsequenceLine(ln.tempId, { product_id: e.target.value })}
-                                    className="w-full px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white"
+                                    className="w-full px-2 py-1 text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-orange-400 bg-white"
                                   >
                                     <option value="">Velg produkt...</option>
                                     {products.map((p) => (
@@ -648,16 +644,16 @@ export default function ChangeOrderDetailPage() {
                                       min="0"
                                       value={ln.quantity}
                                       onChange={(e) => updateConsequenceLine(ln.tempId, { quantity: e.target.value })}
-                                      className="w-20 px-2 py-1 text-right text-sm border border-gray-300 rounded focus:outline-none focus:ring-1 focus:ring-orange-400 tabular-nums"
+                                      className="w-20 px-2 py-1 text-right text-sm border border-border rounded focus:outline-none focus:ring-1 focus:ring-orange-400 tabular-nums"
                                     />
-                                    <span className="text-gray-400 text-xs w-8">{prod?.unit ?? ''}</span>
+                                    <span className="text-[var(--color-text-muted)] text-xs w-8">{prod?.unit ?? ''}</span>
                                   </div>
                                 </td>
                                 <td className="px-3 py-2 text-center">
                                   <button
                                     type="button"
                                     onClick={() => removeConsequenceLine(ln.tempId)}
-                                    className="p-1 text-gray-400 hover:text-red-600"
+                                    className="p-1 text-[var(--color-text-muted)] hover:text-red-600"
                                     title="Fjern konsekvens-linje"
                                   >
                                     <Trash2 size={14} />
@@ -675,7 +671,7 @@ export default function ChangeOrderDetailPage() {
                 {editError && (
                   <p className="text-xs text-red-600 bg-red-50 border border-red-200 rounded px-2 py-1">{editError}</p>
                 )}
-                <p className="text-[10px] text-gray-500">
+                <p className="text-[10px] text-[var(--color-text-muted)]">
                   Priser hentes automatisk fra prislisten. Endringen logges i versjonsloggen, og UE ser samme oppdatering — uten kundepriser.
                 </p>
                 <div className="flex gap-2 justify-end">
@@ -683,7 +679,7 @@ export default function ChangeOrderDetailPage() {
                     type="button"
                     onClick={() => setEditing(false)}
                     disabled={editSaving}
-                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
+                    className="inline-flex items-center gap-1 px-3 py-1.5 text-xs bg-white border border-border text-[var(--color-text-secondary)] rounded hover:bg-muted disabled:opacity-50"
                   >
                     <X size={12} /> Avbryt
                   </button>
@@ -703,7 +699,7 @@ export default function ChangeOrderDetailPage() {
           {/* Attachment — rides along in the PDF. */}
           {co.attachment_url && (
             <div className="bg-white rounded-lg shadow p-6">
-              <p className="text-sm font-medium text-gray-700 mb-3">Vedlegg</p>
+              <p className="text-sm font-medium text-[var(--color-text-secondary)] mb-3">Vedlegg</p>
               <a
                 href={`/api/change-orders/${co.id}/attachment?redirect=1`}
                 target="_blank"
@@ -713,7 +709,7 @@ export default function ChangeOrderDetailPage() {
                 <img
                   src={`/api/change-orders/${co.id}/attachment?redirect=1`}
                   alt="Vedlegg"
-                  className="max-w-full rounded border border-gray-200"
+                  className="max-w-full rounded border border-border"
                 />
               </a>
             </div>
@@ -726,16 +722,19 @@ export default function ChangeOrderDetailPage() {
               er kun pending-relevant. */}
           {canSeeEconomy && (co.status === 'pending' || co.status === 'revision_requested') && (
             <div className="print:hidden bg-white rounded-lg shadow p-6 space-y-4">
-              <h2 className="text-base font-semibold text-gray-900">Behandle endringsmelding</h2>
+              <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Behandle endringsmelding</h2>
               <div>
-                <label className="block text-sm font-medium text-gray-700 mb-1">Kommentar (valgfritt)</label>
+                <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Kommentar (valgfritt)</label>
                 <textarea
                   value={comment}
-                  onChange={(e) => setComment(e.target.value)}
+                  onChange={(e) => { setComment(e.target.value); if (revisionError) setRevisionError(null) }}
                   rows={3}
-                  className="block w-full px-3 py-2 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                  className="block w-full px-3 py-2 text-sm text-[var(--color-text-primary)] border border-border rounded focus:outline-none focus:ring-blue-500 focus:border-blue-500"
                   placeholder="Legg til en kommentar til underentreprenøren..."
                 />
+                {revisionError && (
+                  <p className="mt-1.5 text-sm text-red-600">{revisionError}</p>
+                )}
               </div>
               <div className="flex gap-3 justify-end flex-wrap">
                 <button
@@ -751,7 +750,7 @@ export default function ChangeOrderDetailPage() {
                   <button
                     onClick={requestRevision}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
+                    className="px-4 py-2 text-sm bg-white border border-border text-[var(--color-text-secondary)] rounded hover:bg-muted disabled:opacity-50"
                     title="Returnerer EMen til UE for revisjon. Kommentaren over blir vist for UE så de vet hva som mangler."
                   >
                     Be om ny versjon
@@ -761,7 +760,7 @@ export default function ChangeOrderDetailPage() {
                   <button
                     onClick={markAsSent}
                     disabled={submitting}
-                    className="px-4 py-2 text-sm bg-white border border-gray-300 text-gray-700 rounded hover:bg-gray-50 disabled:opacity-50"
+                    className="px-4 py-2 text-sm bg-white border border-border text-[var(--color-text-secondary)] rounded hover:bg-muted disabled:opacity-50"
                     title="Markerer EM som sendt til kunde — pillen flippes fra 'Ubehandlet' til 'Sendt kunde'. Bruk når EMen er sendt ut via annen kanal enn Eksporter PDF."
                   >
                     Marker som sendt kunde
@@ -798,12 +797,12 @@ export default function ChangeOrderDetailPage() {
           {/* Already reviewed (approved/rejected) — hidden in print */}
           {(co.status === 'approved' || co.status === 'rejected') && (
             <div className="print:hidden bg-white rounded-lg shadow p-6 space-y-2">
-              <p className="text-sm font-medium text-gray-700">Behandlet av: {co.reviewed_by ?? '–'}</p>
-              <p className="text-sm text-gray-500">Dato: {co.reviewed_at?.split('T')[0] ?? '–'}</p>
+              <p className="text-sm font-medium text-[var(--color-text-secondary)]">Behandlet av: {co.reviewed_by ?? '–'}</p>
+              <p className="text-sm text-[var(--color-text-muted)]">Dato: {co.reviewed_at?.split('T')[0] ?? '–'}</p>
               {co.admin_comment && (
                 <div>
-                  <p className="text-xs text-gray-400 mb-1">Kommentar</p>
-                  <p className="text-sm text-gray-700 bg-gray-50 rounded p-3">{co.admin_comment}</p>
+                  <p className="text-xs text-[var(--color-text-muted)] mb-1">Kommentar</p>
+                  <p className="text-sm text-[var(--color-text-secondary)] bg-muted rounded p-3">{co.admin_comment}</p>
                 </div>
               )}
             </div>
@@ -816,27 +815,27 @@ export default function ChangeOrderDetailPage() {
             til Versjonsloggen. */}
         <aside className="lg:col-span-3 print:hidden space-y-4">
           <div className="bg-white rounded-lg shadow p-5 space-y-2">
-            <h2 className="text-sm font-semibold text-gray-900">Avsender</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Avsender</h2>
             <dl className="space-y-1.5 text-sm">
               <div className="flex justify-between gap-2">
-                <dt className="text-gray-500 flex-none">Navn</dt>
-                <dd className="font-medium text-gray-900 truncate text-right">{co.submitted_by ?? '–'}</dd>
+                <dt className="text-[var(--color-text-muted)] flex-none">Navn</dt>
+                <dd className="font-medium text-[var(--color-text-primary)] truncate text-right">{co.submitted_by ?? '–'}</dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-gray-500 flex-none">Firma</dt>
-                <dd className="font-medium text-gray-900 truncate text-right">{sub?.company_name ?? '–'}</dd>
+                <dt className="text-[var(--color-text-muted)] flex-none">Firma</dt>
+                <dd className="font-medium text-[var(--color-text-primary)] truncate text-right">{sub?.company_name ?? '–'}</dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-gray-500 flex-none">Dato</dt>
-                <dd className="font-medium text-gray-900 tabular-nums text-right">
+                <dt className="text-[var(--color-text-muted)] flex-none">Dato</dt>
+                <dd className="font-medium text-[var(--color-text-primary)] tabular-nums text-right">
                   {co.submitted_at
                     ? new Date(co.submitted_at).toLocaleDateString('nb-NO', { timeZone: 'Europe/Oslo' })
                     : '–'}
                 </dd>
               </div>
               <div className="flex justify-between gap-2">
-                <dt className="text-gray-500 flex-none">Klokkeslett</dt>
-                <dd className="font-medium text-gray-900 tabular-nums text-right">
+                <dt className="text-[var(--color-text-muted)] flex-none">Klokkeslett</dt>
+                <dd className="font-medium text-[var(--color-text-primary)] tabular-nums text-right">
                   {co.submitted_at
                     ? new Date(co.submitted_at).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Oslo' })
                     : '–'}
@@ -846,36 +845,36 @@ export default function ChangeOrderDetailPage() {
           </div>
 
           <div className="bg-white rounded-lg shadow p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-gray-900">{canSeeEconomy ? 'Internt — økonomi' : 'Internt — kostnad'}</h2>
-            <p className="text-[10px] text-gray-500 -mt-2">Skjules i PDF og hos UE</p>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">{canSeeEconomy ? 'Internt — økonomi' : 'Internt — kostnad'}</h2>
+            <p className="text-[10px] text-[var(--color-text-muted)] -mt-2">Skjules i PDF og hos UE</p>
 
             <dl className="space-y-2 text-sm">
               <div className="flex justify-between">
-                <dt className="text-gray-500">UE-kostpris</dt>
-                <dd className="font-medium text-gray-900 tabular-nums">{fmt(co.cost_price_snapshot)}/{co.unit}</dd>
+                <dt className="text-[var(--color-text-muted)]">UE-kostpris</dt>
+                <dd className="font-medium text-[var(--color-text-primary)] tabular-nums">{fmt(co.cost_price_snapshot)}/{co.unit}</dd>
               </div>
               {canSeeEconomy && (
                 <div className="flex justify-between">
-                  <dt className="text-gray-500">Kundepris</dt>
-                  <dd className="font-medium text-gray-900 tabular-nums">{fmt(co.customer_price_snapshot)}/{co.unit}</dd>
+                  <dt className="text-[var(--color-text-muted)]">Kundepris</dt>
+                  <dd className="font-medium text-[var(--color-text-primary)] tabular-nums">{fmt(co.customer_price_snapshot)}/{co.unit}</dd>
                 </div>
               )}
-              <div className="border-t border-gray-100 pt-2 flex justify-between">
-                <dt className="text-gray-500">Total kostnad</dt>
-                <dd className="font-semibold text-gray-900 tabular-nums">{fmt(co.total_cost)}</dd>
+              <div className="border-t border-border pt-2 flex justify-between">
+                <dt className="text-[var(--color-text-muted)]">Total kostnad</dt>
+                <dd className="font-semibold text-[var(--color-text-primary)] tabular-nums">{fmt(co.total_cost)}</dd>
               </div>
               {canSeeEconomy && (
                 <>
                   <div className="flex justify-between">
-                    <dt className="text-gray-500">Salgsverdi</dt>
-                    <dd className="font-semibold text-gray-900 tabular-nums">{fmt(co.total_customer_value)}</dd>
+                    <dt className="text-[var(--color-text-muted)]">Salgsverdi</dt>
+                    <dd className="font-semibold text-[var(--color-text-primary)] tabular-nums">{fmt(co.total_customer_value)}</dd>
                   </div>
-                  <div className="border-t border-gray-100 pt-2 flex justify-between">
-                    <dt className="text-gray-500">Fortjeneste</dt>
+                  <div className="border-t border-border pt-2 flex justify-between">
+                    <dt className="text-[var(--color-text-muted)]">Fortjeneste</dt>
                     <dd className={`font-bold tabular-nums ${co.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(co.profit)}</dd>
                   </div>
                   <div className="flex justify-between">
-                    <dt className="text-gray-500">Margin</dt>
+                    <dt className="text-[var(--color-text-muted)]">Margin</dt>
                     <dd className={`font-semibold tabular-nums ${margin >= 15 ? 'text-green-600' : 'text-orange-500'}`}>{margin}%</dd>
                   </div>
                 </>
@@ -885,11 +884,11 @@ export default function ChangeOrderDetailPage() {
 
           <div className="bg-white rounded-lg shadow p-5 space-y-3">
             <div className="flex items-center gap-2">
-              <History size={14} className="text-gray-500" />
-              <h2 className="text-sm font-semibold text-gray-900">Versjonslogg</h2>
+              <History size={14} className="text-[var(--color-text-muted)]" />
+              <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Versjonslogg</h2>
             </div>
             {versionEvents.length === 0 ? (
-              <p className="text-xs text-gray-400">Ingen endringer ennå</p>
+              <p className="text-xs text-[var(--color-text-muted)]">Ingen endringer ennå</p>
             ) : (
               <ol className="space-y-2">
                 {versionEvents.map((ev) => {
@@ -903,18 +902,18 @@ export default function ChangeOrderDetailPage() {
                         className={`w-full text-left text-xs space-y-0.5 border-l-2 pl-2.5 py-1 rounded-r transition-colors ${
                           hasDiff
                             ? 'border-primary/40 hover:bg-primary-soft cursor-pointer'
-                            : 'border-gray-200 cursor-default'
+                            : 'border-border cursor-default'
                         }`}
                         title={hasDiff ? 'Klikk for å se gammel vs ny' : undefined}
                       >
-                        <p className="font-medium text-gray-900 flex items-center justify-between gap-2">
+                        <p className="font-medium text-[var(--color-text-primary)] flex items-center justify-between gap-2">
                           <span>{activityActionLabel(ev.action)}</span>
                           {hasDiff && <span className="text-[10px] text-primary">Se diff →</span>}
                         </p>
                         {ev.comment && (
-                          <p className="text-gray-600">{ev.comment}</p>
+                          <p className="text-[var(--color-text-secondary)]">{ev.comment}</p>
                         )}
-                        <p className="text-gray-400">
+                        <p className="text-[var(--color-text-muted)]">
                           {ev.actor} · {new Date(ev.created_at).toLocaleString('nb-NO', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' })}
                         </p>
                       </button>

@@ -3,6 +3,7 @@ import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { ADMIN_ROLES, PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { getProjectScope } from '@/lib/api-guard'
+import { EM_NEEDS_ACTION, WR_NEEDS_ACTION, attentionCounts } from '@/lib/attention'
 import type { Project, ProjectBudgetLine, ProjectSubcontractor } from '@/types'
 import Button from '@/components/ui/Button'
 import ProjectsOverviewClient, { type ProjectCardData } from '@/components/admin/ProjectsOverviewClient'
@@ -33,8 +34,8 @@ export default async function ProjectsPage() {
     sb.from('project_subcontractors').select('project_id, subcontractor_id'),
     sb.from('subcontractors').select('id, company_name'),
     sb.from('project_managers').select('project_id, user_id'),
-    sb.from('change_orders').select('project_id').eq('status', 'pending'),
-    sb.from('weekly_reports').select('project_id').in('status', ['submitted', 'partially_approved']),
+    sb.from('change_orders').select('project_id').in('status', [...EM_NEEDS_ACTION]),
+    sb.from('weekly_reports').select('project_id').in('status', [...WR_NEEDS_ACTION]),
     sb.from('project_checklist_items').select('project_id').is('completed_at', null),
   ])
 
@@ -158,12 +159,11 @@ export default async function ProjectsPage() {
       sub_names: subNamesByProject.get(p.id) ?? [],
       progress,
       progress_source: progressSource,
-      attention: {
-        change_orders: pendingCO,
-        weekly_reports: pendingWR,
-        open_tasks: openTasks,
-        total: pendingCO + pendingWR + openTasks,
-      },
+      attention: attentionCounts({
+        changeOrders: pendingCO,
+        weeklyReports: pendingWR,
+        openTasks,
+      }),
     }
   })
 

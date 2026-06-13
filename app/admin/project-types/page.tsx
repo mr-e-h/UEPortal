@@ -5,9 +5,12 @@ import { Plus, Trash2, ChevronDown, ChevronRight, Save, Pencil, Check, X } from 
 import type { PhaseType } from '@/components/admin/FremdriftsplanClient'
 import Card from '@/components/ui/Card'
 import Field from '@/components/ui/Field'
+import Input from '@/components/ui/Input'
 import Button from '@/components/ui/Button'
 import ErrorBox from '@/components/ui/ErrorBox'
 import EmptyState from '@/components/ui/EmptyState'
+import { useConfirm } from '@/components/ui/useConfirm'
+import { api, apiErrorMessage } from '@/lib/api'
 import type { ProjectType, ProjectTypeChecklistItem } from '@/types'
 
 type TypeWithItems = ProjectType & { items: ProjectTypeChecklistItem[] }
@@ -35,6 +38,7 @@ export default function ProjectTypesPage() {
   const [newDesc, setNewDesc] = useState('')
   const [adding, setAdding] = useState(false)
   const [error, setError] = useState<string | null>(null)
+  const { confirm: confirmAction, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
     const res = await fetch('/api/project-types')
@@ -64,11 +68,15 @@ export default function ProjectTypesPage() {
   }
 
   async function deleteType(t: TypeWithItems) {
-    if (!confirm(`Slett typen «${t.name}»? Sjekklister på eksisterende prosjekter beholdes, men typen kobles fra.`)) return
+    if (!(await confirmAction({
+      title: 'Slett typen?',
+      message: `«${t.name}» slettes. Sjekklister på eksisterende prosjekter beholdes, men typen kobles fra.`,
+      confirmLabel: 'Slett',
+    }))) return
     const res = await fetch(`/api/project-types/${t.id}`, { method: 'DELETE' })
     if (!res.ok) {
       const d = await res.json().catch(() => ({}))
-      alert(d.error ?? 'Sletting feilet')
+      setError(d.error ?? 'Sletting feilet')
       return
     }
     setTypes((prev) => prev.filter((x) => x.id !== t.id))
@@ -82,7 +90,7 @@ export default function ProjectTypesPage() {
     })
     if (!res.ok) {
       const d = await res.json().catch(() => ({}))
-      alert(d.error ?? 'Lagring feilet')
+      setError(d.error ?? 'Lagring feilet')
       return
     }
     refresh()
@@ -92,6 +100,7 @@ export default function ProjectTypesPage() {
 
   return (
     <div className="p-6 space-y-6">
+      {confirmDialog}
       <div>
         <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Type prosjekt</h1>
         <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
@@ -104,20 +113,18 @@ export default function ProjectTypesPage() {
         {error && <ErrorBox className="mb-3">{error}</ErrorBox>}
         <form onSubmit={addType} className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <Field label="Navn">
-            <input
+            <Input
               required
               value={newName}
               onChange={(e) => setNewName(e.target.value)}
               placeholder="F.eks. Fiber FTTH"
-              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
             />
           </Field>
           <Field label="Beskrivelse (valgfri)" className="sm:col-span-2">
-            <input
+            <Input
               value={newDesc}
               onChange={(e) => setNewDesc(e.target.value)}
               placeholder="Kort beskrivelse"
-              className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
             />
           </Field>
           <div className="sm:col-span-3">
@@ -168,6 +175,7 @@ function TypeCard({ type, isExpanded, onToggle, onDelete, onRename, onChange }: 
   const [dirty, setDirty] = useState(false)
   const [newItem, setNewItem] = useState('')
   const [saving, setSaving] = useState(false)
+  const [saveError, setSaveError] = useState<string | null>(null)
 
   useEffect(() => {
     setItems(type.items)
@@ -210,7 +218,7 @@ function TypeCard({ type, isExpanded, onToggle, onDelete, onRename, onChange }: 
   }
 
   async function save() {
-    setSaving(true)
+    setSaving(true); setSaveError(null)
     const res = await fetch(`/api/project-types/${type.id}/items`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
@@ -219,7 +227,7 @@ function TypeCard({ type, isExpanded, onToggle, onDelete, onRename, onChange }: 
     setSaving(false)
     if (!res.ok) {
       const d = await res.json().catch(() => ({}))
-      alert(d.error ?? 'Lagring feilet')
+      setSaveError(d.error ?? 'Lagring feilet')
       return
     }
     setDirty(false)
@@ -280,6 +288,7 @@ function TypeCard({ type, isExpanded, onToggle, onDelete, onRename, onChange }: 
 
       {isExpanded && (
         <div className="border-t border-border px-5 py-4 space-y-3 bg-muted/30">
+          {saveError && <ErrorBox>{saveError}</ErrorBox>}
           {items.length === 0 ? (
             <p className="text-sm text-[var(--color-text-muted)]">Ingen punkter ennå. Legg til under.</p>
           ) : (
@@ -375,33 +384,35 @@ function DefaultPhasesEditor({ typeId }: { typeId: string }) {
   const [editPhaseName, setEditPhaseName] = useState('')
   const [editPhaseColor, setEditPhaseColor] = useState('#2563EB')
   const [savingEdit, setSavingEdit] = useState(false)
+  const { confirm: confirmAction, confirmDialog } = useConfirm()
 
   async function savePhaseEdit() {
     if (!editPhaseId || !editPhaseName.trim()) return
     setSavingEdit(true); setError('')
-    const res = await fetch('/api/phase-types', {
-      method: 'PATCH',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ id: editPhaseId, name: editPhaseName.trim(), color: editPhaseColor }),
-    })
-    setSavingEdit(false)
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}))
-      setError((d as { error?: string }).error ?? 'Lagring feilet')
+    let updated: PhaseType
+    try {
+      updated = await api.phaseTypes.update({ id: editPhaseId, name: editPhaseName.trim(), color: editPhaseColor })
+    } catch (err) {
+      setSavingEdit(false)
+      setError(apiErrorMessage(err, 'Lagring feilet'))
       return
     }
-    const updated = await res.json() as PhaseType
+    setSavingEdit(false)
     setPhaseTypes((prev) => prev.map((t) => (t.id === updated.id ? updated : t)))
     setEditPhaseId(null)
   }
 
   async function deletePhaseType(pt: PhaseType) {
-    if (!confirm(`Fjern fasen «${pt.name}» fra registeret? Den forsvinner fra fasevelgeren overalt. Faser som allerede ligger på prosjekter blokkerer sletting.`)) return
+    if (!(await confirmAction({
+      title: 'Fjern fasen fra registeret?',
+      message: `«${pt.name}» forsvinner fra fasevelgeren overalt. Faser som allerede ligger på prosjekter blokkerer sletting.`,
+      confirmLabel: 'Fjern',
+    }))) return
     setError('')
-    const res = await fetch(`/api/phase-types?id=${pt.id}`, { method: 'DELETE' })
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}))
-      setError((d as { error?: string }).error ?? 'Sletting feilet')
+    try {
+      await api.phaseTypes.remove(pt.id)
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Sletting feilet'))
       return
     }
     setPhaseTypes((prev) => prev.filter((t) => t.id !== pt.id))
@@ -416,18 +427,15 @@ function DefaultPhasesEditor({ typeId }: { typeId: string }) {
     const name = newPhaseName.trim()
     if (!name) return
     setAddingPhase(true); setError('')
-    const res = await fetch('/api/phase-types', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ name, color: newPhaseColor }),
-    })
-    setAddingPhase(false)
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}))
-      setError((d as { error?: string }).error ?? 'Kunne ikke opprette fasen')
+    let created: PhaseType
+    try {
+      created = await api.phaseTypes.create({ name, color: newPhaseColor })
+    } catch (err) {
+      setAddingPhase(false)
+      setError(apiErrorMessage(err, 'Kunne ikke opprette fasen'))
       return
     }
-    const created = await res.json() as PhaseType
+    setAddingPhase(false)
     setPhaseTypes((prev) => [...prev, created])
     // Forhåndsvelg den nye fasen i malen. Var alt valgt fra før («alle er
     // standard»), forblir alt valgt — lagring gir fortsatt tom mal.
@@ -443,8 +451,8 @@ function DefaultPhasesEditor({ typeId }: { typeId: string }) {
   useEffect(() => {
     let cancelled = false
     Promise.all([
-      fetch('/api/phase-types').then((r) => (r.ok ? r.json() : [])),
-      fetch(`/api/project-types/${typeId}/default-phases`).then((r) => (r.ok ? r.json() : { configured: false, phase_type_ids: [] })),
+      api.phaseTypes.list().catch(() => []),
+      api.defaultPhases.get(typeId).catch(() => ({ configured: false, phase_type_ids: [] })),
     ]).then(([pt, cfg]) => {
       if (cancelled) return
       const all = (Array.isArray(pt) ? pt : []) as PhaseType[]
@@ -476,23 +484,21 @@ function DefaultPhasesEditor({ typeId }: { typeId: string }) {
     // Alle huket av = ingen egen mal (tom liste) → «alle er standard».
     const allChecked = selected.size === phaseTypes.length
     const ids = allChecked ? [] : phaseTypes.filter((t) => selected.has(t.id)).map((t) => t.id)
-    const res = await fetch(`/api/project-types/${typeId}/default-phases`, {
-      method: 'PUT',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ phase_type_ids: ids }),
-    })
-    setSaving(false)
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}))
-      setError((d as { error?: string }).error ?? 'Lagring feilet')
+    try {
+      await api.defaultPhases.save(typeId, ids)
+    } catch (err) {
+      setSaving(false)
+      setError(apiErrorMessage(err, 'Lagring feilet'))
       return
     }
+    setSaving(false)
     setConfigured(ids.length > 0)
     setDirty(false)
   }
 
   return (
     <div className="pt-3 border-t border-border space-y-2">
+      {confirmDialog}
       <div className="flex items-center gap-2">
         <h4 className="text-xs font-semibold text-[var(--color-text-primary)]">Standardfaser</h4>
         <span className="text-[10px] text-[var(--color-text-muted)]">

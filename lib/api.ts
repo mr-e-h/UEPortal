@@ -11,8 +11,11 @@
 import type {
   AccessRequest,
   AccessRequestStatus,
+  GanttMilestone,
   Invitation,
+  PhaseType,
   Product,
+  ProjectPhase,
   Subcontractor,
   SubcontractorProductPrice,
   User,
@@ -54,6 +57,11 @@ async function request<T>(
     throw new ApiError(msg, res.status, body)
   }
   return body as T
+}
+
+/** Trekk ut en brukervennlig feilmelding fra et kastet api-kall. */
+export function apiErrorMessage(err: unknown, fallback: string): string {
+  return err instanceof ApiError ? err.message : fallback
 }
 
 function safeJson(s: string): unknown {
@@ -117,6 +125,54 @@ export const api = {
       post<SubcontractorProductPrice>('/api/subcontractor-prices', body),
     update: (id: string, cost_price: number) =>
       put<SubcontractorProductPrice>('/api/subcontractor-prices', { id, cost_price }),
+  },
+  // ── Fremdriftsplan: fasetyper (globalt register) ──────────────────────────
+  phaseTypes: {
+    list: () => get<PhaseType[]>('/api/phase-types'),
+    create: (body: { name: string; color: string }) =>
+      post<PhaseType>('/api/phase-types', body),
+    update: (body: { id: string; name: string; color: string }) =>
+      patch<PhaseType>('/api/phase-types', body),
+    remove: (id: string) =>
+      del<{ ok: true }>(`/api/phase-types?id=${encodeURIComponent(id)}`),
+  },
+  // ── Fremdriftsplan: faser på prosjekt ─────────────────────────────────────
+  projectPhases: {
+    list: (projectId: string) =>
+      get<ProjectPhase[]>(`/api/project-phases?project_id=${encodeURIComponent(projectId)}`),
+    create: (body: {
+      project_id: string
+      phase_type_id: string
+      name?: string | null
+      start_date: string
+      end_date?: string | null
+      status?: ProjectPhase['status']
+      progress_percent?: number
+    }) => post<ProjectPhase>('/api/project-phases', body),
+    update: (id: string, body: Partial<Pick<ProjectPhase,
+      'phase_type_id' | 'name' | 'start_date' | 'end_date' | 'status' | 'progress_percent'>>) =>
+      patch<ProjectPhase>(`/api/project-phases/${id}`, body as unknown as Json),
+    remove: (id: string) =>
+      del<{ ok: true }>(`/api/project-phases/${id}`),
+    applyStandard: (projectId: string) =>
+      post<{ ok: true }>('/api/project-phases/apply-standard', { project_id: projectId }),
+  },
+  // ── Fremdriftsplan: milepæler (legacy Gantt) ──────────────────────────────
+  milestones: {
+    list: (projectId: string) =>
+      get<GanttMilestone[]>(`/api/milestones?project_id=${encodeURIComponent(projectId)}`),
+    update: (body: { id: string; title?: string; start_date?: string; end_date?: string }) =>
+      put<GanttMilestone>('/api/milestones', body),
+    remove: (id: string) =>
+      del<{ ok: true }>(`/api/milestones?id=${encodeURIComponent(id)}`),
+  },
+  // ── Type prosjekt: standardfaser-mal ──────────────────────────────────────
+  defaultPhases: {
+    get: (typeId: string) =>
+      get<{ configured: boolean; phase_type_ids: string[] }>(
+        `/api/project-types/${typeId}/default-phases`),
+    save: (typeId: string, phaseTypeIds: string[]) =>
+      put<{ ok: true }>(`/api/project-types/${typeId}/default-phases`, { phase_type_ids: phaseTypeIds }),
   },
   accessRequests: {
     list: (status: AccessRequestStatus | 'all' = 'pending') =>

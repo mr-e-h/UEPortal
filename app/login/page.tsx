@@ -17,7 +17,7 @@ type LoginResponse =
 // useSearchParams (would infinite-bail).
 export default function LoginPage() {
   return (
-    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-gray-500">Laster...</div>}>
+    <Suspense fallback={<div className="min-h-screen flex items-center justify-center text-sm text-[var(--color-text-muted)]">Laster...</div>}>
       <LoginForm />
     </Suspense>
   )
@@ -88,8 +88,8 @@ function LoginForm() {
       <div className="absolute inset-0 bg-white/25" aria-hidden="true" />
       <div className="max-w-md w-full space-y-8 p-8 bg-white/95 backdrop-blur-sm rounded-lg shadow-xl relative z-10">
         <div>
-          <h1 className="text-3xl font-bold text-gray-900">Logg inn</h1>
-          <p className="mt-2 text-sm text-gray-600">MinUE — underentreprenør-rapportering</p>
+          <h1 className="text-3xl font-bold text-[var(--color-text-primary)]">Logg inn</h1>
+          <p className="mt-2 text-sm text-[var(--color-text-secondary)]">MinUE — underentreprenør-rapportering</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">
@@ -102,7 +102,7 @@ function LoginForm() {
               required
               value={email}
               onChange={(e) => setEmail(e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+              className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-[var(--color-text-primary)]"
             />
           </Field>
 
@@ -113,7 +113,7 @@ function LoginForm() {
               required
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              className="block w-full px-3 py-2 border border-gray-300 rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-gray-900"
+              className="block w-full px-3 py-2 border border-border rounded-md shadow-sm focus:outline-none focus:ring-blue-500 focus:border-blue-500 text-[var(--color-text-primary)]"
             />
           </Field>
 
@@ -122,13 +122,13 @@ function LoginForm() {
           </Button>
 
           <div className="flex items-center justify-between text-sm">
-            <Link href="/forgot-password" className="text-gray-600 hover:text-blue-600 hover:underline">
+            <Link href="/forgot-password" className="text-[var(--color-text-secondary)] hover:text-blue-600 hover:underline">
               Glemt passord?
             </Link>
             <button
               type="button"
               onClick={() => setShowRequest(true)}
-              className="text-gray-600 hover:text-blue-600 hover:underline"
+              className="text-[var(--color-text-secondary)] hover:text-blue-600 hover:underline"
             >
               Be om tilgang
             </button>
@@ -180,12 +180,12 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
       >
         <div className="flex items-start justify-between">
           <div>
-            <h2 className="text-lg font-semibold text-gray-900">Be om tilgang</h2>
-            <p className="text-sm text-gray-600 mt-0.5">
+            <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Be om tilgang</h2>
+            <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">
               Fyll ut skjemaet, så vil en administrator vurdere forespørselen.
             </p>
           </div>
-          <button onClick={onClose} className="text-gray-400 hover:text-gray-600 text-xl leading-none" aria-label="Lukk">×</button>
+          <button onClick={onClose} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-xl leading-none" aria-label="Lukk">×</button>
         </div>
 
         {done ? (
@@ -205,7 +205,7 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
                 required
                 value={form.full_name}
                 onChange={(e) => setForm((f) => ({ ...f, full_name: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
+                className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-[var(--color-text-primary)]"
               />
             </Field>
             <Field label="E-post *">
@@ -214,7 +214,7 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
                 type="email"
                 value={form.email}
                 onChange={(e) => setForm((f) => ({ ...f, email: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
+                className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-[var(--color-text-primary)]"
               />
             </Field>
             <div className="grid grid-cols-2 gap-3">
@@ -222,14 +222,14 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
                 <input
                   value={form.company}
                   onChange={(e) => setForm((f) => ({ ...f, company: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
+                  className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-[var(--color-text-primary)]"
                 />
               </Field>
               <Field label="Telefon">
                 <input
                   value={form.phone}
                   onChange={(e) => setForm((f) => ({ ...f, phone: e.target.value }))}
-                  className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
+                  className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-[var(--color-text-primary)]"
                 />
               </Field>
             </div>
@@ -237,7 +237,7 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
               <select
                 value={form.desired_role}
                 onChange={(e) => setForm((f) => ({ ...f, desired_role: e.target.value as 'project_manager' | 'sub' }))}
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900"
+                className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-[var(--color-text-primary)]"
               >
                 <option value="sub">Underentreprenør</option>
                 <option value="project_manager">Prosjektleder</option>
@@ -249,7 +249,7 @@ function RequestAccessModal({ onClose }: { onClose: () => void }) {
                 value={form.message}
                 onChange={(e) => setForm((f) => ({ ...f, message: e.target.value }))}
                 placeholder="Hvilke prosjekter, kontaktperson hos MinUE, eller annen relevant info"
-                className="w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-gray-900 resize-none"
+                className="w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-[var(--color-text-primary)] resize-none"
               />
             </Field>
             <div className="flex gap-2 pt-1">

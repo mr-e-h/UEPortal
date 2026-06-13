@@ -10,11 +10,7 @@ interface Props {
   subCounts: Record<string, number>
 }
 
-function fmtDate(d: string | null): string {
-  if (!d) return '–'
-  const [y, m, day] = d.split('-')
-  return `${day}.${m}.${y.slice(2)}`
-}
+import { fmtDateShort as fmtDate } from '@/lib/format'
 
 export default function ProjectsListTable({ projects, blCounts, subCounts }: Props) {
   const router = useRouter()

@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import { useRouter } from 'next/navigation'
 import { tenderStatus } from '@/lib/statuses'
+import { fmtDateTime as fmtDeadline } from '@/lib/format'
 import type { TenderStatus } from '@/types'
 
 /** Avsluttede anbud (kansellert/lukket/tildelt) skjules som standard — de er
@@ -18,13 +19,6 @@ type Row = {
   project_number: string
   invited: number
   answered: number
-}
-
-function fmtDeadline(iso: string | null): string {
-  if (!iso) return '–'
-  const d = new Date(iso)
-  return d.toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
-    + ' ' + d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
 }
 
 /**

@@ -12,12 +12,12 @@ export default function ConfirmDialog({ title, message, confirmLabel = 'Slett', 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
       <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-xl">
-        <h2 className="font-semibold text-gray-800 mb-2">{title}</h2>
-        {message && <p className="text-sm text-gray-600 mb-4">{message}</p>}
+        <h2 className="font-semibold text-[var(--color-text-primary)] mb-2">{title}</h2>
+        {message && <p className="text-sm text-[var(--color-text-secondary)] mb-4">{message}</p>}
         <div className="flex gap-2 justify-end mt-4">
           <button
             onClick={onCancel}
-            className="text-sm px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50"
+            className="text-sm px-3 py-1.5 border border-border rounded hover:bg-muted"
           >
             Avbryt
           </button>

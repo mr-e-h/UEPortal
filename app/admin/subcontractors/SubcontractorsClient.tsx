@@ -119,7 +119,7 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
   return (
     <main className="px-4 sm:px-6 py-8 space-y-6">
       <div className="flex justify-between items-center">
-        <h1 className="text-xl font-bold text-gray-900">Underentreprenører</h1>
+        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Underentreprenører</h1>
         <button
           onClick={() => setShowForm(!showForm)}
           className="px-3 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700"
@@ -144,7 +144,7 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
                 required={required}
                 value={form[key as keyof typeof form] as string}
                 onChange={(e) => set(key as keyof typeof form, e.target.value)}
-                className="block w-full px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500 focus:border-blue-500"
+                className="block w-full px-2 py-1.5 text-sm text-[var(--color-text-primary)] border border-border rounded focus:outline-none focus:ring-blue-500 focus:border-blue-500"
               />
             </Field>
           ))}
@@ -159,28 +159,28 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100">
+            <tr className="bg-muted border-b border-border">
               <th className="w-8 px-4 py-2.5" />
               {([['company_name', 'Firma'], ['contact_person', 'Kontakt']] as [SortKey, string][]).map(([key, label]) => (
-                <th key={key} className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700 whitespace-nowrap" onClick={() => toggleSort(key)}>
+                <th key={key} className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide cursor-pointer select-none hover:text-[var(--color-text-secondary)] whitespace-nowrap" onClick={() => toggleSort(key)}>
                   <span className="inline-flex items-center gap-1">
                     {label}
                     {sortKey === key ? (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : <ChevronUp size={12} className="opacity-20" />}
                   </span>
                 </th>
               ))}
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">E-post</th>
-              {showPhone && <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Telefon</th>}
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">E-post</th>
+              {showPhone && <th className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Telefon</th>}
               {showCounty && (
-                <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700 whitespace-nowrap" onClick={() => toggleSort('county')}>
+                <th className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide cursor-pointer select-none hover:text-[var(--color-text-secondary)] whitespace-nowrap" onClick={() => toggleSort('county')}>
                   <span className="inline-flex items-center gap-1">
                     Fylke
                     {sortKey === 'county' ? (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : <ChevronUp size={12} className="opacity-20" />}
                   </span>
                 </th>
               )}
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Status</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700 whitespace-nowrap" onClick={() => toggleSort('prices')}>
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Status</th>
+              <th className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide cursor-pointer select-none hover:text-[var(--color-text-secondary)] whitespace-nowrap" onClick={() => toggleSort('prices')}>
                 <span className="inline-flex items-center gap-1">
                   Priser
                   {sortKey === 'prices' ? (sortDir === 'asc' ? <ChevronUp size={12} /> : <ChevronDown size={12} />) : <ChevronUp size={12} className="opacity-20" />}
@@ -207,17 +207,17 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
                 return (
                   <Fragment key={s.id}>
                     <tr
-                      className={`border-b border-gray-100 hover:bg-gray-50 cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/40' : ''}`}
+                      className={`border-b border-border hover:bg-muted cursor-pointer transition-colors ${isExpanded ? 'bg-blue-50/40' : ''}`}
                       onClick={() => toggleExpanded(s.id)}
                     >
-                      <td className="px-4 py-2.5 text-gray-400">
+                      <td className="px-4 py-2.5 text-[var(--color-text-muted)]">
                         {isExpanded ? <ChevronDown size={14} /> : <ChevronRight size={14} />}
                       </td>
-                      <td className="px-4 py-2.5 font-medium text-gray-900">{s.company_name}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{s.contact_person}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{s.email}</td>
-                      {showPhone && <td className="px-4 py-2.5 text-gray-600 whitespace-nowrap">{s.phone}</td>}
-                      {showCounty && <td className="px-4 py-2.5 text-gray-600">{s.county}</td>}
+                      <td className="px-4 py-2.5 font-medium text-[var(--color-text-primary)]">{s.company_name}</td>
+                      <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{s.contact_person}</td>
+                      <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{s.email}</td>
+                      {showPhone && <td className="px-4 py-2.5 text-[var(--color-text-secondary)] whitespace-nowrap">{s.phone}</td>}
+                      {showCounty && <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{s.county}</td>}
                       <td className="px-4 py-2.5">
                         {s.active
                           ? <StatusPill tone="green">Aktiv</StatusPill>
@@ -238,22 +238,22 @@ export default function SubcontractorsClient({ initialSubcontractors }: Props) {
                       </td>
                     </tr>
                     {isExpanded && (
-                      <tr key={`${s.id}-expanded`} className="bg-blue-50/20 border-b border-gray-100">
+                      <tr key={`${s.id}-expanded`} className="bg-blue-50/20 border-b border-border">
                         <td colSpan={colCount} className="px-6 py-3">
-                          <p className="text-xs font-semibold text-gray-500 uppercase tracking-wide mb-2">
+                          <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-wide mb-2">
                             Brukere {usersLoaded ? `(${subUsers.length})` : ''}
                           </p>
                           {!usersLoaded ? (
-                            <p className="text-sm text-gray-400">Laster brukere...</p>
+                            <p className="text-sm text-[var(--color-text-muted)]">Laster brukere...</p>
                           ) : subUsers.length === 0 ? (
-                            <p className="text-sm text-gray-400">Ingen brukere koblet til denne UE</p>
+                            <p className="text-sm text-[var(--color-text-muted)]">Ingen brukere koblet til denne UE</p>
                           ) : (
                             <div className="flex flex-col gap-1.5">
                               {subUsers.map((u) => (
                                 <div key={u.id} className="flex items-center gap-3 text-sm">
-                                  <span className="font-medium text-gray-900">{u.full_name}</span>
-                                  <span className="text-gray-500">{u.email}</span>
-                                  <span className="text-xs bg-gray-100 text-gray-600 px-1.5 py-0.5 rounded">
+                                  <span className="font-medium text-[var(--color-text-primary)]">{u.full_name}</span>
+                                  <span className="text-[var(--color-text-muted)]">{u.email}</span>
+                                  <span className="text-xs bg-muted text-[var(--color-text-secondary)] px-1.5 py-0.5 rounded">
                                     {roleLabel(u.role)}
                                   </span>
                                 </div>

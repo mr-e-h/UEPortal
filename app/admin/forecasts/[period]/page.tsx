@@ -369,7 +369,7 @@ export default function ForecastPeriodPage() {
             <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">
               Prognose {period.name} {period.year}
             </h1>
-            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isLocked ? 'bg-gray-200 text-gray-600' : 'bg-green-50 text-green-700'}`}>
+            <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${isLocked ? 'bg-gray-200 text-[var(--color-text-secondary)]' : 'bg-green-50 text-green-700'}`}>
               {isLocked ? 'Låst' : 'Åpen'}
             </span>
           </div>

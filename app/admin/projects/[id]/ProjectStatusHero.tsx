@@ -5,6 +5,7 @@ import Link from 'next/link'
 import { AlertTriangle, AlertCircle, CheckCircle2, Mail } from 'lucide-react'
 import type { Project, ProjectBudgetLine, ChangeOrder, ProjectInternalCostEntry } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
+import { computeProjectEconomy } from '@/lib/project-economy'
 import type { WRWithLines, ProjectManagerRow } from './useProjectData'
 
 /**
@@ -66,95 +67,17 @@ export default function ProjectStatusHero({
   projectManagers,
   onGoToTab,
 }: Props) {
-  const summary = useMemo(() => {
-    // Original order book (sales value to customer — that's the contract).
-    const originalBudget = budgetLines.reduce(
-      (s, bl) => s + (bl.budget_quantity ?? 0) * (bl.customer_price_snapshot ?? 0),
-      0,
-    )
-
-    // Approved EMs add to the contract value; pending EMs are NOT yet binding
-    // but matter for the "needs attention" banner and EM-netto context.
-    const approvedEMs = changeOrders.filter((co) => co.status === 'approved')
-    const pendingEMs = changeOrders.filter((co) => co.status === 'pending')
-    const approvedEMValue = approvedEMs.reduce((s, co) => s + (co.total_customer_value ?? 0), 0)
-    const pendingEMValue = pendingEMs.reduce((s, co) => s + (co.total_customer_value ?? 0), 0)
-
-    const totalContract = originalBudget + approvedEMValue
-
-    // Delivered = approved weekly report lines × their customer price snapshot
-    // (so the progress bar shows revenue value, matching ordreverdi units).
-    const blPriceMap = new Map(budgetLines.map((bl) => [bl.id, bl.customer_price_snapshot ?? 0]))
-    let deliveredValue = 0
-    let pendingDeliveryValue = 0
-    for (const report of weeklyReportsWL) {
-      for (const line of report.lines) {
-        const price = blPriceMap.get(line.project_budget_line_id) ?? 0
-        const lineValue = line.reported_quantity * price
-        // A line counts as "delivered" only when the line itself is approved
-        // (approve-all puts every line on approved; reject-all sets rejected).
-        if (line.status === 'approved') {
-          deliveredValue += lineValue
-        } else if (report.status === 'submitted' || line.status === 'pending') {
-          pendingDeliveryValue += lineValue
-        }
-      }
-    }
-
-    // Pending reports counted at report level (not line level) — banner needs
-    // a number a human can scan, not "47 lines waiting".
-    const pendingReports = weeklyReportsWL.filter((r) => r.status === 'submitted').length
-
-    // UE-kost + forventet fortjeneste — samme formler som Kostnadsflyt brukte
-    // (kortene bodde der før; nå er ALL prosjektøkonomi samlet i heroen).
-    const ueLines = budgetLines.filter(
-      (bl) => bl.assigned_subcontractor_id && bl.assigned_subcontractor_id !== '__intern__',
-    )
-    const ueBudgetCost = ueLines.reduce(
-      (s, bl) => s + (bl.budget_quantity ?? 0) * (bl.subcontractor_cost_price_snapshot ?? 0),
-      0,
-    )
-    const ueLineIds = new Set(ueLines.map((bl) => bl.id))
-    const blCostMap = new Map(budgetLines.map((bl) => [bl.id, bl.subcontractor_cost_price_snapshot ?? 0]))
-    let ueReportedCost = 0
-    for (const report of weeklyReportsWL) {
-      if (report.status !== 'approved' && report.status !== 'partially_approved') continue
-      for (const line of report.lines) {
-        if (line.status === 'approved' && ueLineIds.has(line.project_budget_line_id)) {
-          ueReportedCost += line.reported_quantity * (blCostMap.get(line.project_budget_line_id) ?? 0)
-        }
-      }
-    }
-    const internCost = internalCosts.reduce((s, c) => s + c.amount, 0)
-    const expectedProfit = totalContract - ueBudgetCost - internCost
-
-    // Bar segments (clamped to a sane stacking)
-    const delivered = Math.min(deliveredValue, totalContract)
-    const pendingDelivery = Math.min(pendingDeliveryValue, Math.max(0, totalContract - delivered))
-    const remaining = Math.max(0, totalContract - delivered - pendingDelivery)
-
-    const progressPct = totalContract > 0 ? Math.round((delivered / totalContract) * 100) : 0
-    const overBudget = delivered > totalContract
-
-    return {
-      originalBudget,
-      totalContract,
-      approvedEMValue,
-      pendingEMValue,
-      approvedEMCount: approvedEMs.length,
-      pendingEMCount: pendingEMs.length,
-      delivered,
-      pendingDelivery,
-      remaining,
-      progressPct,
-      overBudget,
-      pendingReports,
-      ueBudgetCost,
-      ueReportedCost,
-      internCost,
-      expectedProfit,
-    }
-  }, [budgetLines, changeOrders, weeklyReportsWL, internalCosts])
+  // All formler bor i økonomi-modulen (lib/project-economy.ts) — endres
+  // de der, følger hero, API-ruter og alle andre visninger med.
+  const summary = useMemo(
+    () => computeProjectEconomy({
+      budgetLines,
+      weeklyReports: weeklyReportsWL,
+      changeOrders,
+      internalCosts,
+    }),
+    [budgetLines, changeOrders, weeklyReportsWL, internalCosts],
+  )
 
   // Bar widths as % of totalContract (or zeroed if no contract yet)
   const total = summary.totalContract

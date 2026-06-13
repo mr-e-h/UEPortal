@@ -42,6 +42,55 @@ export function fmtProductLabel(
   return `${code} - ${product.name}`
 }
 
+/* ── Datoformat-modulen ──────────────────────────────────────────────
+   ÉN kilde for datovisning i hele portalen. Ikke lag lokale fmtDate-
+   varianter i komponenter — importer herfra, så endres formatet alle
+   steder samtidig. */
+
+/** Kompakt tabell-/tidslinjeformat: «26.05.26». */
+export function fmtDateShort(iso: string | null | undefined): string {
+  if (!iso) return '–'
+  const [y, m, d] = iso.split('-')
+  return `${d}.${m}.${y.slice(2)}`
+}
+
+/**
+ * Datospenn med punkt-semantikk: tom/lik sluttdato → kun én dato
+ * («26.05.26»), ellers «26.05.26 – 26.10.26».
+ */
+export function fmtDateRange(start: string, end?: string | null): string {
+  if (!end || end === start) return fmtDateShort(start)
+  return `${fmtDateShort(start)} – ${fmtDateShort(end)}`
+}
+
+/** Leselig langformat: «26. mai 2026». */
+export function fmtDateLong(iso: string | null | undefined): string {
+  if (!iso) return '–'
+  return new Date(iso).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
+}
+
+/** Dato + klokkeslett (Oslo): «26. mai 2026, 14:30». */
+export function fmtDateTime(iso: string | null | undefined): string {
+  if (!iso) return '–'
+  const d = new Date(iso)
+  return d.toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Europe/Oslo' })
+    + ' ' + d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Oslo' })
+}
+
+/** Akse-/etikettformat uten år: «26. mai». */
+export function fmtDayMonth(iso: string | null | undefined): string {
+  if (!iso) return '–'
+  return new Date(iso).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short' })
+}
+
+/** Anbudsfrist: «26. mai 2026 kl. 14:30», eller «Ingen frist». */
+export function fmtDeadline(iso: string | null | undefined): string {
+  if (!iso) return 'Ingen frist'
+  const d = new Date(iso)
+  return d.toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric', timeZone: 'Europe/Oslo' })
+    + ' kl. ' + d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit', timeZone: 'Europe/Oslo' })
+}
+
 export function parseNorwegianNumber(input: string): number {
   const n = parseFloat(input.replace(/\s/g, '').replace(',', '.'))
   return isNaN(n) ? 0 : n

@@ -8,7 +8,8 @@ import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { tenderStatus, tenderInvitationStatus } from '@/lib/statuses'
-import { fmtNOK } from '@/lib/format'
+import StatusPill from '@/components/ui/StatusPill'
+import { fmtNOK, fmtDateTime } from '@/lib/format'
 import type {
   Tender, TenderLine, TenderInvitation, TenderBid, TenderBidLine,
 } from '@/types'
@@ -16,16 +17,9 @@ import type {
 type SubLite = { id: string; company_name: string }
 type ProjectLite = { id: string; name: string; project_number: string } | null
 
-function fmtDateTime(iso: string | null): string {
-  if (!iso) return '–'
-  const d = new Date(iso)
-  return d.toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
-    + ' ' + d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
-}
-
 function Chip({ status, kind }: { status: string; kind: 'tender' | 'invitation' }) {
   const meta = kind === 'tender' ? tenderStatus(status) : tenderInvitationStatus(status)
-  return <span className={`inline-flex items-center px-2 py-0.5 rounded-full text-xs font-medium ${meta.cls}`}>{meta.label}</span>
+  return <StatusPill meta={meta} />
 }
 
 export default function TenderDetailClient({
@@ -107,7 +101,7 @@ export default function TenderDetailClient({
   return (
     <div className="p-6 space-y-6 max-w-6xl">
       <div className="flex items-center gap-3">
-        <Link href="/admin/tenders" className="text-gray-400 hover:text-gray-600 text-sm">← Anbud</Link>
+        <Link href="/admin/tenders" className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-sm">← Anbud</Link>
       </div>
 
       {/* Header */}

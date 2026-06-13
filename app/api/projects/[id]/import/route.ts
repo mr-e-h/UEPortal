@@ -5,6 +5,7 @@ import { uploadBudgetFile } from '@/lib/storage'
 import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import { parseExcelBuffer } from '@/lib/excel'
 import { importExcelLines } from '@/lib/excel-import'
+import { budgetSalesValue, budgetCostValue, emCustomerValue, emCost } from '@/lib/project-economy'
 import type { Project, ProjectBudgetLine, BudgetVersion, ChangeOrder } from '@/types'
 
 const EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
@@ -72,11 +73,11 @@ export async function POST(
 
   const budgetLines = ((blRes.data ?? []) as ProjectBudgetLine[])
     .filter((bl) => !bl.source || bl.source === 'manual')
-  const manualSales = budgetLines.reduce((s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot, 0)
-  const manualCost = budgetLines.reduce((s, bl) => s + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0)
+  const manualSales = budgetSalesValue(budgetLines)
+  const manualCost = budgetCostValue(budgetLines)
   const approvedCOs = (coRes.data ?? []) as Pick<ChangeOrder, 'total_customer_value' | 'total_cost'>[]
-  const coSales = approvedCOs.reduce((s, co) => s + co.total_customer_value, 0)
-  const coCost = approvedCOs.reduce((s, co) => s + co.total_cost, 0)
+  const coSales = emCustomerValue(approvedCOs)
+  const coCost = emCost(approvedCOs)
 
   const totalSalesValue = manualSales + coSales
   const totalCostValue = manualCost + coCost

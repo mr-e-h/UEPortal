@@ -7,10 +7,10 @@ import Link from 'next/link'
  */
 export default function NotFound() {
   return (
-    <div className="min-h-screen flex items-center justify-center bg-gray-50 px-4">
+    <div className="min-h-screen flex items-center justify-center bg-muted px-4">
       <div className="max-w-md w-full bg-white rounded-lg shadow p-6 text-center space-y-4">
-        <h1 className="text-lg font-semibold text-gray-900">Siden finnes ikke</h1>
-        <p className="text-sm text-gray-600">
+        <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Siden finnes ikke</h1>
+        <p className="text-sm text-[var(--color-text-secondary)]">
           Lenken er kanskje feil, eller siden er flyttet.
         </p>
         <Link

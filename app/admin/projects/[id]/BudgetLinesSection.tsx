@@ -186,7 +186,7 @@ export default function BudgetLinesSection({
           material: 'bg-orange-50 text-orange-700',
         }
         return (
-          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${colors[row.line_type] ?? 'bg-gray-100 text-gray-600'}`}>
+          <span className={`text-xs px-1.5 py-0.5 rounded font-medium ${colors[row.line_type] ?? 'bg-muted text-[var(--color-text-secondary)]'}`}>
             {lineTypeLabel(row.line_type)}
           </span>
         )
@@ -207,7 +207,7 @@ export default function BudgetLinesSection({
       sortable: true,
       getValue: (row: BLRow) => row.assigned_name,
       render: (row: BLRow) => row.assigned_subcontractor_id
-        ? <span className="text-sm text-gray-900">{row.assigned_name}</span>
+        ? <span className="text-sm text-[var(--color-text-primary)]">{row.assigned_name}</span>
         : <span className="text-xs text-orange-400">Ikke tildelt</span>,
     },
     {
@@ -238,24 +238,24 @@ export default function BudgetLinesSection({
       {/* Budsjettversjonhistorikk + drag/drop Excel-import — moved here from
           Oversikt so all budget-related material lives on the same tab. */}
       <div className="grid grid-cols-3 gap-4">
-        <div className="col-span-2 bg-white rounded-xl shadow border border-gray-100 overflow-hidden">
-          <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
-            <h3 className="text-xs font-semibold text-gray-600 uppercase tracking-wide">Budsjettversjonhistorikk</h3>
+        <div className="col-span-2 bg-white rounded-xl shadow border border-border overflow-hidden">
+          <div className="px-5 py-3 border-b border-border bg-muted">
+            <h3 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide">Budsjettversjonhistorikk</h3>
           </div>
           {budgetVersions.length === 0 ? (
-            <div className="px-5 py-6 text-sm text-gray-400 text-center">Ingen budsjettfiler lastet opp ennå.</div>
+            <div className="px-5 py-6 text-sm text-[var(--color-text-muted)] text-center">Ingen budsjettfiler lastet opp ennå.</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-left">Versjon</th>
-                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Salgsverdi</th>
-                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Kostnad</th>
-                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Fortjeneste</th>
-                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-right">Endring</th>
-                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-left">Lastet opp</th>
-                    <th className="px-5 py-2.5 text-xs font-medium text-gray-500 uppercase text-center">Fil</th>
+                  <tr className="border-b border-border">
+                    <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-left">Versjon</th>
+                    <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-right">Salgsverdi</th>
+                    <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-right">Kostnad</th>
+                    <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-right">Fortjeneste</th>
+                    <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-right">Endring</th>
+                    <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-left">Lastet opp</th>
+                    <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-center">Fil</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -268,26 +268,26 @@ export default function BudgetLinesSection({
                     const dateStr = new Date(bver.uploaded_at).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
                     const timeStr = new Date(bver.uploaded_at).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
                     return (
-                      <tr key={bver.id} className={`border-b border-gray-100 ${isLatest ? 'bg-blue-50' : 'hover:bg-gray-50'}`}>
+                      <tr key={bver.id} className={`border-b border-border ${isLatest ? 'bg-blue-50' : 'hover:bg-muted'}`}>
                         <td className="px-5 py-3">
-                          <span className={`font-medium ${isLatest ? 'text-blue-700' : 'text-gray-900'}`}>{label}</span>
+                          <span className={`font-medium ${isLatest ? 'text-blue-700' : 'text-[var(--color-text-primary)]'}`}>{label}</span>
                           {isLatest && <span className="ml-2 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-medium">Gjeldende</span>}
                         </td>
-                        <td className="px-5 py-3 text-right text-gray-700">{fmt(bver.total_sales_value)}</td>
-                        <td className="px-5 py-3 text-right text-gray-700">{fmt(bver.total_cost_value)}</td>
+                        <td className="px-5 py-3 text-right text-[var(--color-text-secondary)]">{fmt(bver.total_sales_value)}</td>
+                        <td className="px-5 py-3 text-right text-[var(--color-text-secondary)]">{fmt(bver.total_cost_value)}</td>
                         <td className={`px-5 py-3 text-right font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(profit)}</td>
                         <td className="px-5 py-3 text-right">
                           {delta == null ? (
                             <span className="text-gray-300">—</span>
                           ) : (
-                            <span className={`font-medium text-xs ${delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-gray-400'}`}>
+                            <span className={`font-medium text-xs ${delta > 0 ? 'text-green-600' : delta < 0 ? 'text-red-600' : 'text-[var(--color-text-muted)]'}`}>
                               {delta > 0 ? '+' : ''}{fmt(delta)}
                             </span>
                           )}
                         </td>
                         <td className="px-5 py-3">
-                          <div className="text-gray-700">{bver.uploaded_by}</div>
-                          <div className="text-xs text-gray-400">{dateStr} {timeStr}</div>
+                          <div className="text-[var(--color-text-secondary)]">{bver.uploaded_by}</div>
+                          <div className="text-xs text-[var(--color-text-muted)]">{dateStr} {timeStr}</div>
                         </td>
                         <td className="px-5 py-3 text-center">
                           {bver.file_name ? (
@@ -335,7 +335,7 @@ export default function BudgetLinesSection({
       </div>
 
       <div className="flex justify-between items-center">
-        <h2 className="text-lg font-semibold text-gray-900">Budsjett</h2>
+        <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Budsjett</h2>
         <div className="flex gap-2 items-center">
           {/* handlePostImport builds messages like "3 nye linjer · 1 oppdatert" on success,
               or "<error>"/"Import feilet" on failure — pick color by "feil" substring. */}
@@ -347,7 +347,7 @@ export default function BudgetLinesSection({
           <button
             onClick={() => importFileRef.current?.click()}
             disabled={importing}
-            className="px-3 py-1.5 bg-gray-100 text-gray-700 text-sm rounded hover:bg-gray-200 disabled:opacity-50"
+            className="px-3 py-1.5 bg-muted text-[var(--color-text-secondary)] text-sm rounded hover:bg-gray-200 disabled:opacity-50"
           >
             {importing ? 'Importerer...' : '↑ Importer fra Excel'}
           </button>
@@ -370,32 +370,32 @@ export default function BudgetLinesSection({
       {showAddLine && (
         <form onSubmit={onAddBudgetLine} className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex flex-wrap gap-4 items-end">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Produkt</label>
+            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Produkt</label>
             <select
               required
               value={newLine.product_id}
               onChange={(e) => setNewLine((p) => ({ ...p, product_id: e.target.value }))}
-              className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
+              className="text-sm text-[var(--color-text-primary)] border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
             >
               <option value="">Velg produkt</option>
               {allProducts.map((p) => <option key={p.id} value={p.id}>{fmtProductLabel(p)} — {p.unit}</option>)}
             </select>
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Mengde</label>
+            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Mengde</label>
             <NumberInput
               required
               value={newLine.budget_quantity}
               onChange={(raw) => setNewLine((p) => ({ ...p, budget_quantity: raw }))}
-              className="w-28 px-2 py-1.5 text-sm text-gray-900 border border-gray-300 rounded focus:outline-none focus:ring-blue-500"
+              className="w-28 px-2 py-1.5 text-sm text-[var(--color-text-primary)] border border-border rounded focus:outline-none focus:ring-blue-500"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Type</label>
+            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Type</label>
             <select
               value={newLine.line_type}
               onChange={(e) => setNewLine((p) => ({ ...p, line_type: e.target.value }))}
-              className="text-sm text-gray-900 border border-gray-300 rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
+              className="text-sm text-[var(--color-text-primary)] border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500"
             >
               <option value="subcontractor_work">UE-arbeid</option>
               <option value="internal_cost">Intern</option>
@@ -419,9 +419,9 @@ export default function BudgetLinesSection({
       )}
 
       {/* Filter + bulk assign */}
-      <div className="flex flex-wrap items-center gap-3 p-2 bg-gray-50 border border-gray-200 rounded">
+      <div className="flex flex-wrap items-center gap-3 p-2 bg-muted border border-border rounded">
         <input type="checkbox" checked={allChecked} onChange={onToggleAll} className="h-4 w-4" title="Velg alle" />
-        <span className="text-sm text-gray-500">
+        <span className="text-sm text-[var(--color-text-muted)]">
           {selected.length > 0 ? `${selected.length} valgt` : 'Velg rader'}
         </span>
         {selected.length > 0 && (
@@ -429,7 +429,7 @@ export default function BudgetLinesSection({
             <select
               value={bulkSubcontractor}
               onChange={(e) => setBulkSubcontractor(e.target.value)}
-              className="text-sm border border-gray-300 rounded px-2 py-1"
+              className="text-sm border border-border rounded px-2 py-1"
             >
               <option value="">— Velg underentreprenør —</option>
               <option value="__intern__">Intern / MinUE</option>
@@ -442,17 +442,17 @@ export default function BudgetLinesSection({
             >
               Tildel
             </button>
-            <button onClick={() => setSelected(() => [])} className="text-sm text-gray-500 hover:text-gray-700">
+            <button onClick={() => setSelected(() => [])} className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]">
               Avbryt
             </button>
           </>
         )}
         <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-gray-500">Filtrer type:</span>
+          <span className="text-xs text-[var(--color-text-muted)]">Filtrer type:</span>
           <select
             value={lineTypeFilter}
             onChange={(e) => setLineTypeFilter(e.target.value)}
-            className="text-sm border border-gray-300 rounded px-2 py-1"
+            className="text-sm border border-border rounded px-2 py-1"
           >
             <option value="all">Alle</option>
             <option value="subcontractor_work">UE-arbeid</option>
@@ -470,7 +470,7 @@ export default function BudgetLinesSection({
           tableClassName="table-fixed"
           colWidths={['w-8', 'w-24', undefined, 'w-16', 'w-24', 'w-20', 'w-24', 'w-28', 'w-36', 'w-28', 'w-28']}
           rowClassName={(row: BLRow) => row.assigned_subcontractor_id
-            ? 'border-b border-gray-100 hover:bg-blue-50'
+            ? 'border-b border-border hover:bg-blue-50'
             : 'border-b border-orange-100 bg-orange-50 hover:bg-orange-100'}
           expandedRowId={chartLineId}
           onRowExpand={(rowId) => setChartLineId(rowId)}

@@ -4,6 +4,8 @@ import { useEffect, useState, useCallback } from 'react'
 import { CheckSquare, Square, Trash2, Plus, Sparkles } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import EmptyState from '@/components/ui/EmptyState'
+import ErrorBox from '@/components/ui/ErrorBox'
+import { useConfirm } from '@/components/ui/useConfirm'
 import type { ProjectChecklistItem, ProjectType } from '@/types'
 
 interface Props {
@@ -27,6 +29,8 @@ export default function ChecklistSection({ projectId, projectTypeId }: Props) {
   const [type, setType] = useState<ProjectType | null>(null)
   const [loading, setLoading] = useState(true)
   const [newItem, setNewItem] = useState('')
+  const [error, setError] = useState<string | null>(null)
+  const { confirm: confirmAction, confirmDialog } = useConfirm()
 
   const refresh = useCallback(async () => {
     const res = await fetch(`/api/projects/${projectId}/checklist`)
@@ -48,11 +52,15 @@ export default function ChecklistSection({ projectId, projectTypeId }: Props) {
   }, [projectTypeId])
 
   async function generate() {
-    if (items.length > 0 && !confirm('Eksisterende sjekkliste blir erstattet. Fortsette?')) return
+    if (items.length > 0 && !(await confirmAction({
+      title: 'Erstatt sjekklisten?',
+      message: 'Eksisterende sjekkliste blir erstattet av typens mal. Avhukinger nullstilles.',
+      confirmLabel: 'Erstatt',
+    }))) return
     const res = await fetch(`/api/projects/${projectId}/checklist`, { method: 'POST' })
     if (!res.ok) {
       const d = await res.json().catch(() => ({}))
-      alert(d.error ?? 'Generering feilet')
+      setError((d as { error?: string }).error ?? 'Generering feilet')
       return
     }
     refresh()
@@ -80,7 +88,11 @@ export default function ChecklistSection({ projectId, projectTypeId }: Props) {
   }
 
   async function removeItem(item: ProjectChecklistItem) {
-    if (!confirm(`Slette «${item.label}»?`)) return
+    if (!(await confirmAction({
+      title: 'Slett sjekklistepunkt?',
+      message: `«${item.label}» fjernes fra prosjektets sjekkliste.`,
+      confirmLabel: 'Slett',
+    }))) return
     setItems((prev) => prev.filter((i) => i.id !== item.id))
     await fetch(`/api/projects/${projectId}/checklist/${item.id}`, { method: 'DELETE' })
   }
@@ -113,7 +125,7 @@ export default function ChecklistSection({ projectId, projectTypeId }: Props) {
     // template instead. TODO: add /api/projects/[id]/checklist/items POST.
     void next
     void tempItem
-    alert('Ad-hoc-tillegg kommer i neste runde — bruk type-malen for nå.')
+    setError('Ad-hoc-tillegg kommer i neste runde — bruk type-malen for nå.')
     refresh()
   }
 
@@ -124,6 +136,8 @@ export default function ChecklistSection({ projectId, projectTypeId }: Props) {
 
   return (
     <div className="space-y-4">
+      {confirmDialog}
+      {error && <ErrorBox>{error}</ErrorBox>}
       <Card className="p-5">
         <div className="flex items-start justify-between gap-4 flex-wrap">
           <div className="min-w-0">

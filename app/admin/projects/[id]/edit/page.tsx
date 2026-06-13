@@ -79,7 +79,7 @@ export default function EditProjectPage() {
     router.push('/admin')
   }
 
-  if (!form) return <div className="flex items-center justify-center h-64 text-gray-500">Laster...</div>
+  if (!form) return <div className="flex items-center justify-center h-64 text-[var(--color-text-muted)]">Laster...</div>
 
   const fields: { key: keyof Form; label: string; type?: string; required?: boolean }[] = [
     { key: 'project_number', label: 'Prosjektnummer', required: true },
@@ -94,12 +94,12 @@ export default function EditProjectPage() {
       {showDeleteConfirm && (
         <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
           <div className="bg-white rounded-lg p-6 max-w-sm w-full shadow-xl mx-4">
-            <h2 className="font-semibold text-gray-800 mb-2">Flytt til papirkurv?</h2>
-            <p className="text-sm text-gray-600 mb-4">
+            <h2 className="font-semibold text-[var(--color-text-primary)] mb-2">Flytt til papirkurv?</h2>
+            <p className="text-sm text-[var(--color-text-secondary)] mb-4">
               Prosjektet flyttes til papirkurven og kan gjenopprettes fra Papirkurv i admin-menyen.
             </p>
             <div className="flex gap-2 justify-end">
-              <button onClick={() => setShowDeleteConfirm(false)} className="text-sm px-3 py-1.5 border border-gray-300 rounded hover:bg-gray-50">
+              <button onClick={() => setShowDeleteConfirm(false)} className="text-sm px-3 py-1.5 border border-border rounded hover:bg-muted">
                 Avbryt
               </button>
               <button onClick={handleDelete} className="text-sm px-3 py-1.5 bg-red-600 text-white rounded hover:bg-red-700">
@@ -112,8 +112,8 @@ export default function EditProjectPage() {
 
       <div className="flex items-center justify-between gap-3 mb-6">
         <div className="flex items-center gap-3">
-          <Link href={`/admin/projects/${id}`} className="text-gray-400 hover:text-gray-600 text-sm">← Tilbake</Link>
-          <h1 className="text-xl font-bold text-gray-900">Rediger prosjekt</h1>
+          <Link href={`/admin/projects/${id}`} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-sm">← Tilbake</Link>
+          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Rediger prosjekt</h1>
         </div>
         <button
           onClick={() => setShowDeleteConfirm(true)}
@@ -127,23 +127,23 @@ export default function EditProjectPage() {
       <form onSubmit={handleSubmit} className="bg-white rounded-lg shadow p-6 space-y-4">
         {fields.map(({ key, label, required }) => (
           <div key={key}>
-            <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+            <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{label}</label>
             <input
               type="text"
               required={required}
               value={form[key]}
               onChange={(e) => set(key, e.target.value)}
-              className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+              className="block w-full px-3 py-2 text-[var(--color-text-primary)] border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
             />
           </div>
         ))}
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Status</label>
+          <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Status</label>
           <select
             value={form.status}
             onChange={(e) => set('status', e.target.value)}
-            className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="block w-full px-3 py-2 text-[var(--color-text-primary)] border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             {STATUS_OPTIONS.map((o) => (
               <option key={o.value} value={o.value}>{o.label}</option>
@@ -152,18 +152,18 @@ export default function EditProjectPage() {
         </div>
 
         <div>
-          <label className="block text-sm font-medium text-gray-700 mb-1">Type prosjekt</label>
+          <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">Type prosjekt</label>
           <select
             value={form.project_type_id}
             onChange={(e) => set('project_type_id', e.target.value)}
-            className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+            className="block w-full px-3 py-2 text-[var(--color-text-primary)] border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
           >
             <option value="">– Ingen type –</option>
             {types.map((t) => (
               <option key={t.id} value={t.id}>{t.name}</option>
             ))}
           </select>
-          <p className="mt-1 text-xs text-gray-500">
+          <p className="mt-1 text-xs text-[var(--color-text-muted)]">
             Brukes til å generere standard sjekkliste på prosjektet. Endre type påvirker ikke eksisterende sjekkliste — generer den på nytt fra Sjekkliste-fanen.
           </p>
         </div>
@@ -171,12 +171,12 @@ export default function EditProjectPage() {
         <div className="grid grid-cols-2 gap-4">
           {([['start_date', 'Startdato'], ['end_date', 'Sluttdato']] as const).map(([key, label]) => (
             <div key={key}>
-              <label className="block text-sm font-medium text-gray-700 mb-1">{label}</label>
+              <label className="block text-sm font-medium text-[var(--color-text-secondary)] mb-1">{label}</label>
               <input
                 type="date"
                 value={form[key]}
                 onChange={(e) => set(key, e.target.value)}
-                className="block w-full px-3 py-2 text-gray-900 border border-gray-300 rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
+                className="block w-full px-3 py-2 text-[var(--color-text-primary)] border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500"
               />
             </div>
           ))}
@@ -190,7 +190,7 @@ export default function EditProjectPage() {
           >
             {saving ? 'Lagrer...' : 'Lagre endringer'}
           </button>
-          <Link href={`/admin/projects/${id}`} className="px-4 py-2 text-sm text-gray-600 hover:text-gray-900">
+          <Link href={`/admin/projects/${id}`} className="px-4 py-2 text-sm text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)]">
             Avbryt
           </Link>
         </div>

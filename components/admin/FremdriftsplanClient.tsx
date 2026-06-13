@@ -1,31 +1,23 @@
 'use client'
 
-import { useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, ChevronRight, ChevronLeft, Info, FileDown, Pencil, Check, X, Plus, Trash2, Undo2 } from 'lucide-react'
 import { printArea } from '@/lib/utils/print'
 import { useMe } from '@/lib/useMe'
+import { fmtDateShort as fmtD } from '@/lib/format'
+import { ADMIN_ROLES } from '@/lib/roles'
+import { api, apiErrorMessage } from '@/lib/api'
+import {
+  DAY, FALLBACK_COLOR, STATUS_LABEL, pctPos as pct, useTimelineDrag,
+  type TimelineItem as CoreItem, type ItemDraft,
+} from '@/components/fremdriftsplan/core'
+import TimelineBar from '@/components/fremdriftsplan/TimelineBar'
 
-export type PhaseType = {
-  id: string
-  name: string
-  color: string | null
-  is_active: boolean
-  sort_order: number
-}
-
-export type ProjectPhase = {
-  id: string
-  project_id: string
-  phase_type_id: string
-  name: string | null
-  start_date: string
-  end_date: string | null
-  status: 'planned' | 'in_progress' | 'done'
-  progress_percent: number
-  sort_order: number
-}
+// Domenetypene bor i @/types — re-eksporteres her for eksisterende imports.
+export type { PhaseType, ProjectPhase } from '@/types'
+import type { PhaseType, ProjectPhase } from '@/types'
 
 export type TimelineProject = {
   id: string
@@ -47,43 +39,10 @@ export type TimelineMilestone = {
   color: string | null
 }
 
-/** Felles barformat for faser og milepæler på tidslinjen. */
-type TimelineItem = {
-  id: string
-  kind: 'phase' | 'milestone'
-  rawId: string
-  label: string
-  color: string
-  start: string
-  end: string | null
-  done: boolean
-  detail: string
-  status?: ProjectPhase['status']
-  progress?: number
-}
-
-/** Lokalt utkast per element — skrives først ved «Lagre». */
-type ItemDraft = {
-  start?: string
-  end?: string | null
-  status?: ProjectPhase['status']
-  progress?: number
-}
+/** Porteføljens element = kjernens element + detaljtekst. */
+type TimelineItem = CoreItem & { detail: string }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des']
-const STATUS_LABEL: Record<ProjectPhase['status'], string> = {
-  planned: 'Planlagt',
-  in_progress: 'Pågår',
-  done: 'Ferdig',
-}
-const FALLBACK_COLOR = '#94A3B8'
-const DAY = 24 * 60 * 60 * 1000
-const toISO = (ms: number) => new Date(ms).toISOString().slice(0, 10)
-
-/** Posisjon i % innenfor tidsspennet, klampet til [0, 100]. */
-function pct(dateMs: number, startMs: number, endMs: number): number {
-  return Math.max(0, Math.min(100, ((dateMs - startMs) / (endMs - startMs)) * 100))
-}
 
 /**
  * Porteføljetidslinje: månedsakse, én rad per prosjekt (tidligst oppstart
@@ -111,7 +70,7 @@ export default function FremdriftsplanClient({
   const { me } = useMe()
   // Samme rollegrenser som API-ene håndhever: admin-roller redigerer alt,
   // byggeleder kun fase-status/fremdrift (og ikke milepæler).
-  const canManage = !!me && ['main', 'company', 'project_manager'].includes(me.role)
+  const canManage = !!me && ADMIN_ROLES.includes(me.role)
   const canTouchStatus = canManage || me?.role === 'byggeleder'
 
   const thisYear = new Date().getFullYear()
@@ -140,20 +99,21 @@ export default function FremdriftsplanClient({
   const [addStart, setAddStart] = useState('')
   const [addEnd, setAddEnd] = useState('')
 
-  // Dra-tilstand (kun redigeringsmodus).
+  // Dra-tilstand (kun redigeringsmodus) — kjernens dra-mekanikk.
   const [override, setOverride] = useState<Record<string, { start: string; end: string | null }>>({})
-  const [dragTip, setDragTip] = useState<{ x: number; y: number; text: string } | null>(null)
-  const dragRef = useRef<{
-    item: TimelineItem
-    edge: 'start' | 'end' | 'move'
-    startX: number
-    msPerPx: number
-    origStart: number
-    origEnd: number
-    curStart: number
-    curEnd: number
-  } | null>(null)
-  const [dragging, setDragging] = useState(false)
+  const { dragTip, dragging, startDrag } = useTimelineDrag({
+    enabled: canManage && editMode,
+    onPreview: (id, s, e) => setOverride((prev) => ({ ...prev, [id]: { start: s, end: e } })),
+    onClearPreview: (id) => setOverride((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    }),
+    onCommit: (item, s, e) => setDrafts((prev) => ({
+      ...prev,
+      [item.id]: { ...prev[item.id], start: s, end: e },
+    })),
+  })
 
   const yearStartMs = Date.parse(`${year}-01-01`)
   const yearEndMs = Date.parse(`${year}-12-31`)
@@ -270,48 +230,41 @@ export default function FremdriftsplanClient({
     for (const id of Array.from(deleted)) {
       const it = itemById.get(id)
       if (!it) continue
-      const res = it.kind === 'phase'
-        ? await fetch(`/api/project-phases/${it.rawId}`, { method: 'DELETE' })
-        : await fetch(`/api/milestones?id=${it.rawId}`, { method: 'DELETE' })
-      if (!res.ok) failures.push(`Slett ${it.label}`)
+      try {
+        if (it.kind === 'phase') await api.projectPhases.remove(it.rawId)
+        else await api.milestones.remove(it.rawId)
+      } catch {
+        failures.push(`Slett ${it.label}`)
+      }
     }
 
     for (const [id, d] of Object.entries(drafts)) {
       if (deleted.has(id)) continue
       const it = itemById.get(id)
       if (!it) continue
-      let res: Response
-      if (it.kind === 'phase') {
-        const body = canManage
-          ? {
-              ...(d.start !== undefined ? { start_date: d.start } : {}),
-              ...(d.end !== undefined ? { end_date: d.end } : {}),
-              ...(d.status !== undefined ? { status: d.status } : {}),
-              ...(d.progress !== undefined ? { progress_percent: d.progress } : {}),
-            }
-          : {
-              ...(d.status !== undefined ? { status: d.status } : {}),
-              ...(d.progress !== undefined ? { progress_percent: d.progress } : {}),
-            }
-        res = await fetch(`/api/project-phases/${it.rawId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-      } else {
-        res = await fetch('/api/milestones', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+      try {
+        if (it.kind === 'phase') {
+          const body = canManage
+            ? {
+                ...(d.start !== undefined ? { start_date: d.start } : {}),
+                ...(d.end !== undefined ? { end_date: d.end } : {}),
+                ...(d.status !== undefined ? { status: d.status } : {}),
+                ...(d.progress !== undefined ? { progress_percent: d.progress } : {}),
+              }
+            : {
+                ...(d.status !== undefined ? { status: d.status } : {}),
+                ...(d.progress !== undefined ? { progress_percent: d.progress } : {}),
+              }
+          await api.projectPhases.update(it.rawId, body)
+        } else {
+          await api.milestones.update({
             id: it.rawId,
             ...(d.start !== undefined ? { start_date: d.start } : {}),
             ...(d.end !== undefined ? { end_date: d.end ?? d.start } : {}),
-          }),
-        })
-      }
-      if (!res.ok) {
-        const dta = await res.json().catch(() => ({}))
-        failures.push(`${it.label}: ${(dta as { error?: string }).error ?? 'lagring feilet'}`)
+          })
+        }
+      } catch (err) {
+        failures.push(`${it.label}: ${apiErrorMessage(err, 'lagring feilet')}`)
       }
     }
 
@@ -342,10 +295,9 @@ export default function FremdriftsplanClient({
 
   async function submitAdd(p: TimelineProject) {
     setSaving(true); setError('')
-    const res = await fetch('/api/project-phases', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    let created: ProjectPhase
+    try {
+      created = await api.projectPhases.create({
         project_id: p.id,
         phase_type_id: addTypeId,
         name: null,
@@ -353,15 +305,13 @@ export default function FremdriftsplanClient({
         end_date: addEnd || null,
         status: 'planned',
         progress_percent: 0,
-      }),
-    })
-    setSaving(false)
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}))
-      setError((d as { error?: string }).error ?? 'Kunne ikke legge til fasen')
+      })
+    } catch (err) {
+      setSaving(false)
+      setError(apiErrorMessage(err, 'Kunne ikke legge til fasen'))
       return
     }
-    const created = await res.json() as ProjectPhase
+    setSaving(false)
     setAddedPhases((prev) => [...prev, created])
     setAddFor(null)
   }
@@ -372,12 +322,6 @@ export default function FremdriftsplanClient({
     if (checked.size > 0) setOnlyChecked(true)
     setExpanded(new Set(ids))
     printArea()
-  }
-
-  /** Kompakt dd.mm.åå for detaljkolonnen. */
-  function fmtD(iso: string): string {
-    const [y, m, d] = iso.split('-')
-    return `${d}.${m}.${y.slice(2)}`
   }
 
   /**
@@ -539,66 +483,7 @@ export default function FremdriftsplanClient({
   const monthGridStyle = { gridTemplateColumns: `repeat(${span.months.length}, minmax(0, 1fr))` }
   const labelEvery = Math.max(1, Math.ceil(span.months.length / 12))
 
-  // ── Draing på barene (kun redigeringsmodus) → utkast ved slipp ──────
-  function startDrag(e: React.PointerEvent, it: TimelineItem, edge: 'start' | 'end' | 'move') {
-    if (!canManage || !editMode) return
-    e.preventDefault()
-    e.stopPropagation()
-    const track = (e.currentTarget as HTMLElement).closest('[data-track]') as HTMLElement | null
-    if (!track) return
-    const width = track.getBoundingClientRect().width
-    if (width <= 0) return
-    const spanMs = span.endMs - span.startMs
-    const origStart = Date.parse(it.start)
-    const origEnd = it.end ? Date.parse(it.end) : origStart + DAY
-    dragRef.current = {
-      item: it, edge, startX: e.clientX, msPerPx: spanMs / width,
-      origStart, origEnd, curStart: origStart, curEnd: origEnd,
-    }
-    setDragging(true)
-    const tipFor = (s: number, en: number) =>
-      edge === 'move' ? `${fmtD(toISO(s))} – ${fmtD(toISO(en))}` : fmtD(toISO(edge === 'start' ? s : en))
-    setDragTip({ x: e.clientX, y: e.clientY, text: tipFor(origStart, origEnd) })
-
-    const onMove = (ev: PointerEvent) => {
-      const d = dragRef.current
-      if (!d) return
-      const deltaMs = Math.round(((ev.clientX - d.startX) * d.msPerPx) / DAY) * DAY
-      let s = d.origStart
-      let en = d.origEnd
-      if (d.edge === 'start') s = Math.min(d.origStart + deltaMs, en - DAY)
-      else if (d.edge === 'end') en = Math.max(d.origEnd + deltaMs, s + DAY)
-      else { s = d.origStart + deltaMs; en = d.origEnd + deltaMs }
-      d.curStart = s
-      d.curEnd = en
-      setOverride((prev) => ({ ...prev, [d.item.id]: { start: toISO(s), end: toISO(en) } }))
-      setDragTip({ x: ev.clientX, y: ev.clientY, text: tipFor(s, en) })
-    }
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      const d = dragRef.current
-      dragRef.current = null
-      setDragging(false)
-      setDragTip(null)
-      if (!d) return
-      if (d.curStart !== d.origStart || d.curEnd !== d.origEnd) {
-        setDrafts((prev) => ({
-          ...prev,
-          [d.item.id]: { ...prev[d.item.id], start: toISO(d.curStart), end: toISO(d.curEnd) },
-        }))
-      }
-      setOverride((prev) => {
-        const next = { ...prev }
-        delete next[d.item.id]
-        return next
-      })
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-  }
-
-  const btnSecondary = 'inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-[var(--color-text-secondary)] hover:bg-muted disabled:opacity-50'
+  const btnSecondary ='inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-[var(--color-text-secondary)] hover:bg-muted disabled:opacity-50'
 
   return (
     <div className="p-6 space-y-5">
@@ -809,7 +694,7 @@ export default function FremdriftsplanClient({
         {/* Header kun i PDF-en */}
         <div className="hidden print:block mb-3">
           <h1 className="text-lg font-bold text-black">Fremdriftsplan {fullSpan ? '' : year}</h1>
-          <p className="text-xs text-gray-600">
+          <p className="text-xs text-[var(--color-text-secondary)]">
             {rows.length} prosjekt{rows.length !== 1 ? 'er' : ''} · skrevet ut {new Date().toLocaleDateString('nb-NO')}
           </p>
         </div>
@@ -929,10 +814,13 @@ export default function FremdriftsplanClient({
                       const r = pct(e, span.startMs, span.endMs)
                       if (r <= l && !(s >= span.startMs && s <= span.endMs)) return null
                       return (
-                        <div
+                        <TimelineBar
                           key={it.id}
-                          onPointerDown={editMode && canManage ? (ev) => startDrag(ev, it, 'move') : undefined}
-                          className={`absolute h-[7px] rounded-full ${it.done ? 'opacity-50' : ''} ${editMode && canManage ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                          item={it}
+                          draggable={editMode && canManage}
+                          spanMs={span.endMs - span.startMs}
+                          startDrag={startDrag}
+                          className={`absolute h-[7px] rounded-full ${it.done ? 'opacity-50' : ''}`}
                           style={{
                             left: `${l}%`,
                             width: `${Math.max(r - l, 0.8)}%`,
@@ -940,22 +828,7 @@ export default function FremdriftsplanClient({
                             backgroundColor: it.color,
                           }}
                           title={`${it.label}: ${fmtD(it.start)}${it.end ? ` – ${fmtD(it.end)}` : ''} (${it.detail})${editMode && canManage ? ' — dra for å flytte' : ''}`}
-                        >
-                          {editMode && canManage && (
-                            <>
-                              <span
-                                onPointerDown={(ev) => startDrag(ev, it, 'start')}
-                                className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-l bg-black/10 hover:bg-black/30 print:hidden"
-                                title="Dra for å endre startdato"
-                              />
-                              <span
-                                onPointerDown={(ev) => startDrag(ev, it, 'end')}
-                                className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-r bg-black/10 hover:bg-black/30 print:hidden"
-                                title="Dra for å endre sluttdato"
-                              />
-                            </>
-                          )}
-                        </div>
+                        />
                       )
                     })
                   )}

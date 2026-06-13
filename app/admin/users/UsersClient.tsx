@@ -7,6 +7,7 @@ import { Pencil, Mail, X, Search, Download, Trash2, PowerOff, Power } from 'luci
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import Field from '@/components/ui/Field'
+import Input from '@/components/ui/Input'
 import ErrorBox from '@/components/ui/ErrorBox'
 import StatusPill from '@/components/ui/StatusPill'
 import EmptyState from '@/components/ui/EmptyState'
@@ -14,6 +15,7 @@ import { roleLabel } from '@/lib/roles'
 import { displayCompany } from '@/lib/usernames'
 import { useMe } from '@/lib/useMe'
 import ConfirmDialog from '@/components/ConfirmDialog'
+import { useConfirm } from '@/components/ui/useConfirm'
 import type { UserRole } from '@/types'
 
 const SUPER_ADMIN_EMAIL = 'mhelsing94@gmail.com'
@@ -61,6 +63,8 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
   const [invitations, setInvitations] = useState<InvitationLite[]>(initialInvitations)
   const [confirmDelete, setConfirmDelete] = useState<{ kind: 'one'; user: SafeUser } | { kind: 'bulk'; ids: string[] } | null>(null)
   const [deleting, setDeleting] = useState(false)
+  const [actionError, setActionError] = useState<string | null>(null)
+  const { confirm: confirmAction, confirmDialog } = useConfirm()
 
   const [search, setSearch] = useState('')
   const [selected, setSelected] = useState<Set<string>>(new Set())
@@ -82,11 +86,15 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
   }
 
   async function revokeInvitation(id: string, email: string) {
-    if (!confirm(`Trekke tilbake invitasjonen til ${email}? Den eksisterende lenken slutter å fungere umiddelbart.`)) return
+    if (!(await confirmAction({
+      title: 'Trekke tilbake invitasjonen?',
+      message: `Invitasjonen til ${email} trekkes tilbake — den eksisterende lenken slutter å fungere umiddelbart.`,
+      confirmLabel: 'Trekk tilbake',
+    }))) return
     const res = await fetch(`/api/admin/invitations/${id}`, { method: 'DELETE' })
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
-      alert(data.error ?? 'Kunne ikke trekke tilbake invitasjonen')
+      setActionError((data as { error?: string }).error ?? 'Kunne ikke trekke tilbake invitasjonen')
       return
     }
     // Optimistic local update so the row disappears without a round-trip.
@@ -142,7 +150,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
     if (!res.ok) {
       const data = await res.json().catch(() => ({}))
       setUsers((prev) => prev.map((x) => (x.id === u.id ? { ...x, active: u.active } : x)))
-      alert(data.error ?? 'Kunne ikke endre status')
+      setActionError((data as { error?: string }).error ?? 'Kunne ikke endre status')
       return
     }
     // Server cleared the user's sessions on deactivation already; refresh
@@ -169,7 +177,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
       }
     }
     router.refresh()
-    if (failures.length > 0) alert('Noen ble ikke endret:\n' + failures.join('\n'))
+    if (failures.length > 0) setActionError('Noen ble ikke endret: ' + failures.join(' · '))
   }
 
   async function performDelete(ids: string[]): Promise<void> {
@@ -198,7 +206,7 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
       })
       router.refresh()
     }
-    if (failures.length > 0) alert('Noen ble ikke slettet:\n' + failures.join('\n'))
+    if (failures.length > 0) setActionError('Noen ble ikke slettet: ' + failures.join(' · '))
   }
 
   const subMap = useMemo(() => new Map(subcontractors.map((s) => [s.id, s])), [subcontractors])
@@ -279,6 +287,8 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
 
   return (
     <div className="p-6 space-y-6">
+      {confirmDialog}
+      {actionError && <ErrorBox>{actionError}</ErrorBox>}
       <div className="flex items-center justify-between flex-wrap gap-2">
         <h1 className="text-lg font-semibold text-[var(--color-text-primary)]">Brukere</h1>
         <div className="flex items-center gap-2">
@@ -303,12 +313,11 @@ export default function UsersClient({ initialUsers, subcontractors, initialInvit
             {inviteError && <div className="sm:col-span-2"><ErrorBox>{inviteError}</ErrorBox></div>}
             {inviteSuccess && <div className="sm:col-span-2"><ErrorBox variant="success">{inviteSuccess}</ErrorBox></div>}
             <Field label="E-post">
-              <input
+              <Input
                 required
                 type="email"
                 value={inviteForm.email}
                 onChange={(e) => setInviteForm((f) => ({ ...f, email: e.target.value }))}
-                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               />
             </Field>
             <Field label="Rolle">

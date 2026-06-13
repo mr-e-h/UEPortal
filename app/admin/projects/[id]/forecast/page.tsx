@@ -102,13 +102,13 @@ export default function ForecastPage() {
 
   useEffect(() => { fetchAll() }, [fetchAll])
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-gray-500">Laster...</div>
-  if (!project) return <div className="flex items-center justify-center h-64 text-gray-500">Prosjekt ikke funnet</div>
+  if (loading) return <div className="flex items-center justify-center h-64 text-[var(--color-text-muted)]">Laster...</div>
+  if (!project) return <div className="flex items-center justify-center h-64 text-[var(--color-text-muted)]">Prosjekt ikke funnet</div>
 
   if (!project.start_date || !project.end_date) {
     return (
       <div className="p-6">
-        <Link href={`/admin/projects/${id}`} className="text-xs text-gray-400 hover:underline">← {project.name}</Link>
+        <Link href={`/admin/projects/${id}`} className="text-xs text-[var(--color-text-muted)] hover:underline">← {project.name}</Link>
         <div className="bg-amber-50 border border-amber-200 rounded-xl p-6 flex flex-col items-center gap-3 text-center max-w-md mx-auto mt-12">
           <CalendarDays size={32} className="text-amber-500" />
           <p className="font-semibold text-amber-900">Startdato og sluttdato mangler</p>
@@ -354,31 +354,31 @@ export default function ForecastPage() {
   function TableHeader({ labelCol }: { labelCol: string }) {
     return (
       <thead>
-        <tr className="bg-gray-100 border-b border-gray-200">
-          <th className="px-4 py-1.5 sticky left-0 bg-gray-100 z-10 text-left" style={{ minWidth: 160 }} />
+        <tr className="bg-muted border-b border-border">
+          <th className="px-4 py-1.5 sticky left-0 bg-muted z-10 text-left" style={{ minWidth: 160 }} />
           {yearGroups.map(({ year, count }) => (
             <th key={year} colSpan={count}
-              className="px-3 py-1.5 text-center text-xs font-bold text-gray-600 uppercase tracking-wider border-l border-gray-300">
+              className="px-3 py-1.5 text-center text-xs font-bold text-[var(--color-text-secondary)] uppercase tracking-wider border-l border-border">
               {year}
             </th>
           ))}
-          <th className="px-4 py-1.5 text-right text-xs font-bold text-gray-500 uppercase border-l border-gray-300" style={{ minWidth: 108 }}>Totalt</th>
+          <th className="px-4 py-1.5 text-right text-xs font-bold text-[var(--color-text-muted)] uppercase border-l border-border" style={{ minWidth: 108 }}>Totalt</th>
         </tr>
-        <tr className="bg-gray-50 border-b border-gray-100">
-          <th className="px-4 py-2 text-left text-xs font-medium text-gray-500 uppercase sticky left-0 bg-gray-50 z-10" style={{ minWidth: 160 }}>{labelCol}</th>
+        <tr className="bg-muted border-b border-border">
+          <th className="px-4 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase sticky left-0 bg-muted z-10" style={{ minWidth: 160 }}>{labelCol}</th>
           {grid.map(({ year, month }) => {
             const isCur = year === curYear && month === curMonth
             const past  = isPast(year, month)
             return (
               <th key={`${year}-${month}`}
-                className={`px-2 py-2 text-center text-xs font-medium uppercase ${isCur ? 'text-blue-600' : past ? 'text-gray-400' : 'text-gray-500'} ${month === 1 ? 'border-l border-gray-300' : ''}`}
+                className={`px-2 py-2 text-center text-xs font-medium uppercase ${isCur ? 'text-blue-600' : past ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-muted)]'} ${month === 1 ? 'border-l border-border' : ''}`}
                 style={{ minWidth: 72 }}>
                 {MND[month]}
                 {isCur && <span className="block text-[9px] font-normal text-blue-400 normal-case">nå</span>}
               </th>
             )
           })}
-          <th className="px-4 py-2 border-l border-gray-200" style={{ minWidth: 108 }} />
+          <th className="px-4 py-2 border-l border-border" style={{ minWidth: 108 }} />
         </tr>
       </thead>
     )
@@ -389,10 +389,10 @@ export default function ForecastPage() {
 
       {/* Header */}
       <div className="flex items-center gap-3">
-        <Link href={`/admin/projects/${id}`} className="text-gray-400 hover:text-gray-600 text-sm">← {project.name}</Link>
+        <Link href={`/admin/projects/${id}`} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-sm">← {project.name}</Link>
         <div className="flex-1">
-          <h1 className="text-xl font-bold text-gray-900">Prognosemodul</h1>
-          <p className="text-sm text-gray-500">{project.project_number} · {project.customer} · {grid.length} måneder</p>
+          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Prognosemodul</h1>
+          <p className="text-sm text-[var(--color-text-muted)]">{project.project_number} · {project.customer} · {grid.length} måneder</p>
         </div>
         <button onClick={handleSave} disabled={saving || !dirty}
           className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
@@ -412,7 +412,7 @@ export default function ForecastPage() {
             pct:       budgetRevenue > 0 ? Math.round((planRevenue / budgetRevenue) * 100) : 0,
             barColor:  'bg-green-500',
             details: [
-              { label: 'I plan',                value: planRevenue,           color: 'text-gray-800'  },
+              { label: 'I plan',                value: planRevenue,           color: 'text-[var(--color-text-primary)]'  },
               { label: 'Rapportert/godkjent',    value: totalApprovedRevenue,  color: 'text-green-700' },
               { label: 'Fakturert av meg',        value: totalInvoiced,         color: 'text-blue-700'  },
             ],
@@ -426,31 +426,31 @@ export default function ForecastPage() {
             pct:       budgetCost > 0 ? Math.round((planCost / budgetCost) * 100) : 0,
             barColor:  'bg-orange-500',
             details: [
-              { label: 'I plan',                 value: planCost,             color: 'text-gray-800'   },
+              { label: 'I plan',                 value: planCost,             color: 'text-[var(--color-text-primary)]'   },
               { label: 'Godkjent rapportert',    value: totalApprovedCost,    color: 'text-orange-700' },
-              { label: 'Budsjett UE',            value: budgetCost,           color: 'text-gray-600'   },
+              { label: 'Budsjett UE',            value: budgetCost,           color: 'text-[var(--color-text-secondary)]'   },
             ],
             budgetLabel: 'budsjettert UE-kostnad',
           },
         ].map(({ title, remaining, budget, pct, barColor, details, budgetLabel }) => (
-          <div key={title} className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-3">
-            <h2 className="text-sm font-semibold text-gray-700">{title}</h2>
+          <div key={title} className="bg-white rounded-xl border border-border shadow-sm p-5 space-y-3">
+            <h2 className="text-sm font-semibold text-[var(--color-text-secondary)]">{title}</h2>
             <div className="flex items-end justify-between gap-2">
               <div>
-                <p className={`text-2xl font-bold ${remaining < 0 ? 'text-red-600' : 'text-gray-900'}`}>{fmt(remaining)}</p>
-                <p className="text-xs text-gray-400 mt-0.5">av {fmt(budget)} {budgetLabel}</p>
+                <p className={`text-2xl font-bold ${remaining < 0 ? 'text-red-600' : 'text-[var(--color-text-primary)]'}`}>{fmt(remaining)}</p>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">av {fmt(budget)} {budgetLabel}</p>
               </div>
               <span className={`text-xs font-medium px-2 py-1 rounded-full ${remaining < 0 ? 'bg-red-50 text-red-700' : remaining === 0 ? 'bg-green-50 text-green-700' : 'bg-blue-50 text-blue-700'}`}>
                 {remaining < 0 ? 'Overfordelt' : `${pct}% fordelt`}
               </span>
             </div>
-            <div className="w-full bg-gray-100 rounded-full h-1.5">
+            <div className="w-full bg-muted rounded-full h-1.5">
               <div className={`${barColor} h-1.5 rounded-full transition-all`} style={{ width: `${Math.min(100, pct)}%` }} />
             </div>
-            <div className="grid grid-cols-3 gap-3 text-xs pt-2 border-t border-gray-100">
+            <div className="grid grid-cols-3 gap-3 text-xs pt-2 border-t border-border">
               {details.map(({ label, value, color }) => (
                 <div key={label}>
-                  <p className="text-gray-400 mb-0.5">{label}</p>
+                  <p className="text-[var(--color-text-muted)] mb-0.5">{label}</p>
                   <p className={`font-semibold ${color}`}>{fmt(value)}</p>
                 </div>
               ))}
@@ -460,10 +460,10 @@ export default function ForecastPage() {
       </div>
 
       {/* ── Transposed monthly table ──────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
-          <h2 className="text-sm font-semibold text-gray-900">Månedlig fordeling</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Historiske måneder viser faktiske tall · Fremtidige måneder er redigerbare</p>
+      <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-border bg-muted">
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Månedlig fordeling</h2>
+          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Historiske måneder viser faktiske tall · Fremtidige måneder er redigerbare</p>
         </div>
         <div className="overflow-x-auto">
           <table className="text-sm border-collapse">
@@ -475,18 +475,18 @@ export default function ForecastPage() {
                   <tr key={key} className="border-b border-gray-50 hover:bg-gray-50/40">
                     <td className={`px-4 py-2 font-semibold sticky left-0 bg-white z-10 ${color} whitespace-nowrap`} style={{ minWidth: 160 }}>
                       {label}
-                      <span className="ml-1 text-[10px] font-normal text-gray-400">({unit})</span>
+                      <span className="ml-1 text-[10px] font-normal text-[var(--color-text-muted)]">({unit})</span>
                     </td>
                     {grid.map(({ year, month }) => {
                       const past    = isPast(year, month)
                       const isCur   = year === curYear && month === curMonth
                       const val     = getVal(year, month, key)
-                      const borderL = month === 1 ? 'border-l border-gray-200' : ''
+                      const borderL = month === 1 ? 'border-l border-border' : ''
 
                       if (past) {
                         return (
                           <td key={`${year}-${month}`}
-                            className={`px-2 py-2 text-right text-xs text-gray-400 ${borderL}`}
+                            className={`px-2 py-2 text-right text-xs text-[var(--color-text-muted)] ${borderL}`}
                             style={{ minWidth: 72 }}>
                             {val > 0 ? (unit === 'timer' ? `${Math.round(val)}t` : fmtShort(val)) : '–'}
                           </td>
@@ -499,12 +499,12 @@ export default function ForecastPage() {
                           <NumberInput
                             value={val || ''} placeholder="0"
                             onChange={(raw) => setEdit(year, month, key, Number(raw))}
-                            className="w-full text-right px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 text-gray-800 bg-white"
+                            className="w-full text-right px-1.5 py-1 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-blue-400 text-[var(--color-text-primary)] bg-white"
                           />
                         </td>
                       )
                     })}
-                    <td className={`px-4 py-2 text-right font-bold text-sm ${color} border-l border-gray-200 whitespace-nowrap`} style={{ minWidth: 108 }}>
+                    <td className={`px-4 py-2 text-right font-bold text-sm ${color} border-l border-border whitespace-nowrap`} style={{ minWidth: 108 }}>
                       {fmtTotal(total, unit)}
                     </td>
                   </tr>
@@ -512,8 +512,8 @@ export default function ForecastPage() {
               })}
 
               {/* Fortjeneste */}
-              <tr className="border-t-2 border-gray-200 bg-gray-50">
-                <td className="px-4 py-2.5 font-bold text-gray-700 sticky left-0 bg-gray-50 z-10" style={{ minWidth: 160 }}>Fortjeneste</td>
+              <tr className="border-t-2 border-border bg-muted">
+                <td className="px-4 py-2.5 font-bold text-[var(--color-text-secondary)] sticky left-0 bg-muted z-10" style={{ minWidth: 160 }}>Fortjeneste</td>
                 {grid.map(({ year, month }) => {
                   const profit = (getVal(year, month, 'revenue')      as number)
                                - (getVal(year, month, 'ueCost')       as number)
@@ -521,7 +521,7 @@ export default function ForecastPage() {
                                - (getVal(year, month, 'otherCost')    as number)
                                - (getVal(year, month, 'risk')         as number)
                   const past    = isPast(year, month)
-                  const borderL = month === 1 ? 'border-l border-gray-200' : ''
+                  const borderL = month === 1 ? 'border-l border-border' : ''
                   return (
                     <td key={`${year}-${month}`}
                       className={`px-2 py-2.5 text-right text-xs font-medium ${profit > 0 ? 'text-green-600' : profit < 0 ? 'text-red-600' : 'text-gray-300'} ${past ? 'opacity-70' : ''} ${borderL}`}
@@ -538,7 +538,7 @@ export default function ForecastPage() {
                       - (getVal(year, month, 'otherCost')    as number)
                       - (getVal(year, month, 'risk')         as number), 0)
                   return (
-                    <td className={`px-4 py-2.5 text-right font-bold text-sm border-l border-gray-200 ${total >= 0 ? 'text-green-700' : 'text-red-700'}`} style={{ minWidth: 108 }}>
+                    <td className={`px-4 py-2.5 text-right font-bold text-sm border-l border-border ${total >= 0 ? 'text-green-700' : 'text-red-700'}`} style={{ minWidth: 108 }}>
                       {fmt(total)}
                     </td>
                   )
@@ -550,11 +550,11 @@ export default function ForecastPage() {
       </div>
 
       {/* ── Tilleggskostnader (custom cost lines) ────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50 flex items-center justify-between">
+      <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-border bg-muted flex items-center justify-between">
           <div>
-            <h2 className="text-sm font-semibold text-gray-900">Tilleggskostnader</h2>
-            <p className="text-xs text-gray-400 mt-0.5">Egendefinerte kostnadslinjer per måned</p>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Tilleggskostnader</h2>
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Egendefinerte kostnadslinjer per måned</p>
           </div>
           <button onClick={addCustomLine}
             className="flex items-center gap-1.5 px-3 py-1.5 bg-gray-800 text-white text-xs font-medium rounded-lg hover:bg-gray-700 transition-colors">
@@ -564,7 +564,7 @@ export default function ForecastPage() {
         </div>
 
         {customLineNames.length === 0 ? (
-          <div className="px-5 py-8 text-center text-sm text-gray-400">
+          <div className="px-5 py-8 text-center text-sm text-[var(--color-text-muted)]">
             Ingen tilleggskostnader lagt til. Klikk &quot;Ny linje&quot; for å legge til.
           </div>
         ) : (
@@ -583,17 +583,17 @@ export default function ForecastPage() {
                             type="text"
                             defaultValue={name}
                             onBlur={(e) => renameCustomLine(name, e.target.value)}
-                            className="w-full px-2 py-1 text-xs font-semibold text-rose-700 border border-transparent rounded focus:border-gray-300 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-transparent hover:border-gray-200"
+                            className="w-full px-2 py-1 text-xs font-semibold text-rose-700 border border-transparent rounded focus:border-border focus:outline-none focus:ring-1 focus:ring-blue-400 bg-transparent hover:border-border"
                           />
                           <button onClick={() => removeCustomLine(name)}
-                            className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-gray-400 hover:text-red-500 p-0.5 rounded">
+                            className="shrink-0 opacity-0 group-hover:opacity-100 transition-opacity text-[var(--color-text-muted)] hover:text-red-500 p-0.5 rounded">
                             <Trash2 size={12} />
                           </button>
                         </div>
                       </td>
                       {grid.map(({ year, month }) => {
                         const isCur   = year === curYear && month === curMonth
-                        const borderL = month === 1 ? 'border-l border-gray-200' : ''
+                        const borderL = month === 1 ? 'border-l border-border' : ''
                         const val     = getExtra(typeKey, year, month)
                         return (
                           <td key={`${year}-${month}`}
@@ -602,12 +602,12 @@ export default function ForecastPage() {
                             <NumberInput
                               value={val || ''} placeholder="0"
                               onChange={(raw) => setExtra(typeKey, year, month, Number(raw))}
-                              className="w-full text-right px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 text-gray-800 bg-white"
+                              className="w-full text-right px-1.5 py-1 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-blue-400 text-[var(--color-text-primary)] bg-white"
                             />
                           </td>
                         )
                       })}
-                      <td className="px-4 py-2 text-right font-bold text-sm text-rose-700 border-l border-gray-200 whitespace-nowrap" style={{ minWidth: 108 }}>
+                      <td className="px-4 py-2 text-right font-bold text-sm text-rose-700 border-l border-border whitespace-nowrap" style={{ minWidth: 108 }}>
                         {total > 0 ? fmt(total) : '–'}
                       </td>
                     </tr>
@@ -615,20 +615,20 @@ export default function ForecastPage() {
                 })}
                 {/* Sum row */}
                 {customLineNames.length > 1 && (
-                  <tr className="border-t-2 border-gray-200 bg-gray-50">
-                    <td className="px-4 py-2.5 font-bold text-gray-700 sticky left-0 bg-gray-50 z-10" style={{ minWidth: 160 }}>Sum</td>
+                  <tr className="border-t-2 border-border bg-muted">
+                    <td className="px-4 py-2.5 font-bold text-[var(--color-text-secondary)] sticky left-0 bg-muted z-10" style={{ minWidth: 160 }}>Sum</td>
                     {grid.map(({ year, month }) => {
                       const total   = customLineNames.reduce((s, n) => s + getExtra(`custom-${n}`, year, month), 0)
-                      const borderL = month === 1 ? 'border-l border-gray-200' : ''
+                      const borderL = month === 1 ? 'border-l border-border' : ''
                       return (
                         <td key={`${year}-${month}`}
-                          className={`px-2 py-2.5 text-right text-xs font-medium text-gray-600 ${borderL}`}
+                          className={`px-2 py-2.5 text-right text-xs font-medium text-[var(--color-text-secondary)] ${borderL}`}
                           style={{ minWidth: 72 }}>
                           {total > 0 ? fmtShort(total) : '–'}
                         </td>
                       )
                     })}
-                    <td className="px-4 py-2.5 text-right font-bold text-sm text-gray-700 border-l border-gray-200" style={{ minWidth: 108 }}>
+                    <td className="px-4 py-2.5 text-right font-bold text-sm text-[var(--color-text-secondary)] border-l border-border" style={{ minWidth: 108 }}>
                       {(() => {
                         const t = customLineNames.reduce((s, n) => s + extraRowTotal(`custom-${n}`), 0)
                         return t > 0 ? fmt(t) : '–'
@@ -643,10 +643,10 @@ export default function ForecastPage() {
       </div>
 
       {/* ── Timeoversikt (hours by role) ─────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-gray-100 bg-gray-50">
-          <h2 className="text-sm font-semibold text-gray-900">Timeoversikt</h2>
-          <p className="text-xs text-gray-400 mt-0.5">Planlagte timer per rolle per måned</p>
+      <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+        <div className="px-5 py-3 border-b border-border bg-muted">
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Timeoversikt</h2>
+          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Planlagte timer per rolle per måned</p>
         </div>
         <div className="overflow-x-auto">
           <table className="text-sm border-collapse">
@@ -659,11 +659,11 @@ export default function ForecastPage() {
                   <tr key={role} className="border-b border-gray-50 hover:bg-gray-50/40">
                     <td className="px-4 py-2 font-semibold sticky left-0 bg-white z-10 text-indigo-700 whitespace-nowrap" style={{ minWidth: 160 }}>
                       {ROLE_LABELS[role]}
-                      <span className="ml-1 text-[10px] font-normal text-gray-400">(timer)</span>
+                      <span className="ml-1 text-[10px] font-normal text-[var(--color-text-muted)]">(timer)</span>
                     </td>
                     {grid.map(({ year, month }) => {
                       const isCur   = year === curYear && month === curMonth
-                      const borderL = month === 1 ? 'border-l border-gray-200' : ''
+                      const borderL = month === 1 ? 'border-l border-border' : ''
                       const val     = getExtra(typeKey, year, month)
                       return (
                         <td key={`${year}-${month}`}
@@ -672,32 +672,32 @@ export default function ForecastPage() {
                           <NumberInput
                             value={val || ''} placeholder="0"
                             onChange={(raw) => setExtra(typeKey, year, month, Number(raw))}
-                            className="w-full text-right px-1.5 py-1 text-xs border border-gray-200 rounded focus:outline-none focus:ring-1 focus:ring-blue-400 text-gray-800 bg-white"
+                            className="w-full text-right px-1.5 py-1 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-blue-400 text-[var(--color-text-primary)] bg-white"
                           />
                         </td>
                       )
                     })}
-                    <td className="px-4 py-2 text-right font-bold text-sm text-indigo-700 border-l border-gray-200 whitespace-nowrap" style={{ minWidth: 108 }}>
+                    <td className="px-4 py-2 text-right font-bold text-sm text-indigo-700 border-l border-border whitespace-nowrap" style={{ minWidth: 108 }}>
                       {total > 0 ? `${new Intl.NumberFormat('nb-NO').format(total)} t` : '–'}
                     </td>
                   </tr>
                 )
               })}
               {/* Total hours row */}
-              <tr className="border-t-2 border-gray-200 bg-gray-50">
-                <td className="px-4 py-2.5 font-bold text-gray-700 sticky left-0 bg-gray-50 z-10" style={{ minWidth: 160 }}>Sum timer</td>
+              <tr className="border-t-2 border-border bg-muted">
+                <td className="px-4 py-2.5 font-bold text-[var(--color-text-secondary)] sticky left-0 bg-muted z-10" style={{ minWidth: 160 }}>Sum timer</td>
                 {grid.map(({ year, month }) => {
                   const total   = ROLES.reduce((s, r) => s + getExtra(`role-${r}`, year, month), 0)
-                  const borderL = month === 1 ? 'border-l border-gray-200' : ''
+                  const borderL = month === 1 ? 'border-l border-border' : ''
                   return (
                     <td key={`${year}-${month}`}
-                      className={`px-2 py-2.5 text-right text-xs font-medium text-gray-600 ${borderL}`}
+                      className={`px-2 py-2.5 text-right text-xs font-medium text-[var(--color-text-secondary)] ${borderL}`}
                       style={{ minWidth: 72 }}>
                       {total > 0 ? `${total}t` : '–'}
                     </td>
                   )
                 })}
-                <td className="px-4 py-2.5 text-right font-bold text-sm text-gray-700 border-l border-gray-200" style={{ minWidth: 108 }}>
+                <td className="px-4 py-2.5 text-right font-bold text-sm text-[var(--color-text-secondary)] border-l border-border" style={{ minWidth: 108 }}>
                   {(() => {
                     const t = ROLES.reduce((s, r) => s + extraRowTotal(`role-${r}`), 0)
                     return t > 0 ? `${new Intl.NumberFormat('nb-NO').format(t)} t` : '–'
@@ -712,11 +712,11 @@ export default function ForecastPage() {
                   <tr key={`cost-${role}`} className="border-b border-gray-50 hover:bg-gray-50/40">
                     <td className="px-4 py-2 sticky left-0 bg-white z-10 whitespace-nowrap" style={{ minWidth: 160 }}>
                       <span className="text-purple-600 font-semibold text-xs">{ROLE_LABELS[role]}</span>
-                      {rate > 0 && <span className="ml-1 text-[10px] text-gray-400">{new Intl.NumberFormat('nb-NO').format(rate)} kr/t</span>}
+                      {rate > 0 && <span className="ml-1 text-[10px] text-[var(--color-text-muted)]">{new Intl.NumberFormat('nb-NO').format(rate)} kr/t</span>}
                     </td>
                     {grid.map(({ year, month }) => {
                       const cost    = roleInternalCost(role, year, month)
-                      const borderL = month === 1 ? 'border-l border-gray-200' : ''
+                      const borderL = month === 1 ? 'border-l border-border' : ''
                       return (
                         <td key={`${year}-${month}`}
                           className={`px-2 py-2 text-right text-xs text-purple-600 ${borderL}`}
@@ -725,18 +725,18 @@ export default function ForecastPage() {
                         </td>
                       )
                     })}
-                    <td className="px-4 py-2 text-right font-bold text-xs text-purple-600 border-l border-gray-200 whitespace-nowrap" style={{ minWidth: 108 }}>
+                    <td className="px-4 py-2 text-right font-bold text-xs text-purple-600 border-l border-border whitespace-nowrap" style={{ minWidth: 108 }}>
                       {total > 0 ? fmt(total) : '–'}
                     </td>
                   </tr>
                 )
               })}
               {/* Total internal cost */}
-              <tr className="border-t-2 border-gray-200 bg-purple-50">
+              <tr className="border-t-2 border-border bg-purple-50">
                 <td className="px-4 py-2.5 font-bold text-purple-700 sticky left-0 bg-purple-50 z-10" style={{ minWidth: 160 }}>Sum internkostnad</td>
                 {grid.map(({ year, month }) => {
                   const total   = ROLES.reduce((s, r) => s + roleInternalCost(r, year, month), 0)
-                  const borderL = month === 1 ? 'border-l border-gray-200' : ''
+                  const borderL = month === 1 ? 'border-l border-border' : ''
                   return (
                     <td key={`${year}-${month}`}
                       className={`px-2 py-2.5 text-right text-xs font-medium text-purple-700 ${borderL}`}
@@ -745,7 +745,7 @@ export default function ForecastPage() {
                     </td>
                   )
                 })}
-                <td className="px-4 py-2.5 text-right font-bold text-sm text-purple-700 border-l border-gray-200" style={{ minWidth: 108 }}>
+                <td className="px-4 py-2.5 text-right font-bold text-sm text-purple-700 border-l border-border" style={{ minWidth: 108 }}>
                   {(() => {
                     const t = ROLES.reduce((s, r) => s + grid.reduce((s2, { year, month }) => s2 + roleInternalCost(r, year, month), 0), 0)
                     return t > 0 ? fmt(t) : '–'
@@ -758,14 +758,14 @@ export default function ForecastPage() {
       </div>
 
       {/* ── Kommentar ────────────────────────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-5 space-y-2">
-        <label className="text-sm font-semibold text-gray-700">Kommentar</label>
+      <div className="bg-white rounded-xl border border-border shadow-sm p-5 space-y-2">
+        <label className="text-sm font-semibold text-[var(--color-text-secondary)]">Kommentar</label>
         <textarea
           rows={3}
           value={generalComment}
           onChange={(e) => { setGeneralComment(e.target.value); setDirty(true); setSaved(false) }}
           placeholder="Skriv generelle kommentarer til prognosen her..."
-          className="w-full px-3 py-2 text-sm border border-gray-200 rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-gray-700 resize-none"
+          className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-2 focus:ring-blue-400 text-[var(--color-text-secondary)] resize-none"
         />
       </div>
 

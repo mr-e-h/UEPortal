@@ -35,6 +35,7 @@ export default function ViewAsBar() {
   const { me, refresh } = useMe()
   const [open, setOpen] = useState(false)
   const [busy, setBusy] = useState(false)
+  const [error, setError] = useState<string | null>(null)
   const [users, setUsers] = useState<ViewAsUser[]>([])
   const [search, setSearch] = useState('')
   const menuRef = useRef<HTMLDivElement>(null)
@@ -87,9 +88,10 @@ export default function ViewAsBar() {
       })
       if (!res.ok) {
         const data = await res.json().catch(() => ({}))
-        alert(data.error ?? 'Kunne ikke bytte visningsmodus')
+        setError((data as { error?: string }).error ?? 'Kunne ikke bytte visningsmodus')
         return
       }
+      setError(null)
       await refresh()
       setOpen(false)
       setSearch('')
@@ -134,6 +136,9 @@ export default function ViewAsBar() {
           <span>{me.impersonating ? `Viser: ${me.full_name}` : 'Vis som...'}</span>
           <ChevronDown size={12} />
         </button>
+        {error && (
+          <p className="mt-1 px-2 py-1 rounded bg-red-50 text-red-700 text-[11px] shadow">{error}</p>
+        )}
 
         {open && (
           <div className="absolute right-0 mt-1 w-80 bg-card border border-border rounded-lg shadow-lg overflow-hidden max-h-[70vh] flex flex-col">

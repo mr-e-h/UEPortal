@@ -160,7 +160,7 @@ export default function SubcontractorPricesPage() {
     setSaving(false)
   }
 
-  if (loading) return <div className="flex items-center justify-center h-64 text-gray-500">Laster...</div>
+  if (loading) return <div className="flex items-center justify-center h-64 text-[var(--color-text-muted)]">Laster...</div>
 
   const sortedProducts = highlightIds.size > 0
     ? [...products].sort((a, b) => {
@@ -187,30 +187,30 @@ export default function SubcontractorPricesPage() {
       {previewRows && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
           <div className="bg-white rounded-xl shadow-xl w-full max-w-lg max-h-[80vh] flex flex-col">
-            <div className="px-5 py-4 border-b border-gray-200 flex items-center justify-between">
-              <h2 className="text-base font-semibold text-gray-900">Forhåndsvisning — prisjustering</h2>
-              <button onClick={() => setPreviewRows(null)} className="text-gray-400 hover:text-gray-600 text-xl leading-none">×</button>
+            <div className="px-5 py-4 border-b border-border flex items-center justify-between">
+              <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Forhåndsvisning — prisjustering</h2>
+              <button onClick={() => setPreviewRows(null)} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-xl leading-none">×</button>
             </div>
             <div className="overflow-y-auto flex-1 px-5 py-3">
-              <p className="text-sm text-gray-500 mb-3">
+              <p className="text-sm text-[var(--color-text-muted)] mb-3">
                 Endringen vil gjelde for <strong>{previewRows.length} produkter</strong>.
                 Gammel og ny pris vises under.
               </p>
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-gray-100">
-                    <th className="py-2 text-left text-xs font-medium text-gray-500">Produkt</th>
-                    <th className="py-2 text-right text-xs font-medium text-gray-500">Gammel pris</th>
-                    <th className="py-2 text-right text-xs font-medium text-gray-500">Ny pris</th>
-                    <th className="py-2 text-right text-xs font-medium text-gray-500">Endring</th>
+                  <tr className="border-b border-border">
+                    <th className="py-2 text-left text-xs font-medium text-[var(--color-text-muted)]">Produkt</th>
+                    <th className="py-2 text-right text-xs font-medium text-[var(--color-text-muted)]">Gammel pris</th>
+                    <th className="py-2 text-right text-xs font-medium text-[var(--color-text-muted)]">Ny pris</th>
+                    <th className="py-2 text-right text-xs font-medium text-[var(--color-text-muted)]">Endring</th>
                   </tr>
                 </thead>
                 <tbody>
                   {previewRows.map((row) => (
                     <tr key={row.productId} className="border-b border-gray-50">
-                      <td className="py-2 text-gray-900">{row.name} <span className="text-gray-400 text-xs">({row.unit})</span></td>
-                      <td className="py-2 text-right text-gray-500">{fmt(row.oldPrice)}</td>
-                      <td className="py-2 text-right font-medium text-gray-900">{fmt(row.newPrice)}</td>
+                      <td className="py-2 text-[var(--color-text-primary)]">{row.name} <span className="text-[var(--color-text-muted)] text-xs">({row.unit})</span></td>
+                      <td className="py-2 text-right text-[var(--color-text-muted)]">{fmt(row.oldPrice)}</td>
+                      <td className="py-2 text-right font-medium text-[var(--color-text-primary)]">{fmt(row.newPrice)}</td>
                       <td className={`py-2 text-right text-xs font-semibold ${row.delta >= 0 ? 'text-green-600' : 'text-red-600'}`}>
                         {row.delta >= 0 ? '+' : ''}{fmt(row.delta)}
                       </td>
@@ -219,8 +219,8 @@ export default function SubcontractorPricesPage() {
                 </tbody>
               </table>
             </div>
-            <div className="px-5 py-4 border-t border-gray-200 flex gap-3 justify-end">
-              <button onClick={() => setPreviewRows(null)} className="px-4 py-2 text-sm text-gray-600 border border-gray-300 rounded-lg hover:bg-gray-50">Avbryt</button>
+            <div className="px-5 py-4 border-t border-border flex gap-3 justify-end">
+              <button onClick={() => setPreviewRows(null)} className="px-4 py-2 text-sm text-[var(--color-text-secondary)] border border-border rounded-lg hover:bg-muted">Avbryt</button>
               <button onClick={confirmAdjustment} className="px-4 py-2 text-sm bg-blue-600 text-white font-medium rounded-lg hover:bg-blue-700">Bekreft og bruk</button>
             </div>
           </div>
@@ -228,8 +228,8 @@ export default function SubcontractorPricesPage() {
       )}
 
       <div className="flex items-center gap-3 flex-wrap">
-        <Link href="/admin/subcontractors" className="text-gray-400 hover:text-gray-600 text-sm">← Underentreprenører</Link>
-        <h1 className="text-xl font-bold text-gray-900">Priser — {subcontractor?.company_name ?? id}</h1>
+        <Link href="/admin/subcontractors" className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-sm">← Underentreprenører</Link>
+        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Priser — {subcontractor?.company_name ?? id}</h1>
         <div className="ml-auto flex items-center gap-3">
           {dirtyCount > 0 && (
             <span className="text-xs text-amber-700 bg-amber-100 px-2 py-1 rounded-full font-medium">{dirtyCount} ulagrede endringer</span>
@@ -255,10 +255,10 @@ export default function SubcontractorPricesPage() {
       {/* Toolbox row */}
       <div className="flex flex-wrap gap-3">
         {/* Copy from another UE */}
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
-          <Copy size={14} className="text-gray-400 flex-none" />
-          <span className="text-xs font-medium text-gray-600 whitespace-nowrap">Kopier priser fra</span>
-          <select value={copyFromId} onChange={(e) => setCopyFromId(e.target.value)} className="text-sm border border-gray-300 rounded px-2 py-1 focus:outline-none focus:border-blue-500">
+        <div className="flex items-center gap-2 bg-white border border-border rounded-lg px-3 py-2 shadow-sm">
+          <Copy size={14} className="text-[var(--color-text-muted)] flex-none" />
+          <span className="text-xs font-medium text-[var(--color-text-secondary)] whitespace-nowrap">Kopier priser fra</span>
+          <select value={copyFromId} onChange={(e) => setCopyFromId(e.target.value)} className="text-sm border border-border rounded px-2 py-1 focus:outline-none focus:border-blue-500">
             <option value="">Velg UE…</option>
             {allSubcontractors.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
           </select>
@@ -266,28 +266,28 @@ export default function SubcontractorPricesPage() {
         </div>
 
         {/* Mass adjustment */}
-        <div className="flex items-center gap-2 bg-white border border-gray-200 rounded-lg px-3 py-2 shadow-sm">
-          <Percent size={14} className="text-gray-400 flex-none" />
-          <span className="text-xs font-medium text-gray-600 whitespace-nowrap">
+        <div className="flex items-center gap-2 bg-white border border-border rounded-lg px-3 py-2 shadow-sm">
+          <Percent size={14} className="text-[var(--color-text-muted)] flex-none" />
+          <span className="text-xs font-medium text-[var(--color-text-secondary)] whitespace-nowrap">
             Juster {adjustTargetLabel}
           </span>
-          <div className="flex gap-0.5 bg-gray-100 rounded p-0.5">
+          <div className="flex gap-0.5 bg-muted rounded p-0.5">
             {(['percent', 'fixed'] as const).map((m) => (
-              <button key={m} onClick={() => setAdjustMode(m)} className={`px-2 py-0.5 text-xs rounded font-medium transition-colors ${adjustMode === m ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}>
+              <button key={m} onClick={() => setAdjustMode(m)} className={`px-2 py-0.5 text-xs rounded font-medium transition-colors ${adjustMode === m ? 'bg-white shadow-sm text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}`}>
                 {m === 'percent' ? '%' : 'kr'}
               </button>
             ))}
           </div>
           <div className="flex items-center gap-1">
-            <button onClick={() => setAdjustValue((v) => v.startsWith('-') ? v.slice(1) : `-${v}`)} className="w-6 h-6 flex items-center justify-center text-gray-500 hover:text-gray-800 border border-gray-200 rounded text-xs font-bold" title="Negativt (reduser)">−</button>
+            <button onClick={() => setAdjustValue((v) => v.startsWith('-') ? v.slice(1) : `-${v}`)} className="w-6 h-6 flex items-center justify-center text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] border border-border rounded text-xs font-bold" title="Negativt (reduser)">−</button>
             <NumberInput
               value={adjustValue.replace('-', '')}
               onChange={(raw) => setAdjustValue((prev) => (prev.startsWith('-') ? '-' : '') + raw)}
               placeholder={adjustMode === 'percent' ? '5' : '100'}
-              className="w-20 px-2 py-1 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+              className="w-20 px-2 py-1 text-sm border border-border rounded focus:outline-none focus:border-blue-500"
             />
           </div>
-          <span className="text-xs text-gray-400">{adjustMode === 'percent' ? '%' : 'kr'}</span>
+          <span className="text-xs text-[var(--color-text-muted)]">{adjustMode === 'percent' ? '%' : 'kr'}</span>
           <button onClick={handlePreviewAdjustment} disabled={!adjustValue} className="flex items-center gap-1 px-3 py-1 text-xs bg-gray-700 text-white rounded-md hover:bg-gray-800 disabled:opacity-40 font-medium">
             <Plus size={11} />
             Forhåndsvis
@@ -332,8 +332,8 @@ export default function SubcontractorPricesPage() {
                   placeholder="0"
                   value={inputs[p.id] ?? ''}
                   onChange={(raw) => setInputs((prev) => ({ ...prev, [p.id]: raw }))}
-                  className={`w-28 px-2 py-1 text-sm text-gray-900 border rounded focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
-                    highlightIds.has(p.id) ? 'border-orange-400 bg-orange-50' : 'border-gray-300'
+                  className={`w-28 px-2 py-1 text-sm text-[var(--color-text-primary)] border rounded focus:outline-none focus:ring-blue-500 focus:border-blue-500 ${
+                    highlightIds.has(p.id) ? 'border-orange-400 bg-orange-50' : 'border-border'
                   }`}
                 />
               ),
@@ -361,7 +361,7 @@ export default function SubcontractorPricesPage() {
               ? 'border-b border-blue-200 bg-blue-50'
               : highlightIds.has(p.id)
               ? 'border-b border-orange-200 bg-orange-50'
-              : 'border-b border-gray-100'
+              : 'border-b border-border'
           }
         />
       </div>

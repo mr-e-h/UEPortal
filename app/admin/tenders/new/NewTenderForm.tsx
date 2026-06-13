@@ -140,8 +140,8 @@ export default function NewTenderForm({
   return (
     <main className="px-4 sm:px-6 py-8 max-w-4xl mx-auto">
       <div className="flex items-center gap-3 mb-6">
-        <Link href="/admin/tenders" className="text-gray-400 hover:text-gray-600 text-sm">← Anbud</Link>
-        <h1 className="text-xl font-bold text-gray-900">Nytt anbud</h1>
+        <Link href="/admin/tenders" className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-sm">← Anbud</Link>
+        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Nytt anbud</h1>
       </div>
 
       <div className="space-y-6">
@@ -151,7 +151,7 @@ export default function NewTenderForm({
             <select
               value={projectId}
               onChange={(e) => setProjectId(e.target.value)}
-              className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
+              className="block w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:border-blue-500"
             >
               <option value="">Velg prosjekt…</option>
               {projects.map((p) => (
@@ -167,7 +167,7 @@ export default function NewTenderForm({
               value={title}
               onChange={(e) => setTitle(e.target.value)}
               placeholder="F.eks. «Graving og fiber – Sentrum øst»"
-              className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
+              className="block w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:border-blue-500"
             />
           </Field>
           <Field label="Beskrivelse (valgfritt)">
@@ -175,7 +175,7 @@ export default function NewTenderForm({
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
+              className="block w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:border-blue-500"
             />
           </Field>
           <Field label="Svarfrist">
@@ -183,7 +183,7 @@ export default function NewTenderForm({
               type="datetime-local"
               value={deadline}
               onChange={(e) => setDeadline(e.target.value)}
-              className="block w-full px-3 py-2 text-sm border border-gray-300 rounded-md focus:outline-none focus:border-blue-500"
+              className="block w-full px-3 py-2 text-sm border border-border rounded-md focus:outline-none focus:border-blue-500"
             />
           </Field>
         </Card>
@@ -191,7 +191,7 @@ export default function NewTenderForm({
         {/* Lines */}
         <Card className="p-6">
           <div className="flex items-center justify-between mb-3">
-            <h2 className="text-sm font-semibold text-gray-900">Produkter / arbeidsoperasjoner</h2>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Produkter / arbeidsoperasjoner</h2>
             <div className="flex gap-2">
               <button
                 type="button"
@@ -203,7 +203,7 @@ export default function NewTenderForm({
               <button
                 type="button"
                 onClick={() => setLines((p) => [...p, emptyLine('free')])}
-                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-gray-100 text-gray-700 hover:bg-gray-200"
+                className="inline-flex items-center gap-1 text-xs px-2 py-1 rounded bg-muted text-[var(--color-text-secondary)] hover:bg-gray-200"
               >
                 <Type size={13} /> Fritekst
               </button>
@@ -218,7 +218,7 @@ export default function NewTenderForm({
                     <select
                       value={line.product_id}
                       onChange={(e) => onPickProduct(line.tempId, e.target.value)}
-                      className="block w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                      className="block w-full px-2 py-1.5 text-sm border border-border rounded focus:outline-none focus:border-blue-500"
                     >
                       <option value="">Velg produkt…</option>
                       {products.map((p) => (
@@ -233,7 +233,7 @@ export default function NewTenderForm({
                       value={line.description}
                       onChange={(e) => updateLine(line.tempId, { description: e.target.value })}
                       placeholder="Arbeidsoperasjon"
-                      className="block w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                      className="block w-full px-2 py-1.5 text-sm border border-border rounded focus:outline-none focus:border-blue-500"
                     />
                   )}
                 </div>
@@ -245,7 +245,7 @@ export default function NewTenderForm({
                     value={line.quantity}
                     onChange={(e) => updateLine(line.tempId, { quantity: e.target.value })}
                     placeholder="Mengde"
-                    className="block w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                    className="block w-full px-2 py-1.5 text-sm border border-border rounded focus:outline-none focus:border-blue-500"
                   />
                 </div>
                 <div className="w-20">
@@ -254,13 +254,13 @@ export default function NewTenderForm({
                     value={line.unit}
                     onChange={(e) => updateLine(line.tempId, { unit: e.target.value })}
                     placeholder="enhet"
-                    className="block w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                    className="block w-full px-2 py-1.5 text-sm border border-border rounded focus:outline-none focus:border-blue-500"
                   />
                 </div>
                 <button
                   type="button"
                   onClick={() => removeLine(line.tempId)}
-                  className="p-1.5 text-gray-400 hover:text-red-600 hover:bg-red-50 rounded"
+                  className="p-1.5 text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-50 rounded"
                   title="Fjern linje"
                 >
                   <Trash2 size={15} />
@@ -268,28 +268,28 @@ export default function NewTenderForm({
               </div>
             ))}
             {lines.length === 0 && (
-              <p className="text-sm text-gray-400 py-2">Ingen linjer ennå — legg til produkt eller fritekst.</p>
+              <p className="text-sm text-[var(--color-text-muted)] py-2">Ingen linjer ennå — legg til produkt eller fritekst.</p>
             )}
           </div>
         </Card>
 
         {/* Invite UEs */}
         <Card className="p-6">
-          <h2 className="text-sm font-semibold text-gray-900 mb-1">Inviter underentreprenører</h2>
-          <p className="text-xs text-gray-500 mb-3">{selectedSubs.size} valgt</p>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)] mb-1">Inviter underentreprenører</h2>
+          <p className="text-xs text-[var(--color-text-muted)] mb-3">{selectedSubs.size} valgt</p>
           {subcontractors.length === 0 ? (
-            <p className="text-sm text-gray-400">Ingen aktive underentreprenører.</p>
+            <p className="text-sm text-[var(--color-text-muted)]">Ingen aktive underentreprenører.</p>
           ) : (
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-1.5">
               {subcontractors.map((s) => (
-                <label key={s.id} className="flex items-center gap-2 text-sm px-2 py-1.5 rounded hover:bg-gray-50 cursor-pointer">
+                <label key={s.id} className="flex items-center gap-2 text-sm px-2 py-1.5 rounded hover:bg-muted cursor-pointer">
                   <input
                     type="checkbox"
                     checked={selectedSubs.has(s.id)}
                     onChange={() => toggleSub(s.id)}
                     className="rounded"
                   />
-                  <span className="text-gray-800">{s.company_name}</span>
+                  <span className="text-[var(--color-text-primary)]">{s.company_name}</span>
                 </label>
               ))}
             </div>

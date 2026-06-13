@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import { roleLabel } from '@/lib/roles'
 import Field from '@/components/ui/Field'
+import Input from '@/components/ui/Input'
 import ErrorBox from '@/components/ui/ErrorBox'
 import Button from '@/components/ui/Button'
 
@@ -134,35 +135,32 @@ export default function AcceptInvitePage() {
             {formError && <ErrorBox>{formError}</ErrorBox>}
 
             <Field label="Fullt navn">
-              <input
+              <Input
                 type="text"
                 required
                 value={fullName}
                 onChange={(e) => setFullName(e.target.value)}
                 autoComplete="name"
-                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               />
             </Field>
 
             <Field label="Passord (minst 8 tegn)">
-              <input
+              <Input
                 type="password"
                 required
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 autoComplete="new-password"
-                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               />
             </Field>
 
             <Field label="Bekreft passord">
-              <input
+              <Input
                 type="password"
                 required
                 value={confirm}
                 onChange={(e) => setConfirm(e.target.value)}
                 autoComplete="new-password"
-                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               />
             </Field>
 

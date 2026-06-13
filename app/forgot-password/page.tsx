@@ -3,6 +3,7 @@
 import { useState } from 'react'
 import Link from 'next/link'
 import Field from '@/components/ui/Field'
+import Input from '@/components/ui/Input'
 import ErrorBox from '@/components/ui/ErrorBox'
 import Button from '@/components/ui/Button'
 
@@ -46,13 +47,12 @@ export default function ForgotPasswordPage() {
         ) : (
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">
             <Field label="E-post">
-              <input
+              <Input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 autoComplete="email"
-                className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
               />
             </Field>
             <Button type="submit" disabled={submitting} className="w-full">

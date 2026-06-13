@@ -155,13 +155,13 @@ export default function InvoiceBasisPage() {
     <main className="px-4 sm:px-6 py-8 space-y-6">
       <div className="flex items-start justify-between gap-4">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Fakturagrunnlag</h1>
-          <p className="text-sm text-gray-500 mt-0.5">Godkjente linjer og endringsmeldinger klar for fakturering</p>
+          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Fakturagrunnlag</h1>
+          <p className="text-sm text-[var(--color-text-muted)] mt-0.5">Godkjente linjer og endringsmeldinger klar for fakturering</p>
         </div>
         <button
           onClick={exportCSV}
           disabled={lines.length === 0}
-          className="flex items-center gap-1.5 px-3 py-1.5 border border-gray-300 text-gray-700 text-sm rounded-lg hover:bg-gray-50 disabled:opacity-40"
+          className="flex items-center gap-1.5 px-3 py-1.5 border border-border text-[var(--color-text-secondary)] text-sm rounded-lg hover:bg-muted disabled:opacity-40"
         >
           <Download size={14} />
           Eksporter CSV
@@ -171,12 +171,12 @@ export default function InvoiceBasisPage() {
       {/* Filters */}
       <Card className="p-4 flex flex-wrap gap-4 items-end">
         <Field label="Type">
-          <div className="flex gap-1 bg-gray-100 rounded-lg p-0.5">
+          <div className="flex gap-1 bg-muted rounded-lg p-0.5">
             {(['ue', 'customer'] as const).map((t) => (
               <button
                 key={t}
                 onClick={() => setTypeFilter(t)}
-                className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${typeFilter === t ? 'bg-white shadow-sm text-gray-900' : 'text-gray-500 hover:text-gray-700'}`}
+                className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${typeFilter === t ? 'bg-white shadow-sm text-[var(--color-text-primary)]' : 'text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]'}`}
               >
                 {t === 'ue' ? 'Kostnad fra UE' : 'Salg til kunde'}
               </button>
@@ -187,7 +187,7 @@ export default function InvoiceBasisPage() {
           <select
             value={projectFilter}
             onChange={(e) => setProjectFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+            className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-blue-500"
           >
             <option value="all">Alle prosjekter</option>
             {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -197,7 +197,7 @@ export default function InvoiceBasisPage() {
           <select
             value={subFilter}
             onChange={(e) => setSubFilter(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+            className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-blue-500"
           >
             <option value="all">Alle UE</option>
             {subcontractors.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
@@ -208,7 +208,7 @@ export default function InvoiceBasisPage() {
             type="date"
             value={dateFrom}
             onChange={(e) => setDateFrom(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+            className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-blue-500"
           />
         </Field>
         <Field label="Til dato">
@@ -216,7 +216,7 @@ export default function InvoiceBasisPage() {
             type="date"
             value={dateTo}
             onChange={(e) => setDateTo(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+            className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-blue-500"
           />
         </Field>
       </Card>
@@ -227,8 +227,8 @@ export default function InvoiceBasisPage() {
       {summary && typeFilter === 'ue' && (
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
           <Card className="p-4">
-            <p className="text-xs text-gray-500 uppercase tracking-wide">Total kostnad</p>
-            <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(summary.total_cost)}</p>
+            <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Total kostnad</p>
+            <p className="text-2xl font-bold text-[var(--color-text-primary)] mt-1">{fmt(summary.total_cost)}</p>
           </Card>
         </div>
       )}
@@ -239,23 +239,23 @@ export default function InvoiceBasisPage() {
       {typeFilter === 'customer' && (
         <Card className="overflow-hidden">
           <div className="px-4 py-3 border-b border-border">
-            <h2 className="text-sm font-semibold text-gray-900">A-konto-fakturering</h2>
-            <p className="text-xs text-gray-500 mt-0.5">Registrer fakturert beløp — gjenstående oppdateres automatisk</p>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">A-konto-fakturering</h2>
+            <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Registrer fakturert beløp — gjenstående oppdateres automatisk</p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-3 gap-px bg-border">
             <div className="bg-card p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Produsert verdi</p>
-              <p className="text-xl font-bold text-gray-900 mt-1">{fmt(producedValue)}</p>
+              <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Produsert verdi</p>
+              <p className="text-xl font-bold text-[var(--color-text-primary)] mt-1">{fmt(producedValue)}</p>
             </div>
             <div className="bg-card p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Fakturert hittil</p>
+              <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Fakturert hittil</p>
               <p className="text-xl font-bold text-primary mt-1">{fmt(invoicedTotal)}</p>
-              <p className="text-[11px] text-gray-400">{visibleInvoices.length} {visibleInvoices.length === 1 ? 'faktura' : 'fakturaer'}</p>
+              <p className="text-[11px] text-[var(--color-text-muted)]">{visibleInvoices.length} {visibleInvoices.length === 1 ? 'faktura' : 'fakturaer'}</p>
             </div>
             <div className="bg-card p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Gjenstår å fakturere</p>
-              <p className={`text-xl font-bold mt-1 ${remainingValue >= 0 ? 'text-gray-900' : 'text-danger'}`}>{fmt(remainingValue)}</p>
+              <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Gjenstår å fakturere</p>
+              <p className={`text-xl font-bold mt-1 ${remainingValue >= 0 ? 'text-[var(--color-text-primary)]' : 'text-danger'}`}>{fmt(remainingValue)}</p>
             </div>
           </div>
 
@@ -265,21 +265,21 @@ export default function InvoiceBasisPage() {
                 type="number" min="0" step="any" value={invForm.amount}
                 onChange={(e) => setInvForm((f) => ({ ...f, amount: e.target.value }))}
                 placeholder="0"
-                className="w-36 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                className="w-36 px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-blue-500"
               />
             </Field>
             <Field label="Fakturadato">
               <input
                 type="date" value={invForm.date}
                 onChange={(e) => setInvForm((f) => ({ ...f, date: e.target.value }))}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-blue-500"
               />
             </Field>
             <Field label="Prosjekt">
               <select
                 value={invForm.projectId}
                 onChange={(e) => setInvForm((f) => ({ ...f, projectId: e.target.value }))}
-                className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-blue-500"
               >
                 <option value="">Velg prosjekt…</option>
                 {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
@@ -290,7 +290,7 @@ export default function InvoiceBasisPage() {
                 type="text" value={invForm.comment}
                 onChange={(e) => setInvForm((f) => ({ ...f, comment: e.target.value }))}
                 placeholder="Fakturanr. eller merknad"
-                className="w-52 px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+                className="w-52 px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-blue-500"
               />
             </Field>
             <button
@@ -306,7 +306,7 @@ export default function InvoiceBasisPage() {
             <div className="border-t border-border overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="bg-gray-50 border-b border-gray-100 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">
+                  <tr className="bg-muted border-b border-border text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
                     <th className="px-4 py-2.5">Dato</th>
                     <th className="px-4 py-2.5">Prosjekt</th>
                     <th className="px-4 py-2.5">Notat</th>
@@ -320,16 +320,16 @@ export default function InvoiceBasisPage() {
                     .sort((a, b) => (b.invoice_date ?? '').localeCompare(a.invoice_date ?? ''))
                     .map((inv) => (
                       <tr key={inv.id} className="border-b border-gray-50 last:border-0">
-                        <td className="px-4 py-2.5 whitespace-nowrap text-gray-700">{inv.invoice_date}</td>
-                        <td className="px-4 py-2.5 text-gray-700 max-w-[220px] truncate">{projectNameById.get(inv.project_id) ?? '–'}</td>
-                        <td className="px-4 py-2.5 text-gray-500">{inv.comment || '–'}</td>
-                        <td className="px-4 py-2.5 text-right font-medium text-gray-900 whitespace-nowrap">{fmt(inv.amount)}</td>
+                        <td className="px-4 py-2.5 whitespace-nowrap text-[var(--color-text-secondary)]">{inv.invoice_date}</td>
+                        <td className="px-4 py-2.5 text-[var(--color-text-secondary)] max-w-[220px] truncate">{projectNameById.get(inv.project_id) ?? '–'}</td>
+                        <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{inv.comment || '–'}</td>
+                        <td className="px-4 py-2.5 text-right font-medium text-[var(--color-text-primary)] whitespace-nowrap">{fmt(inv.amount)}</td>
                         <td className="px-4 py-2.5 text-right">
                           <button
                             type="button"
                             onClick={() => setConfirmDeleteInvoice(inv.id)}
                             title="Slett registrering"
-                            className="p-1 text-gray-400 hover:text-danger hover:bg-danger-soft rounded"
+                            className="p-1 text-[var(--color-text-muted)] hover:text-danger hover:bg-danger-soft rounded"
                           >
                             <Trash2 size={14} />
                           </button>
@@ -356,31 +356,31 @@ export default function InvoiceBasisPage() {
       {/* Lines table — åpen i kostnadsmodus (der den er hovedinnholdet),
           lukket i kunde-modus der a-konto-kortet eier flaten. */}
       <details open={typeFilter === 'ue'} className="bg-white rounded-lg shadow overflow-hidden group">
-        <summary className="px-4 py-3 text-sm font-semibold text-gray-900 cursor-pointer select-none list-none inline-flex items-center gap-1.5 w-full">
-          <span className="inline-block transition-transform group-open:rotate-90 text-gray-400">›</span>
+        <summary className="px-4 py-3 text-sm font-semibold text-[var(--color-text-primary)] cursor-pointer select-none list-none inline-flex items-center gap-1.5 w-full">
+          <span className="inline-block transition-transform group-open:rotate-90 text-[var(--color-text-muted)]">›</span>
           Produktlinjer{lines.length > 0 ? ` (${lines.length})` : ''}
         </summary>
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100">
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Prosjekt</th>
+            <tr className="bg-muted border-b border-border">
+              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Prosjekt</th>
               {typeFilter === 'ue' && (
-                <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">UE</th>
+                <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">UE</th>
               )}
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Produkt</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Mengde</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">Pris/enhet</th>
-              <th className="px-4 py-3 text-right text-xs font-medium text-gray-500 uppercase tracking-wide">
+              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Produkt</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Mengde</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Pris/enhet</th>
+              <th className="px-4 py-3 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
                 {typeFilter === 'ue' ? 'Sum kostnad' : 'Sum salgsverdi'}
               </th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Dato</th>
-              <th className="px-4 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wide">Kilde</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Dato</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Kilde</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={8} className="py-10 text-center text-gray-400">Laster...</td>
+                <td colSpan={8} className="py-10 text-center text-[var(--color-text-muted)]">Laster...</td>
               </tr>
             ) : lines.length === 0 ? (
               <tr>
@@ -393,22 +393,22 @@ export default function InvoiceBasisPage() {
               </tr>
             ) : (
               lines.map((l, i) => (
-                <tr key={l.report_line_id ?? l.change_order_id ?? i} className="border-b border-gray-50 hover:bg-gray-50">
-                  <td className="px-4 py-2.5 font-medium text-gray-900 max-w-[180px] truncate">{l.project_name}</td>
+                <tr key={l.report_line_id ?? l.change_order_id ?? i} className="border-b border-gray-50 hover:bg-muted">
+                  <td className="px-4 py-2.5 font-medium text-[var(--color-text-primary)] max-w-[180px] truncate">{l.project_name}</td>
                   {typeFilter === 'ue' && (
-                    <td className="px-4 py-2.5 text-gray-600">{l.subcontractor_name}</td>
+                    <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{l.subcontractor_name}</td>
                   )}
-                  <td className="px-4 py-2.5 text-gray-700">{l.product_name}</td>
-                  <td className="px-4 py-2.5 text-right text-gray-700">
+                  <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{l.product_name}</td>
+                  <td className="px-4 py-2.5 text-right text-[var(--color-text-secondary)]">
                     {fmtQty(l.quantity)} {l.unit}
                   </td>
-                  <td className="px-4 py-2.5 text-right text-gray-600">
+                  <td className="px-4 py-2.5 text-right text-[var(--color-text-secondary)]">
                     {fmt(typeFilter === 'ue' ? l.cost_price : l.sales_price)}
                   </td>
-                  <td className="px-4 py-2.5 text-right font-medium text-gray-900">
+                  <td className="px-4 py-2.5 text-right font-medium text-[var(--color-text-primary)]">
                     {fmt(typeFilter === 'ue' ? l.cost_total : l.sales_total)}
                   </td>
-                  <td className="px-4 py-2.5 text-gray-500">{l.date}</td>
+                  <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{l.date}</td>
                   <td className="px-4 py-2.5">
                     <StatusPill tone={l.source === 'report' ? 'blue' : 'primary'}>
                       {l.source === 'report' ? 'Rapport' : 'EM'}
@@ -420,11 +420,11 @@ export default function InvoiceBasisPage() {
           </tbody>
           {summary && lines.length > 0 && (
             <tfoot>
-              <tr className="bg-gray-50 border-t border-gray-200">
-                <td colSpan={typeFilter === 'ue' ? 5 : 4} className="px-4 py-3 text-sm font-semibold text-gray-700">
+              <tr className="bg-muted border-t border-border">
+                <td colSpan={typeFilter === 'ue' ? 5 : 4} className="px-4 py-3 text-sm font-semibold text-[var(--color-text-secondary)]">
                   Totalt
                 </td>
-                <td className="px-4 py-3 text-right text-sm font-bold text-gray-900">
+                <td className="px-4 py-3 text-right text-sm font-bold text-[var(--color-text-primary)]">
                   {fmt(typeFilter === 'ue' ? summary.total_cost : summary.total_sales_value)}
                 </td>
                 <td colSpan={2} />

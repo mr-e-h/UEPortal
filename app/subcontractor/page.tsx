@@ -7,7 +7,7 @@ import { CheckCircle2, Clock, Send, Plus, Mail } from 'lucide-react'
 import ProjectPickerModal from '@/components/subcontractor/ProjectPickerModal'
 import Card from '@/components/ui/Card'
 import EmptyState from '@/components/ui/EmptyState'
-import { fmtNOK as fmt } from '@/lib/format'
+import { fmtNOK as fmt, fmtDateLong as fmtDate, fmtDateTime } from '@/lib/format'
 import { changeOrderType, changeOrderStatus } from '@/lib/statuses'
 import { useMe } from '@/lib/useMe'
 
@@ -94,22 +94,6 @@ const EMPTY_DASHBOARD: DashboardPayload = {
   revisionChangeOrders: [],
   pendingWeeklyReports: [],
   projects: [],
-}
-
-function fmtDate(s: string | null | undefined): string {
-  if (!s) return '—'
-  return new Date(s).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
-}
-
-// Brukes for EM-er på dashboardet der admin ønsker å se klokkeslett, ikke
-// bare dato. Oslo-TZ, kort format. Eksempel: "28.05.2026 14:32".
-function fmtDateTime(s: string | null | undefined): string {
-  if (!s) return '—'
-  return new Date(s).toLocaleString('nb-NO', {
-    dateStyle: 'short',
-    timeStyle: 'short',
-    timeZone: 'Europe/Oslo',
-  })
 }
 
 function daysUntil(s: string | null | undefined): number | null {

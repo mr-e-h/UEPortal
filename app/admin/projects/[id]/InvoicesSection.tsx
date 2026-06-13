@@ -52,9 +52,9 @@ export default function InvoicesSection({ projectId }: { projectId: string }) {
     <section className="bg-white rounded-lg shadow p-5 space-y-4">
       <div className="flex items-center justify-between">
         <div>
-          <h2 className="text-base font-semibold text-gray-900">Fakturaer</h2>
+          <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Fakturaer</h2>
           {!loading && invoices.length > 0 && (
-            <p className="text-sm text-gray-500 mt-0.5">Totalt fakturert: <span className="font-semibold text-gray-800">{fmt(total)}</span></p>
+            <p className="text-sm text-[var(--color-text-muted)] mt-0.5">Totalt fakturert: <span className="font-semibold text-[var(--color-text-primary)]">{fmt(total)}</span></p>
           )}
         </div>
         <button
@@ -67,33 +67,33 @@ export default function InvoicesSection({ projectId }: { projectId: string }) {
       </div>
 
       {showForm && (
-        <form onSubmit={handleAdd} className="bg-gray-50 border border-gray-200 rounded-lg p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
+        <form onSubmit={handleAdd} className="bg-muted border border-border rounded-lg p-4 grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Fakturert beløp (NOK)</label>
+            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Fakturert beløp (NOK)</label>
             <NumberInput
               required
               value={form.amount}
               onChange={(raw) => setForm((p) => ({ ...p, amount: raw }))}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-gray-900"
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-[var(--color-text-primary)]"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Fakturadato</label>
+            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Fakturadato</label>
             <input
               required
               type="date"
               value={form.invoice_date}
               onChange={(e) => setForm((p) => ({ ...p, invoice_date: e.target.value }))}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-gray-900"
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-[var(--color-text-primary)]"
             />
           </div>
           <div>
-            <label className="block text-xs font-medium text-gray-700 mb-1">Kommentar</label>
+            <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Kommentar</label>
             <input
               type="text"
               value={form.comment}
               onChange={(e) => setForm((p) => ({ ...p, comment: e.target.value }))}
-              className="w-full px-3 py-2 text-sm border border-gray-300 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-gray-900"
+              className="w-full px-3 py-2 text-sm border border-border rounded-lg focus:outline-none focus:ring-1 focus:ring-primary text-[var(--color-text-primary)]"
             />
           </div>
           <div className="sm:col-span-3 flex justify-end">
@@ -105,16 +105,16 @@ export default function InvoicesSection({ projectId }: { projectId: string }) {
       )}
 
       {loading ? (
-        <p className="text-sm text-gray-500">Laster...</p>
+        <p className="text-sm text-[var(--color-text-muted)]">Laster...</p>
       ) : invoices.length === 0 ? (
-        <p className="text-sm text-gray-400">Ingen fakturaer registrert ennå.</p>
+        <p className="text-sm text-[var(--color-text-muted)]">Ingen fakturaer registrert ennå.</p>
       ) : (
         <div className="overflow-x-auto">
           <table className="w-full text-sm">
             <thead>
-              <tr className="border-b border-gray-100">
+              <tr className="border-b border-border">
                 {['Dato', 'Beløp', 'Kommentar', 'Registrert av', ''].map((h) => (
-                  <th key={h} className={`py-2 px-3 text-left text-xs font-medium text-gray-400 uppercase tracking-wide ${h === 'Beløp' ? 'text-right' : ''}`}>
+                  <th key={h} className={`py-2 px-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide ${h === 'Beløp' ? 'text-right' : ''}`}>
                     {h}
                   </th>
                 ))}
@@ -122,24 +122,24 @@ export default function InvoicesSection({ projectId }: { projectId: string }) {
             </thead>
             <tbody>
               {invoices.map((inv) => (
-                <tr key={inv.id} className="border-b border-gray-50 last:border-0 hover:bg-gray-50">
-                  <td className="py-2 px-3 text-gray-700">{inv.invoice_date}</td>
-                  <td className="py-2 px-3 text-right font-medium text-gray-900">{fmt(inv.amount)}</td>
-                  <td className="py-2 px-3 text-gray-500">{inv.comment || '–'}</td>
-                  <td className="py-2 px-3 text-gray-400 text-xs">{inv.created_by}</td>
+                <tr key={inv.id} className="border-b border-gray-50 last:border-0 hover:bg-muted">
+                  <td className="py-2 px-3 text-[var(--color-text-secondary)]">{inv.invoice_date}</td>
+                  <td className="py-2 px-3 text-right font-medium text-[var(--color-text-primary)]">{fmt(inv.amount)}</td>
+                  <td className="py-2 px-3 text-[var(--color-text-muted)]">{inv.comment || '–'}</td>
+                  <td className="py-2 px-3 text-[var(--color-text-muted)] text-xs">{inv.created_by}</td>
                   <td className="py-2 px-3 text-right">
                     <button
                       onClick={() => setConfirmDeleteId(inv.id)}
                       disabled={deleting === inv.id}
-                      className="text-gray-400 hover:text-red-500 transition-colors disabled:opacity-40"
+                      className="text-[var(--color-text-muted)] hover:text-red-500 transition-colors disabled:opacity-40"
                     >
                       <Trash2 size={14} />
                     </button>
                   </td>
                 </tr>
               ))}
-              <tr className="bg-gray-50">
-                <td colSpan={2} className="py-2 px-3 text-right text-sm font-bold text-gray-900">Totalt: {fmt(total)}</td>
+              <tr className="bg-muted">
+                <td colSpan={2} className="py-2 px-3 text-right text-sm font-bold text-[var(--color-text-primary)]">Totalt: {fmt(total)}</td>
                 <td colSpan={3} />
               </tr>
             </tbody>

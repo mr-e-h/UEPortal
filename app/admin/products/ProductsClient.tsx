@@ -176,8 +176,8 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
     <main className="px-4 sm:px-6 py-8 space-y-6">
       <div className="flex justify-between items-center">
         <div>
-          <h1 className="text-xl font-bold text-gray-900">Produktregister</h1>
-          <p className="text-sm text-gray-500 mt-0.5">
+          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Produktregister</h1>
+          <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
             {products.filter((p) => p.active !== false).length} aktive · {products.filter((p) => p.active === false).length} inaktive
           </p>
         </div>
@@ -202,7 +202,7 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
                 required={required}
                 value={form[key as keyof typeof form]}
                 onChange={(e) => setForm((prev) => ({ ...prev, [key]: e.target.value }))}
-                className="block w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+                className="block w-full px-2 py-1.5 text-sm border border-border rounded focus:outline-none focus:border-blue-500"
               />
             </Field>
           ))}
@@ -210,7 +210,7 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
             <select
               value={form.county}
               onChange={(e) => setForm((prev) => ({ ...prev, county: e.target.value }))}
-              className="block w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+              className="block w-full px-2 py-1.5 text-sm border border-border rounded focus:outline-none focus:border-blue-500"
             >
               <option value="">Velg fylke</option>
               {COUNTIES.map((c) => <option key={c} value={c}>{c}</option>)}
@@ -221,7 +221,7 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
               required
               value={form.customer_price}
               onChange={(raw) => setForm((prev) => ({ ...prev, customer_price: raw }))}
-              className="block w-full px-2 py-1.5 text-sm border border-gray-300 rounded focus:outline-none focus:border-blue-500"
+              className="block w-full px-2 py-1.5 text-sm border border-border rounded focus:outline-none focus:border-blue-500"
             />
           </Field>
           <div className="col-span-full">
@@ -235,24 +235,24 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
       {/* Filters */}
       <div className="flex flex-wrap gap-3 items-center">
         <div className="relative flex-1 min-w-[200px] max-w-sm">
-          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-gray-400" />
+          <Search size={14} className="absolute left-2.5 top-1/2 -translate-y-1/2 text-[var(--color-text-muted)]" />
           <input
             type="text"
             placeholder="Søk på navn eller kode..."
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
-            className="w-full pl-8 pr-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+            className="w-full pl-8 pr-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-blue-500"
           />
         </div>
         <select
           value={countyFilter}
           onChange={(e) => setCountyFilter(e.target.value)}
-          className="px-3 py-1.5 text-sm border border-gray-300 rounded-lg focus:outline-none focus:border-blue-500"
+          className="px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-blue-500"
         >
           <option value="all">Alle fylker</option>
           {usedCounties.map((c) => <option key={c} value={c}>{c}</option>)}
         </select>
-        <label className="flex items-center gap-1.5 text-sm text-gray-600 cursor-pointer select-none">
+        <label className="flex items-center gap-1.5 text-sm text-[var(--color-text-secondary)] cursor-pointer select-none">
           <input
             type="checkbox"
             checked={showInactive}
@@ -261,7 +261,7 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
           />
           Vis inaktive
         </label>
-        <span className="text-xs text-gray-400 ml-auto">{filtered.length} produkter</span>
+        <span className="text-xs text-[var(--color-text-muted)] ml-auto">{filtered.length} produkter</span>
         {selected.size > 0 && (
           <button
             onClick={() => setConfirmBulkDelete(true)}
@@ -277,7 +277,7 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
       <div className="bg-white rounded-lg shadow overflow-hidden">
         <table className="w-full text-sm">
           <thead>
-            <tr className="bg-gray-50 border-b border-gray-100">
+            <tr className="bg-muted border-b border-border">
               <th className="px-4 py-3 w-8">
                 <input
                   type="checkbox"
@@ -313,7 +313,7 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
                 const isEditing = editingId === p.id
                 const priceCount = priceCountByProduct.get(p.id) ?? 0
                 return (
-                  <tr key={p.id} className={`border-b border-gray-100 hover:bg-gray-50 ${p.active === false ? 'opacity-50' : ''}`}>
+                  <tr key={p.id} className={`border-b border-border hover:bg-muted ${p.active === false ? 'opacity-50' : ''}`}>
                     <td className="px-4 py-2.5 w-8">
                       <input
                         type="checkbox"
@@ -334,7 +334,7 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
                         <button
                           type="button"
                           onClick={() => setPriceModalProduct(p)}
-                          className="font-medium text-gray-900 hover:text-blue-600 hover:underline text-left"
+                          className="font-medium text-[var(--color-text-primary)] hover:text-blue-600 hover:underline text-left"
                           title="Se UE-priser på dette produktet"
                         >
                           {p.description}
@@ -353,7 +353,7 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
                         <button
                           type="button"
                           onClick={() => setPriceModalProduct(p)}
-                          className="text-gray-700 hover:text-blue-600 hover:underline text-left"
+                          className="text-[var(--color-text-secondary)] hover:text-blue-600 hover:underline text-left"
                           title="Se UE-priser på dette produktet"
                         >
                           {p.name}
@@ -369,7 +369,7 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
                           className="w-20 px-2 py-1 text-sm border border-blue-400 rounded focus:outline-none"
                         />
                       ) : (
-                        <span className="text-gray-500">{p.unit}</span>
+                        <span className="text-[var(--color-text-muted)]">{p.unit}</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5">
@@ -383,7 +383,7 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
                           {COUNTIES.map((c) => <option key={c} value={c}>{c}</option>)}
                         </select>
                       ) : (
-                        <span className="text-gray-500">{p.county || '–'}</span>
+                        <span className="text-[var(--color-text-muted)]">{p.county || '–'}</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-right">
@@ -394,7 +394,7 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
                           className="w-28 px-2 py-1 text-sm text-right border border-blue-400 rounded focus:outline-none"
                         />
                       ) : (
-                        <span className="font-medium text-gray-900">{fmt(p.customer_price)} kr</span>
+                        <span className="font-medium text-[var(--color-text-primary)]">{fmt(p.customer_price)} kr</span>
                       )}
                     </td>
                     <td className="px-4 py-2.5 text-center">
@@ -421,26 +421,26 @@ export default function ProductsClient({ initialProducts, initialPrices, initial
                             <button onClick={() => saveEdit(p.id)} title="Lagre" className="p-1 text-green-600 hover:bg-green-50 rounded">
                               <Check size={14} />
                             </button>
-                            <button onClick={() => setEditingId(null)} title="Avbryt" className="p-1 text-gray-400 hover:bg-gray-100 rounded">
+                            <button onClick={() => setEditingId(null)} title="Avbryt" className="p-1 text-[var(--color-text-muted)] hover:bg-muted rounded">
                               <X size={14} />
                             </button>
                           </>
                         ) : (
                           <>
-                            <button onClick={() => startEdit(p)} title="Rediger" className="p-1 text-gray-400 hover:text-blue-600 hover:bg-blue-50 rounded">
+                            <button onClick={() => startEdit(p)} title="Rediger" className="p-1 text-[var(--color-text-muted)] hover:text-blue-600 hover:bg-blue-50 rounded">
                               <Pencil size={14} />
                             </button>
                             <button
                               onClick={() => handleToggleActive(p)}
                               title={p.active !== false ? 'Deaktiver' : 'Aktiver'}
-                              className={`p-1 rounded ${p.active !== false ? 'text-gray-400 hover:text-orange-500 hover:bg-orange-50' : 'text-orange-400 hover:text-green-600 hover:bg-green-50'}`}
+                              className={`p-1 rounded ${p.active !== false ? 'text-[var(--color-text-muted)] hover:text-orange-500 hover:bg-orange-50' : 'text-orange-400 hover:text-green-600 hover:bg-green-50'}`}
                             >
                               <PowerOff size={14} />
                             </button>
                             <button
                               onClick={() => setConfirmDeleteId(p.id)}
                               title="Slett permanent"
-                              className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-50 rounded"
+                              className="p-1 text-[var(--color-text-muted)] hover:text-red-500 hover:bg-red-50 rounded"
                             >
                               <Trash2 size={14} />
                             </button>
@@ -504,7 +504,7 @@ function SortTh({ label, sortKey: key, current, dir, onSort, align = 'left' }: {
   return (
     <th
       onClick={() => onSort(key)}
-      className={`px-4 py-3 ${alignCls} text-xs font-medium text-gray-500 uppercase tracking-wide cursor-pointer select-none hover:text-gray-700`}
+      className={`px-4 py-3 ${alignCls} text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide cursor-pointer select-none hover:text-[var(--color-text-secondary)]`}
     >
       <span className={`inline-flex items-center gap-1 ${justifyCls}`}>
         {label}

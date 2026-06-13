@@ -97,7 +97,7 @@ export default function MaterialSection({
       label: 'Tildelt UE',
       sortable: true,
       render: (row: MaterialRow) => row.assigned_subcontractor_id
-        ? <span className="text-sm text-gray-900">{row.assigned_name}</span>
+        ? <span className="text-sm text-[var(--color-text-primary)]">{row.assigned_name}</span>
         : <span className="text-xs text-orange-400">Ikke tildelt</span>,
     },
     {
@@ -146,14 +146,14 @@ export default function MaterialSection({
   return (
     <section className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-gray-900">Materiell</h2>
-        <span className="text-xs text-gray-400">Viser budsjettlinjer av type «Materiell»</span>
+        <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Materiell</h2>
+        <span className="text-xs text-[var(--color-text-muted)]">Viser budsjettlinjer av type «Materiell»</span>
       </div>
 
       {rows.length === 0 ? (
-        <div className="bg-white rounded-xl border border-dashed border-gray-300 p-12 text-center">
-          <p className="text-sm text-gray-400">Ingen materiell-linjer lagt til ennå.</p>
-          <p className="text-xs text-gray-400 mt-1">
+        <div className="bg-white rounded-xl border border-dashed border-border p-12 text-center">
+          <p className="text-sm text-[var(--color-text-muted)]">Ingen materiell-linjer lagt til ennå.</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">
             Gå til{' '}
             <button className="text-blue-600 hover:underline" onClick={onGoToBudgetLines}>
               Budsjettlinjer
@@ -167,7 +167,7 @@ export default function MaterialSection({
             columns={columns}
             data={rows}
             emptyText="Ingen materiell-linjer"
-            rowClassName={() => 'border-b border-gray-100 hover:bg-orange-50'}
+            rowClassName={() => 'border-b border-border hover:bg-orange-50'}
             expandedRowId={chartLineId}
             onRowExpand={(rowId) => setChartLineId(rowId)}
             expandedRowRender={expandedRowRender}

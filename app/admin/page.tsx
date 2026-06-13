@@ -5,10 +5,12 @@ import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { getProjectScope } from '@/lib/api-guard'
 import { ADMIN_ROLES, PROJECT_STAFF_ROLES } from '@/lib/roles'
+import { EM_NEEDS_ACTION, WR_NEEDS_ACTION } from '@/lib/attention'
 import { formatWeekLabel } from '@/lib/utils/weeks'
 import { osloYearMonth } from '@/lib/utils/dates'
 import { fmtChangeOrderTitle } from '@/lib/format'
-import { changeOrderType } from '@/lib/statuses'
+import { changeOrderType, changeOrderPill, weeklyReportStatus } from '@/lib/statuses'
+import StatusPill from '@/components/ui/StatusPill'
 import type { MonthBucket } from '@/components/admin/MonthlyBarChart'
 import MonthlyChartWithPmFilter from '@/components/admin/MonthlyChartWithPmFilter'
 import type {
@@ -69,12 +71,11 @@ export default async function AdminDashboard() {
     sb.from('projects').select('id, name, project_number').neq('deleted', true),
     sb.from('subcontractors').select('id, company_name'),
     sb.from('weekly_reports').select('id, project_id, subcontractor_id, year, week_number, status, submitted_at, submission_number')
-      // 'partially_approved' is still NOT done — some lines need re-review,
-      // so keep it on the dashboard until the rest is approved or rejected.
-      .in('status', ['submitted', 'partially_approved'])
+      // «Krever handling»-definisjonen bor i lib/attention.ts.
+      .in('status', [...WR_NEEDS_ACTION])
       .order('submitted_at', { ascending: false }),
     sb.from('change_orders').select('id, change_order_number, em_type, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, profit, reason, status, sent_to_customer_at, submitted_at, submitted_by')
-      .eq('status', 'pending')
+      .in('status', [...EM_NEEDS_ACTION])
       .order('submitted_at', { ascending: false }),
     // For the monthly bar chart — approved reports submitted in current year.
     sb.from('weekly_reports')
@@ -386,9 +387,7 @@ export default async function AdminDashboard() {
                         <div className="flex items-center gap-1.5 mt-0.5">
                           <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${t.cls}`}>{t.label}</span>
                           {co.sent_to_customer && (
-                            <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">
-                              Sendt kunde
-                            </span>
+                            <StatusPill meta={changeOrderPill('pending', true)} />
                           )}
                           <span className="text-[10px] text-[var(--color-text-muted)] truncate">
                             {co.submitted_by ? `${co.submitted_by}, ${co.sub_name}` : co.sub_name} · {co.submitted_at}
@@ -459,8 +458,8 @@ export default async function AdminDashboard() {
                             {wr.project_name} · {wr.sub_name} · {wr.line_count} {wr.line_count === 1 ? 'linje' : 'linjer'}
                           </p>
                           {isPartial && (
-                            <span className="inline-flex items-center gap-1 mt-1.5 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-blue-50 text-blue-700">
-                              Delvis godkjent
+                            <span className="inline-flex mt-1.5">
+                              <StatusPill meta={weeklyReportStatus('partially_approved')} />
                             </span>
                           )}
                         </div>

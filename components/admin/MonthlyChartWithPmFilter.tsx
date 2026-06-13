@@ -11,7 +11,7 @@ import type { MonthBucket } from './MonthlyBarChart'
 // render immediately while only the chart canvas streams in afterwards.
 const MonthlyBarChart = dynamic(() => import('./MonthlyBarChart'), {
   ssr: false,
-  loading: () => <div className="h-[280px] w-full animate-pulse rounded-lg bg-gray-100" />,
+  loading: () => <div className="h-[280px] w-full animate-pulse rounded-lg bg-muted" />,
 })
 
 function fmt(n: number) {

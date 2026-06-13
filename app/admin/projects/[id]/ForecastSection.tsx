@@ -33,7 +33,7 @@ export default function ForecastSection({
     <div className="space-y-6">
       {hasForecast && (
         <section>
-          <h2 className="text-lg font-semibold text-gray-900 mb-3">Prognose — månedlig plan</h2>
+          <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-3">Prognose — månedlig plan</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
             <div className="bg-indigo-50 border border-indigo-200 rounded-xl shadow-sm p-4">
               <p className="text-xs font-semibold text-indigo-600 uppercase tracking-wide">Forventet inntekt</p>
@@ -46,19 +46,19 @@ export default function ForecastSection({
                 </p>
               )}
             </div>
-            <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Forventet UE-kost</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(forecastUECost)}</p>
+            <div className="bg-white border border-border rounded-xl shadow-sm p-4">
+              <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Forventet UE-kost</p>
+              <p className="text-2xl font-bold text-[var(--color-text-primary)] mt-1">{fmt(forecastUECost)}</p>
             </div>
-            <div className="bg-white border border-gray-100 rounded-xl shadow-sm p-4">
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Forventet internkost</p>
-              <p className="text-2xl font-bold text-gray-900 mt-1">{fmt(forecastInternalCost)}</p>
+            <div className="bg-white border border-border rounded-xl shadow-sm p-4">
+              <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Forventet internkost</p>
+              <p className="text-2xl font-bold text-[var(--color-text-primary)] mt-1">{fmt(forecastInternalCost)}</p>
               {forecastOtherCost > 0 && (
-                <p className="text-xs text-gray-400 mt-0.5">+ {fmt(forecastOtherCost)} andre kost.</p>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">+ {fmt(forecastOtherCost)} andre kost.</p>
               )}
             </div>
             <div className={`rounded-xl shadow-sm p-4 border ${forecastProfit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-              <p className="text-xs text-gray-500 uppercase tracking-wide">Forventet fortjeneste</p>
+              <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Forventet fortjeneste</p>
               <p className={`text-2xl font-bold mt-1 ${forecastProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                 {fmt(forecastProfit)}
               </p>
@@ -67,7 +67,7 @@ export default function ForecastSection({
         </section>
       )}
 
-      <div className="bg-white rounded-xl border border-gray-200 shadow-sm p-8 flex flex-col items-center gap-4 text-center">
+      <div className="bg-white rounded-xl border border-border shadow-sm p-8 flex flex-col items-center gap-4 text-center">
         <div className="w-16 h-16 rounded-full bg-indigo-50 flex items-center justify-center">
           <svg className="w-8 h-8 text-indigo-500" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
             <path
@@ -78,8 +78,8 @@ export default function ForecastSection({
           </svg>
         </div>
         <div>
-          <h3 className="text-base font-semibold text-gray-900">Prognoseside</h3>
-          <p className="text-sm text-gray-500 mt-1">
+          <h3 className="text-base font-semibold text-[var(--color-text-primary)]">Prognoseside</h3>
+          <p className="text-sm text-[var(--color-text-muted)] mt-1">
             Legg inn månedlige prognose-tall, forventet inntekt og kostnader per periode.
           </p>
         </div>

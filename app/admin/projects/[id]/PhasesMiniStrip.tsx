@@ -1,9 +1,17 @@
 'use client'
 
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useState } from 'react'
 import { Plus, X, Pencil, Trash2, Check, Undo2 } from 'lucide-react'
 import { useMe } from '@/lib/useMe'
-import type { GanttMilestone } from '@/types'
+import { fmtDateShort as fmtD } from '@/lib/format'
+import { ADMIN_ROLES } from '@/lib/roles'
+import {
+  DAY, FALLBACK_COLOR, STATUS_LABEL, barSpanMs, pctPos, useTimelineDrag,
+  type TimelineItem, type ItemDraft, type PhaseStatus,
+} from '@/components/fremdriftsplan/core'
+import TimelineBar from '@/components/fremdriftsplan/TimelineBar'
+import { api, apiErrorMessage } from '@/lib/api'
+import type { GanttMilestone, PhaseType, ProjectPhase } from '@/types'
 
 /**
  * Fremdriftsplanen for et prosjekt — tidslinjen ER editoren, med eksplisitt
@@ -23,56 +31,23 @@ import type { GanttMilestone } from '@/types'
  * redigerer alt; byggeleder kun fase-status/fremdrift (API-håndhevet).
  */
 
-interface Phase {
-  id: string
-  phase_type_id: string
-  name: string | null
-  start_date: string
-  end_date: string | null
-  status: 'planned' | 'in_progress' | 'done'
-  progress_percent: number
-}
+type Phase = ProjectPhase
 
-interface PhaseType { id: string; name: string; color: string; is_active?: boolean }
-
-type Row = {
-  id: string
-  kind: 'phase' | 'milestone'
-  rawId: string
-  label: string
-  color: string
-  start: string
-  end: string | null
-  done: boolean
+/** Panelets rad = kjernens element + visningsfelter. */
+type Row = TimelineItem & {
   pctLabel: string
   phase?: Phase
   milestone?: GanttMilestone
 }
 
-/** Lokalt utkast per rad — skrives først ved «Lagre». */
-type RowDraft = {
-  start?: string
-  end?: string | null
-  phase_type_id?: string
-  name?: string
-  status?: Phase['status']
-  progress?: number
-}
-
-const STATUS_LABEL: Record<Phase['status'], string> = {
-  planned: 'Planlagt', in_progress: 'Pågår', done: 'Ferdig',
-}
-
-const FALLBACK_COLOR = '#94A3B8'
-const DAY = 24 * 60 * 60 * 1000
-const toISO = (ms: number) => new Date(ms).toISOString().slice(0, 10)
+type RowDraft = ItemDraft
 
 type EditDraft = {
   phase_type_id: string
   name: string
   start: string
   end: string
-  status: Phase['status']
+  status: PhaseStatus
   progress: string
 }
 
@@ -97,7 +72,7 @@ export default function PhasesMiniStrip({
   manage?: boolean
 }) {
   const { me } = useMe()
-  const canManage = !!me && ['main', 'company', 'project_manager'].includes(me.role)
+  const canManage = !!me && ADMIN_ROLES.includes(me.role)
   const canTouchStatus = canManage || me?.role === 'byggeleder'
 
   const [phases, setPhases] = useState<Phase[]>([])
@@ -122,25 +97,26 @@ export default function PhasesMiniStrip({
   const [editingId, setEditingId] = useState<string | null>(null)
   const [editDraft, setEditDraft] = useState<EditDraft>(emptyDraft())
 
-  // Dra-tilstand.
+  // Dra-tilstand: forhåndsvisning under draing + kjernens dra-mekanikk.
   const [override, setOverride] = useState<Record<string, { start: string; end: string | null }>>({})
-  const [dragTip, setDragTip] = useState<{ x: number; y: number; text: string } | null>(null)
-  const dragRef = useRef<{
-    row: Row
-    edge: 'start' | 'end' | 'move'
-    startX: number
-    msPerPx: number
-    origStart: number
-    origEnd: number
-    curStart: number
-    curEnd: number
-  } | null>(null)
-  const [dragging, setDragging] = useState(false)
+  const { dragTip, dragging, startDrag } = useTimelineDrag({
+    enabled: canManage && editMode,
+    onPreview: (id, s, e) => setOverride((prev) => ({ ...prev, [id]: { start: s, end: e } })),
+    onClearPreview: (id) => setOverride((prev) => {
+      const next = { ...prev }
+      delete next[id]
+      return next
+    }),
+    onCommit: (item, s, e) => setDrafts((prev) => ({
+      ...prev,
+      [item.id]: { ...prev[item.id], start: s, end: e },
+    })),
+  })
 
   async function fetchPhases() {
     const [p, t] = await Promise.all([
-      fetch(`/api/project-phases?project_id=${projectId}`).then((r) => (r.ok ? r.json() : [])),
-      fetch('/api/phase-types').then((r) => (r.ok ? r.json() : [])),
+      api.projectPhases.list(projectId).catch(() => []),
+      api.phaseTypes.list().catch(() => []),
     ])
     setPhases(Array.isArray(p) ? p : [])
     setTypes(Array.isArray(t) ? t : [])
@@ -230,83 +206,17 @@ export default function PhasesMiniStrip({
 
   const changeCount = new Set([...Object.keys(drafts), ...Array.from(deleted)]).size
 
-  // Én dato (tom sluttdato) = punkthendelse, f.eks. leveringsdato — vises
-  // som en smal markør, ikke en 7-dagers strek.
+  // Barposisjon i % — punkt-semantikk og dag-matte fra kjernen.
   const pos = (startISO: string, endISO: string | null) => {
-    const s = Date.parse(startISO)
-    const e = endISO ? Date.parse(endISO) : s + DAY
+    const { s, e } = barSpanMs(startISO, endISO)
     return {
-      left: `${Math.max(0, ((s - min) / span) * 100)}%`,
+      left: `${pctPos(s, min, max)}%`,
       width: `${Math.max(1.5, ((Math.max(e, s + DAY) - s) / span) * 100)}%`,
     }
   }
 
   const today = Date.now()
   const todayPct = today >= min && today <= max ? ((today - min) / span) * 100 : null
-
-  const fmtD = (iso: string) => {
-    const [y, m, d] = iso.split('-')
-    return `${d}.${m}.${y.slice(2)}`
-  }
-
-  // ── Draing (kun i redigeringsmodus) — skriver til utkast ved slipp ──
-  function startDrag(e: React.PointerEvent, row: Row, edge: 'start' | 'end' | 'move') {
-    if (!canManage || !editMode) return
-    e.preventDefault()
-    e.stopPropagation()
-    const track = (e.currentTarget as HTMLElement).closest('[data-track]') as HTMLElement | null
-    if (!track) return
-    const width = track.getBoundingClientRect().width
-    if (width <= 0) return
-    const origStart = Date.parse(row.start)
-    const origEnd = row.end ? Date.parse(row.end) : origStart + DAY
-    dragRef.current = {
-      row, edge, startX: e.clientX, msPerPx: span / width,
-      origStart, origEnd, curStart: origStart, curEnd: origEnd,
-    }
-    setDragging(true)
-    const tipFor = (s: number, en: number) =>
-      edge === 'move' ? `${fmtD(toISO(s))} – ${fmtD(toISO(en))}` : fmtD(toISO(edge === 'start' ? s : en))
-    setDragTip({ x: e.clientX, y: e.clientY, text: tipFor(origStart, origEnd) })
-
-    const onMove = (ev: PointerEvent) => {
-      const d = dragRef.current
-      if (!d) return
-      const deltaMs = Math.round(((ev.clientX - d.startX) * d.msPerPx) / DAY) * DAY
-      let s = d.origStart
-      let en = d.origEnd
-      if (d.edge === 'start') s = Math.min(d.origStart + deltaMs, en - DAY)
-      else if (d.edge === 'end') en = Math.max(d.origEnd + deltaMs, s + DAY)
-      else { s = d.origStart + deltaMs; en = d.origEnd + deltaMs }
-      d.curStart = s
-      d.curEnd = en
-      setOverride((prev) => ({ ...prev, [d.row.id]: { start: toISO(s), end: toISO(en) } }))
-      setDragTip({ x: ev.clientX, y: ev.clientY, text: tipFor(s, en) })
-    }
-    const onUp = () => {
-      window.removeEventListener('pointermove', onMove)
-      window.removeEventListener('pointerup', onUp)
-      const d = dragRef.current
-      dragRef.current = null
-      setDragging(false)
-      setDragTip(null)
-      if (!d) return
-      // Inn i utkastet — lagres først ved «Lagre».
-      if (d.curStart !== d.origStart || d.curEnd !== d.origEnd) {
-        setDrafts((prev) => ({
-          ...prev,
-          [d.row.id]: { ...prev[d.row.id], start: toISO(d.curStart), end: toISO(d.curEnd) },
-        }))
-      }
-      setOverride((prev) => {
-        const next = { ...prev }
-        delete next[d.row.id]
-        return next
-      })
-    }
-    window.addEventListener('pointermove', onMove)
-    window.addEventListener('pointerup', onUp)
-  }
 
   // ── Blyant → utkast ─────────────────────────────────────────────────
   function startEdit(row: Row) {
@@ -375,11 +285,12 @@ export default function PhasesMiniStrip({
     for (const id of Array.from(deleted)) {
       const row = rowById.get(id)
       if (!row) continue
-      const res = row.kind === 'phase'
-        ? await fetch(`/api/project-phases/${row.rawId}`, { method: 'DELETE' })
-        : await fetch(`/api/milestones?id=${row.rawId}`, { method: 'DELETE' })
-      if (!res.ok) failures.push(`Slett ${row.label}`)
-      else if (row.kind === 'milestone') touchedMilestones = true
+      try {
+        if (row.kind === 'phase') await api.projectPhases.remove(row.rawId)
+        else { await api.milestones.remove(row.rawId); touchedMilestones = true }
+      } catch {
+        failures.push(`Slett ${row.label}`)
+      }
     }
 
     // Endringer.
@@ -387,42 +298,33 @@ export default function PhasesMiniStrip({
       if (deleted.has(id)) continue
       const row = rowById.get(id)
       if (!row) continue
-      let res: Response
-      if (row.kind === 'phase') {
-        const body = canManage
-          ? {
-              ...(d.phase_type_id !== undefined ? { phase_type_id: d.phase_type_id } : {}),
-              ...(d.name !== undefined ? { name: d.name || null } : {}),
-              ...(d.start !== undefined ? { start_date: d.start } : {}),
-              ...(d.end !== undefined ? { end_date: d.end } : {}),
-              ...(d.status !== undefined ? { status: d.status } : {}),
-              ...(d.progress !== undefined ? { progress_percent: d.progress } : {}),
-            }
-          : {
-              ...(d.status !== undefined ? { status: d.status } : {}),
-              ...(d.progress !== undefined ? { progress_percent: d.progress } : {}),
-            }
-        res = await fetch(`/api/project-phases/${row.rawId}`, {
-          method: 'PATCH',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(body),
-        })
-      } else {
-        res = await fetch('/api/milestones', {
-          method: 'PUT',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
+      try {
+        if (row.kind === 'phase') {
+          const body = canManage
+            ? {
+                ...(d.phase_type_id !== undefined ? { phase_type_id: d.phase_type_id } : {}),
+                ...(d.name !== undefined ? { name: d.name || null } : {}),
+                ...(d.start !== undefined ? { start_date: d.start } : {}),
+                ...(d.end !== undefined ? { end_date: d.end } : {}),
+                ...(d.status !== undefined ? { status: d.status } : {}),
+                ...(d.progress !== undefined ? { progress_percent: d.progress } : {}),
+              }
+            : {
+                ...(d.status !== undefined ? { status: d.status } : {}),
+                ...(d.progress !== undefined ? { progress_percent: d.progress } : {}),
+              }
+          await api.projectPhases.update(row.rawId, body)
+        } else {
+          await api.milestones.update({
             id: row.rawId,
             ...(d.name !== undefined ? { title: d.name } : {}),
             ...(d.start !== undefined ? { start_date: d.start } : {}),
             ...(d.end !== undefined ? { end_date: d.end ?? d.start } : {}),
-          }),
-        })
-        if (res.ok) touchedMilestones = true
-      }
-      if (!res.ok) {
-        const dta = await res.json().catch(() => ({}))
-        failures.push(`${row.label}: ${(dta as { error?: string }).error ?? 'lagring feilet'}`)
+          })
+          touchedMilestones = true
+        }
+      } catch (err) {
+        failures.push(`${row.label}: ${apiErrorMessage(err, 'lagring feilet')}`)
       }
     }
 
@@ -449,10 +351,8 @@ export default function PhasesMiniStrip({
   async function submitAdd(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true); setError('')
-    const res = await fetch('/api/project-phases', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
+    try {
+      await api.projectPhases.create({
         project_id: projectId,
         phase_type_id: addDraft.phase_type_id,
         name: addDraft.name || null,
@@ -460,14 +360,13 @@ export default function PhasesMiniStrip({
         end_date: addDraft.end || null,
         status: addDraft.status,
         progress_percent: Number(addDraft.progress) || 0,
-      }),
-    })
-    setSaving(false)
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}))
-      setError((d as { error?: string }).error ?? 'Lagring feilet')
+      })
+    } catch (err) {
+      setSaving(false)
+      setError(apiErrorMessage(err, 'Lagring feilet'))
       return
     }
+    setSaving(false)
     setShowAdd(false)
     setAddDraft(emptyDraft(types[0]?.id))
     await fetchPhases()
@@ -475,17 +374,14 @@ export default function PhasesMiniStrip({
 
   async function applyStandard() {
     setSaving(true); setError('')
-    const res = await fetch('/api/project-phases/apply-standard', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: projectId }),
-    })
-    setSaving(false)
-    if (!res.ok) {
-      const d = await res.json().catch(() => ({}))
-      setError((d as { error?: string }).error ?? 'Kunne ikke legge til standardfaser')
+    try {
+      await api.projectPhases.applyStandard(projectId)
+    } catch (err) {
+      setSaving(false)
+      setError(apiErrorMessage(err, 'Kunne ikke legge til standardfaser'))
       return
     }
+    setSaving(false)
     await fetchPhases()
   }
 
@@ -618,27 +514,15 @@ export default function PhasesMiniStrip({
                     {r.label}
                   </span>
                   <div data-track className="flex-1 relative h-3 rounded bg-muted overflow-hidden">
-                    <div
-                      onPointerDown={editMode && canManage && !isDeleted ? (e) => startDrag(e, r, 'move') : undefined}
-                      className={`absolute top-0 bottom-0 rounded ${r.done ? 'opacity-40' : ''} ${editMode && canManage && !isDeleted ? 'cursor-grab active:cursor-grabbing' : ''}`}
+                    <TimelineBar
+                      item={r}
+                      draggable={editMode && canManage && !isDeleted}
+                      spanMs={span}
+                      startDrag={startDrag}
+                      className={`absolute top-0 bottom-0 rounded ${r.done ? 'opacity-40' : ''}`}
                       style={{ ...pos(r.start, r.end), backgroundColor: r.color }}
                       title={`${r.label}: ${dateLabel}${r.pctLabel && r.pctLabel !== '✓' ? ` · ${r.pctLabel}` : ''}${editMode && canManage && !isDeleted ? ' — dra for å flytte hele perioden' : ''}`}
-                    >
-                      {editMode && canManage && !isDeleted && (
-                        <>
-                          <span
-                            onPointerDown={(e) => startDrag(e, r, 'start')}
-                            className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-l bg-black/10 hover:bg-black/30 print:hidden"
-                            title="Dra for å endre startdato"
-                          />
-                          <span
-                            onPointerDown={(e) => startDrag(e, r, 'end')}
-                            className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize rounded-r bg-black/10 hover:bg-black/30 print:hidden"
-                            title="Dra for å endre sluttdato"
-                          />
-                        </>
-                      )}
-                    </div>
+                    />
                   </div>
                   <span className={`w-[8.5rem] flex-none text-right text-[10px] tabular-nums whitespace-nowrap ${hasDraft ? 'text-primary font-semibold' : 'text-[var(--color-text-muted)]'}`}>
                     {dateLabel}{hasDraft ? ' *' : ''}
