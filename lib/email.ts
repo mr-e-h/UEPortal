@@ -2,6 +2,15 @@ import type { EmailContent } from './email-templates'
 import { env, isProd } from './env'
 
 /**
+ * Mask the path/query of any link so a logged email body can't leak the
+ * single-use token inside a reset/invite URL. Keeps the origin so a dev still
+ * sees which flow fired (e.g. "https://minue.app/[token-lenke skjult]").
+ */
+function redactTokenLinks(text: string): string {
+  return text.replace(/(https?:\/\/[^/\s]+)\/\S+/g, '$1/[token-lenke skjult]')
+}
+
+/**
  * Send an email via Resend. Falls back to console logging if RESEND_API_KEY
  * is not set (dev mode without an email provider).
  */
@@ -24,7 +33,16 @@ export async function sendEmail(opts: { to: string; content: EmailContent }): Pr
     console.log(`From:    ${from}`)
     console.log(`Subject: ${content.subject}`)
     console.log(`---`)
-    console.log(content.text)
+    // The body carries single-use reset/invite tokens — i.e. account-takeover
+    // credentials. Printing them unmasked leaks them into any captured console
+    // (CI, shared dev box, recorded terminal). Redact token links by default;
+    // a local dev who needs the clickable link opts in with EMAIL_DEBUG=1.
+    if (process.env.EMAIL_DEBUG === '1') {
+      console.log(content.text)
+    } else {
+      console.log(redactTokenLinks(content.text))
+      console.log('(token-lenker skjult — sett EMAIL_DEBUG=1 for å vise dem lokalt)')
+    }
     console.log(`=== end of stub email ===\n`)
     return
   }

@@ -37,6 +37,13 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
     .maybeSingle<ProjectForecast>()
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })
+
+  // PM gate: same project scope the PATCH handler enforces — a PM must not be
+  // able to read a forecast (incl. its economy fields) for a project they are
+  // not assigned to by guessing its id.
+  const denied = await ensureProjectWritable(auth.user, data.project_id)
+  if (denied) return denied
+
   return NextResponse.json(data)
 }
 

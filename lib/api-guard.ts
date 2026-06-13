@@ -184,3 +184,31 @@ export async function ensureProjectWritable(
     { status: 403 },
   )
 }
+
+/**
+ * Read-side "may this user touch this project at all?" check. UNLIKE
+ * getProjectScope/ensureProjectWritable, this also covers SUBS — getProjectScope
+ * returns null for a sub (because subs are scoped via project_subcontractors,
+ * not the manager tables), so a naive scope check would wrongly treat a sub as
+ * "sees everything". Resolves access per role:
+ *   - main / company             → always (full visibility)
+ *   - project_manager / byggeleder → only assigned projects
+ *   - sub                        → only projects linked via project_subcontractors
+ *
+ * Use on routes a sub legitimately reaches (e.g. the project checklist) where a
+ * plain ensureProjectWritable would either over-block (no sub path) or, worse,
+ * skip the check entirely for non-admins.
+ */
+export async function userCanAccessProject(user: User, projectId: string): Promise<boolean> {
+  if (isSub(user)) {
+    if (!user.subcontractor_id) return false
+    const { count } = await getSupabaseAdmin()
+      .from('project_subcontractors')
+      .select('project_id', { count: 'exact', head: true })
+      .eq('project_id', projectId)
+      .eq('subcontractor_id', user.subcontractor_id)
+    return !!count
+  }
+  const scope = await getProjectScope(user)
+  return scope === null || scope.has(projectId)
+}

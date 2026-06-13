@@ -2,8 +2,7 @@ export const dynamic = 'force-dynamic'
 
 import { NextRequest, NextResponse } from 'next/server'
 import { readJson, getDeletedProjectIds } from '@/lib/data'
-import { getSession } from '@/lib/auth'
-import { isAdmin } from '@/lib/api-guard'
+import { resolveEffectiveSub } from '@/lib/tender'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import type { ChangeOrder } from '@/types'
 
@@ -20,28 +19,18 @@ export type UEChangeOrder = Omit<ChangeOrder, 'customer_price_snapshot' | 'total
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+  // UE-portal: subcontractor comes from the (effective) session, never the URL.
+  const eff = await resolveEffectiveSub()
+  if (!eff) return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
 
-  const params = new URL(request.url).searchParams
-  const projectId = params.get('project_id')
-  const requestedSubId = params.get('subcontractor_id')
-
-  if (!requestedSubId) {
-    return NextResponse.json({ error: 'subcontractor_id required' }, { status: 400 })
-  }
-
-  // Non-admin users can only access their own subcontractor data
-  if (!isAdmin(session) && session.subcontractor_id !== requestedSubId) {
-    return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
-  }
+  const projectId = new URL(request.url).searchParams.get('project_id')
 
   const deletedProjectIds = await getDeletedProjectIds()
   const orders = await readJson<ChangeOrder>('change_orders.json')
 
   const filtered = orders.filter((o) => {
     if (deletedProjectIds.has(o.project_id)) return false
-    if (o.subcontractor_id !== requestedSubId) return false
+    if (o.subcontractor_id !== eff.subId) return false
     if (projectId && o.project_id !== projectId) return false
     return true
   })

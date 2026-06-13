@@ -3,8 +3,7 @@ export const dynamic = 'force-dynamic'
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { getSession } from '@/lib/auth'
-import { isAdmin } from '@/lib/api-guard'
+import { resolveEffectiveSub } from '@/lib/tender'
 
 type UEInvoice = {
   id: string
@@ -17,19 +16,13 @@ type UEInvoice = {
 }
 
 export async function GET(request: NextRequest) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+  // UE-portal: subcontractor comes from the (effective) session, never the URL.
+  const eff = await resolveEffectiveSub()
+  if (!eff) return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
 
-  const { searchParams } = new URL(request.url)
-  const requestedSubId = searchParams.get('subcontractor_id')
-  if (!requestedSubId) return NextResponse.json({ error: 'subcontractor_id required' }, { status: 400 })
-  if (!isAdmin(session) && session.subcontractor_id !== requestedSubId) {
-    return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
-  }
-
-  const projectId = searchParams.get('project_id')
+  const projectId = new URL(request.url).searchParams.get('project_id')
   const sb = getSupabaseAdmin()
-  const query = sb.from('ue_invoices').select('*').eq('subcontractor_id', requestedSubId)
+  const query = sb.from('ue_invoices').select('*').eq('subcontractor_id', eff.subId)
   if (projectId && projectId !== 'all') query.eq('project_id', projectId)
   const { data, error } = await query
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
@@ -37,21 +30,18 @@ export async function GET(request: NextRequest) {
 }
 
 export async function POST(request: NextRequest) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+  // UE-portal: the invoice is always filed for the caller's own sub — the
+  // subcontractor_id is taken from the session, never trusted from the body.
+  const eff = await resolveEffectiveSub()
+  if (!eff) return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
 
   const body = await request.json() as {
-    subcontractor_id: string
     project_id?: string | null
     amount: number
     invoice_date: string
     note?: string
   }
 
-  if (!body.subcontractor_id) return NextResponse.json({ error: 'subcontractor_id required' }, { status: 400 })
-  if (!isAdmin(session) && session.subcontractor_id !== body.subcontractor_id) {
-    return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
-  }
   const amount = Number(body.amount)
   if (!Number.isFinite(amount) || amount <= 0) {
     return NextResponse.json({ error: 'Ugyldig beløp' }, { status: 400 })
@@ -59,7 +49,7 @@ export async function POST(request: NextRequest) {
 
   const newInvoice: UEInvoice = {
     id: randomUUID(),
-    subcontractor_id: body.subcontractor_id,
+    subcontractor_id: eff.subId,
     project_id: body.project_id ?? null,
     amount,
     invoice_date: body.invoice_date || new Date().toISOString().split('T')[0],
@@ -73,24 +63,20 @@ export async function POST(request: NextRequest) {
 }
 
 export async function DELETE(request: NextRequest) {
-  const session = await getSession()
-  if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+  const eff = await resolveEffectiveSub()
+  if (!eff) return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
 
-  const { searchParams } = new URL(request.url)
-  const id = searchParams.get('id')
-  const requestedSubId = searchParams.get('subcontractor_id')
-  if (!id || !requestedSubId) return NextResponse.json({ error: 'id and subcontractor_id required' }, { status: 400 })
-  if (!isAdmin(session) && session.subcontractor_id !== requestedSubId) {
-    return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
-  }
+  const id = new URL(request.url).searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id required' }, { status: 400 })
 
-  // Composite ownership check: only delete a row that matches BOTH id AND
-  // subcontractor_id, so a UE can't delete another UE's invoice by guessing id.
+  // Composite ownership check: only delete a row that matches BOTH id AND the
+  // caller's own subcontractor_id, so a UE can't delete another UE's invoice
+  // by guessing id.
   const { error, count } = await getSupabaseAdmin()
     .from('ue_invoices')
     .delete({ count: 'exact' })
     .eq('id', id)
-    .eq('subcontractor_id', requestedSubId)
+    .eq('subcontractor_id', eff.subId)
   if (error) return NextResponse.json({ error: 'Sletting feilet' }, { status: 500 })
   if (!count) return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })
 

@@ -126,6 +126,22 @@ export async function POST(request: NextRequest) {
     comment: string
   }
 
+  // Scope gate: PM and byggeleder are project-scoped — verify the entity they
+  // comment on lives on one of their assigned projects (the GET handler does
+  // the same). main/company (scope === null) may comment on anything.
+  const scope = await getProjectScope(auth.user)
+  if (scope) {
+    const table = body.entity_type === 'change_order' ? 'change_orders' : 'weekly_reports'
+    const { data: entity } = await getSupabaseAdmin()
+      .from(table)
+      .select('project_id')
+      .eq('id', body.entity_id)
+      .maybeSingle<{ project_id: string }>()
+    if (!entity || !scope.has(entity.project_id)) {
+      return NextResponse.json({ error: 'Du er ikke tildelt dette prosjektet' }, { status: 403 })
+    }
+  }
+
   const entry: ActivityEntry = {
     id: randomUUID(),
     entity_type: body.entity_type,

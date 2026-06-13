@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { isAdmin, isSub } from '@/lib/api-guard'
-import { MAX_ATTACHMENT_BYTES, ALLOWED_ATTACHMENT_MIMES } from '@/lib/upload-config'
+import { MAX_ATTACHMENT_BYTES, ALLOWED_ATTACHMENT_MIMES, sniffAttachmentMime } from '@/lib/upload-config'
 import { uploadAttachment, createAttachmentSignedUrl } from '@/lib/storage'
 import type { ChangeOrder } from '@/types'
 
@@ -49,6 +49,14 @@ export async function POST(
   const buffer = Buffer.from(base64Data, 'base64')
   if (buffer.byteLength > MAX_ATTACHMENT_BYTES) {
     return NextResponse.json({ error: 'Fil for stor (maks 10 MB)' }, { status: 413 })
+  }
+
+  // Don't trust the client-declared mimeType: sniff the real magic bytes and
+  // require they match the declared (already-whitelisted) type. Stops a
+  // ZIP/EXE/HTML being stored — and later served via signed URL — as a PDF/image.
+  const sniffed = sniffAttachmentMime(buffer)
+  if (!sniffed || sniffed !== mimeType) {
+    return NextResponse.json({ error: 'Filinnholdet samsvarer ikke med oppgitt filtype' }, { status: 415 })
   }
 
   // Object key in Storage. EM id prefix authorizes GETs via ownership lookup.

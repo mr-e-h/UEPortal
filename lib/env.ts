@@ -45,6 +45,13 @@ export const env = {
    * verification flow.
    */
   EMAIL_FROM: optional('EMAIL_FROM'),
+  /**
+   * Email of the single account allowed to use the "view-as" impersonation
+   * feature. Optional — lib/view-as.ts falls back to the original hardcoded
+   * value when unset, so existing deploys keep working. Set this to move the
+   * address out of source/build artifacts. Server-side only.
+   */
+  SUPER_ADMIN_EMAIL: optional('SUPER_ADMIN_EMAIL'),
   /** Standard Node env. */
   NODE_ENV: (process.env.NODE_ENV ?? 'development') as 'development' | 'production' | 'test',
 } as const

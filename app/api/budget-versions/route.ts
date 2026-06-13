@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAuth, isSub, getProjectScope } from '@/lib/api-guard'
+import { requireAuth, isSub, getProjectScope, canSeeCustomerEconomics } from '@/lib/api-guard'
 import type { BudgetVersion, ProjectSubcontractor } from '@/types'
 
 export async function GET(req: NextRequest) {
@@ -36,6 +36,13 @@ export async function GET(req: NextRequest) {
   // PM scope.
   const scope = await getProjectScope(auth.user)
   if (scope) versions = versions.filter((v) => scope.has(v.project_id))
+
+  // Economy gate: byggeleder is scoped to their own projects but must NEVER
+  // see MinUE's customer-side sales total. Only admin roles get it unmasked —
+  // same masking the UE branch above applies.
+  if (!canSeeCustomerEconomics(auth.user)) {
+    versions = versions.map((v) => ({ ...v, total_sales_value: 0 }))
+  }
 
   return NextResponse.json(versions)
 }

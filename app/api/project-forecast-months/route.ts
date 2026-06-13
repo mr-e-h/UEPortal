@@ -8,11 +8,31 @@ export async function GET(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
+  // forecast_id is required: without it the query would return EVERY project's
+  // forecast months (incl. economy fields), unscoped — a PM leak. The app only
+  // ever reads months for one forecast at a time, so demand the id.
   const forecastId = new URL(request.url).searchParams.get('forecast_id')
+  if (!forecastId) return NextResponse.json({ error: 'forecast_id mangler' }, { status: 400 })
+
   const sb = getSupabaseAdmin()
-  const query = sb.from('project_forecast_months').select('*')
-  if (forecastId) query.eq('project_forecast_id', forecastId)
-  const { data, error } = await query
+
+  // PM gate via the parent forecast's project — same scope the POST handler
+  // enforces. Without it a PM could read any forecast's months by supplying a
+  // forecast_id from a project they aren't assigned to.
+  const { data: parent } = await sb
+    .from('project_forecasts')
+    .select('project_id')
+    .eq('id', forecastId)
+    .maybeSingle<{ project_id: string }>()
+  if (parent) {
+    const denied = await ensureProjectWritable(auth.user, parent.project_id)
+    if (denied) return denied
+  }
+
+  const { data, error } = await sb
+    .from('project_forecast_months')
+    .select('*')
+    .eq('project_forecast_id', forecastId)
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
   return NextResponse.json((data ?? []) as ProjectForecastMonth[])
 }

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAuth, ensureProjectWritable } from '@/lib/api-guard'
+import { requireAuth, ensureProjectWritable, userCanAccessProject } from '@/lib/api-guard'
 import type { ProjectChecklistItem, Project } from '@/types'
 
 /**
@@ -19,6 +19,13 @@ import type { ProjectChecklistItem, Project } from '@/types'
 export async function GET(_req: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAuth()
   if (!auth.ok) return auth.response
+
+  // Scope gate: PM/byggeleder only their assigned projects, a sub only projects
+  // they're linked to. Without this any authenticated user could read any
+  // project's punch-list by guessing the id.
+  if (!(await userCanAccessProject(auth.user, params.id))) {
+    return NextResponse.json({ error: 'Ingen tilgang til prosjektet' }, { status: 403 })
+  }
 
   const { data, error } = await getSupabaseAdmin()
     .from('project_checklist_items')

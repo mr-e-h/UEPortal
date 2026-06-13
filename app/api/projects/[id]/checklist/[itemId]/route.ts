@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAuth, ensureProjectWritable } from '@/lib/api-guard'
+import { requireAuth, ensureProjectWritable, userCanAccessProject } from '@/lib/api-guard'
 import type { ProjectChecklistItem } from '@/types'
 
 /**
@@ -46,12 +46,13 @@ export async function PATCH(
   }
 
   if (body.completed !== undefined) {
-    // PM scope still applies for tick — a PM can only check items on
-    // their assigned projects. Subs can tick on their projects too (they
-    // delivered the work, so they mark it done).
-    if (isAdmin) {
-      const denied = await ensureProjectWritable(auth.user, params.id)
-      if (denied) return denied
+    // Project access applies to EVERY role, not just admins — a PM/byggeleder
+    // only on assigned projects, a sub only on linked projects. Without this a
+    // sub or byggeleder could tick items on a project they aren't on by
+    // guessing the item id (the .eq('project_id') below is a correctness
+    // filter, not an authorization check).
+    if (!(await userCanAccessProject(auth.user, params.id))) {
+      return NextResponse.json({ error: 'Ingen tilgang til prosjektet' }, { status: 403 })
     }
     const updates = body.completed
       ? { completed_at: new Date().toISOString(), completed_by: auth.user.full_name }

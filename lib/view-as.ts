@@ -1,5 +1,6 @@
 import { cookies } from 'next/headers'
 import { getSupabaseAdmin } from './supabase'
+import { env } from './env'
 import type { User } from '@/types'
 
 /**
@@ -27,9 +28,14 @@ import type { User } from '@/types'
 
 export const VIEW_AS_COOKIE = 'view_as_user_id'
 
-/** The single account allowed to use view-as. Hardcoded so a compromised
- *  `main` row in the users table cannot grant itself view-as access. */
-export const SUPER_ADMIN_EMAIL = 'mhelsing94@gmail.com'
+/**
+ * The single account allowed to use view-as. Configurable via the
+ * SUPER_ADMIN_EMAIL env var (set it to keep the address out of future build
+ * artifacts); falls back to the original hardcoded value so existing deploys
+ * keep working. Either way it is matched against the authenticated DB user in
+ * isSuperAdmin() below — a compromised `main` row still can't self-grant.
+ */
+export const SUPER_ADMIN_EMAIL = env.SUPER_ADMIN_EMAIL ?? 'mhelsing94@gmail.com'
 
 export function isSuperAdmin(user: User | null | undefined): boolean {
   return !!user && user.email === SUPER_ADMIN_EMAIL && user.role === 'main'

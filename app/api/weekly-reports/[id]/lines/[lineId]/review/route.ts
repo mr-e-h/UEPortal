@@ -39,10 +39,15 @@ export async function POST(
     if (denied) return denied
   }
 
+  // The compound filter (line id AND parent report id) is the IDOR guard: the
+  // scope check above only proved access to params.id, so the line we mutate
+  // must actually belong to that report — otherwise a lineId from another
+  // project's report could be approved through a report you ARE scoped to.
   const { data: updatedLine, error: lineErr } = await sb
     .from('weekly_report_lines')
     .update({ status: body.status, reviewed_at: now, reviewed_by: actor })
     .eq('id', params.lineId)
+    .eq('weekly_report_id', params.id)
     .select()
     .maybeSingle<WeeklyReportLine>()
   if (lineErr) return NextResponse.json({ error: lineErr.message }, { status: 500 })

@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin } from '@/lib/api-guard'
+import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import { createBudgetFileSignedUrl, downloadBudgetFile } from '@/lib/storage'
 import type { BudgetVersion } from '@/types'
 
@@ -25,11 +25,17 @@ export async function GET(
 
   const { data: version, error } = await getSupabaseAdmin()
     .from('budget_versions')
-    .select('id, version, file_name')
+    .select('id, version, file_name, project_id')
     .eq('id', params.id)
-    .maybeSingle<Pick<BudgetVersion, 'id' | 'version' | 'file_name'>>()
+    .maybeSingle<Pick<BudgetVersion, 'id' | 'version' | 'file_name' | 'project_id'>>()
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
   if (!version) return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })
+
+  // PM scope: a project_manager may only download budget files for projects
+  // they are assigned to (the row's UUID is otherwise guessable/enumerable).
+  const denied = await ensureProjectWritable(auth.user, version.project_id)
+  if (denied) return denied
+
   if (!version.file_name) {
     return NextResponse.json({ error: 'Ingen fil lagret for denne versjonen' }, { status: 404 })
   }
