@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
+import { getEffectiveUser } from '@/lib/view-as'
 import { ADMIN_ROLES, PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { getProjectScope } from '@/lib/api-guard'
 import { EM_NEEDS_ACTION, WR_NEEDS_ACTION, attentionCounts } from '@/lib/attention'
@@ -20,8 +21,13 @@ export const dynamic = 'force-dynamic'
  * tom scope gir tom liste.
  */
 export default async function ProjectsPage() {
-  const me = await getSession()
-  if (!me || !PROJECT_STAFF_ROLES.includes(me.role)) redirect('/login')
+  const realMe = await getSession()
+  if (!realMe || !PROJECT_STAFF_ROLES.includes(realMe.role)) redirect('/login')
+  // Rolle-gaten står på den EKTE brukeren (så super-admin ikke kastes ut ved
+  // «Vis som»), men alt som styrer HVA man ser — scope, økonomi, knapper —
+  // regnes fra den effektive brukeren, så «Vis som [PL]» viser PL-ens faktiske
+  // (scopede) prosjekter. For ekte brukere er effektiv = ekte.
+  const me = await getEffectiveUser(realMe)
   // Creating projects stays an admin action (POST /api/projects is
   // requireAdmin) — hide the button for byggeleder.
   const canCreate = ADMIN_ROLES.includes(me.role)

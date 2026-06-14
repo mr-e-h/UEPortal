@@ -59,27 +59,31 @@ export default function MonthlyChartWithPmFilter({ year, all, byPm, pmList }: Pr
         <h2 className="text-base font-semibold text-[var(--color-text-primary)]">
           Økonomi per måned {year}
         </h2>
-        <div className="flex items-center gap-2 flex-wrap">
-          <label htmlFor="pm-filter" className="text-xs text-[var(--color-text-muted)]">
-            Prosjektleder
-          </label>
-          <select
-            id="pm-filter"
-            value={selectedPmId}
-            onChange={(e) => setSelectedPmId(e.target.value)}
-            className="px-3 py-1.5 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
-          >
-            <option value="all">Alle</option>
-            {pmList.map((pm) => (
-              <option key={pm.id} value={pm.id}>{pm.name}</option>
-            ))}
-          </select>
-          {selectedPmId !== 'all' && (
-            <span className="text-xs text-[var(--color-text-muted)] whitespace-nowrap">
-              {fmt(yearTotalRev)} omsetning {year}
-            </span>
-          )}
-        </div>
+        {/* PL-filteret vises kun når en liste er gitt (main/company). En
+            prosjektleder får tom liste → ingen nedtrekk, kun egen scopet graf. */}
+        {pmList.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap">
+            <label htmlFor="pm-filter" className="text-xs text-[var(--color-text-muted)]">
+              Prosjektleder
+            </label>
+            <select
+              id="pm-filter"
+              value={selectedPmId}
+              onChange={(e) => setSelectedPmId(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
+            >
+              <option value="all">Alle</option>
+              {pmList.map((pm) => (
+                <option key={pm.id} value={pm.id}>{pm.name}</option>
+              ))}
+            </select>
+            {selectedPmId !== 'all' && (
+              <span className="text-xs text-[var(--color-text-muted)] whitespace-nowrap">
+                {fmt(yearTotalRev)} omsetning {year}
+              </span>
+            )}
+          </div>
+        )}
       </div>
       {/* Seriene navngis av grafens egen legend — ingen duplisert undertekst. */}
       {selectedPmId !== 'all' && (

@@ -1,6 +1,7 @@
 import { redirect } from 'next/navigation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
+import { getEffectiveUser } from '@/lib/view-as'
 import { getProjectScope } from '@/lib/api-guard'
 import { ADMIN_ROLES } from '@/lib/roles'
 import type {
@@ -50,8 +51,11 @@ function weekList(count: number, currentWeek: number, thisYear: number): { week:
 }
 
 export default async function AdminDashboard() {
-  const me = await getSession()
-  if (!me || !ADMIN_ROLES.includes(me.role)) redirect('/login')
+  const realMe = await getSession()
+  if (!realMe || !ADMIN_ROLES.includes(realMe.role)) redirect('/login')
+  // Rolle-gaten på ekte bruker; scope fra effektiv bruker, så «Vis som [PL]»
+  // viser PL-ens scopede totaløkonomi.
+  const me = await getEffectiveUser(realMe)
 
   const sb = getSupabaseAdmin()
   const now = new Date()

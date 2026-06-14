@@ -3,7 +3,8 @@ import Link from 'next/link'
 import { FileText, ClipboardList, ChevronRight } from 'lucide-react'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
-import { getProjectScope } from '@/lib/api-guard'
+import { getEffectiveUser } from '@/lib/view-as'
+import { getProjectScope, USER_ADMIN_ROLES } from '@/lib/api-guard'
 import { ADMIN_ROLES, PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { EM_NEEDS_ACTION, WR_NEEDS_ACTION } from '@/lib/attention'
 import { osloYearMonth } from '@/lib/utils/dates'
@@ -22,10 +23,17 @@ import type { WeeklyReportLine } from '@/types'
  * den rendres aldri inn i HTML-en for byggeleder.
  */
 export default async function AdminDashboard() {
-  const me = await getSession()
-  if (!me || !PROJECT_STAFF_ROLES.includes(me.role)) redirect('/login')
+  const realMe = await getSession()
+  if (!realMe || !PROJECT_STAFF_ROLES.includes(realMe.role)) redirect('/login')
+  // Rolle-gaten på ekte bruker; scope + økonomi-synlighet fra effektiv bruker,
+  // så «Vis som [PL/byggeleder]» speiler det den brukeren faktisk ser.
+  const me = await getEffectiveUser(realMe)
 
   const canSeeEconomy = ADMIN_ROLES.includes(me.role)
+  // PL-filteret (velg en annen prosjektleder) er kun for main/company. En
+  // prosjektleder skal bare se sine egne (scopede) tall — ingen nedtrekk, og
+  // andres navn/tall serialiseres aldri til klienten.
+  const isUserAdmin = USER_ADMIN_ROLES.includes(me.role)
 
   const sb = getSupabaseAdmin()
   const scope = await getProjectScope(me)
@@ -264,8 +272,8 @@ export default async function AdminDashboard() {
           <MonthlyChartWithPmFilter
             year={thisYear}
             all={monthlyBuckets}
-            byPm={byPm}
-            pmList={pmInfo}
+            byPm={isUserAdmin ? byPm : {}}
+            pmList={isUserAdmin ? pmInfo : []}
           />
         </section>
       )}
