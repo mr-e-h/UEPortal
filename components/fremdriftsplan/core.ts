@@ -46,6 +46,7 @@ export type ItemDraft = {
   name?: string
   status?: PhaseStatus
   progress?: number
+  subcontractor_id?: string | null
 }
 
 /** Posisjon i % innenfor tidsspennet, klampet til [0, 100]. */

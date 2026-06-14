@@ -20,6 +20,7 @@ type PatchBody = {
   status?: 'planned' | 'in_progress' | 'done'
   progress_percent?: number
   sort_order?: number
+  subcontractor_id?: string | null
 }
 
 const STATUSES = ['planned', 'in_progress', 'done'] as const
@@ -75,6 +76,7 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
     if (body.start_date !== undefined) updates.start_date = body.start_date
     if (body.end_date !== undefined) updates.end_date = body.end_date
     if (body.sort_order !== undefined) updates.sort_order = Number(body.sort_order) || 0
+    if (body.subcontractor_id !== undefined) updates.subcontractor_id = body.subcontractor_id || null
     const newStart = (updates.start_date as string | undefined) ?? phase.start_date
     const newEnd = updates.end_date !== undefined ? (updates.end_date as string | null) : phase.end_date
     if (newEnd && newEnd < newStart) {

@@ -51,6 +51,7 @@ type CreateBody = {
   status?: 'planned' | 'in_progress' | 'done'
   progress_percent?: number
   sort_order?: number
+  subcontractor_id?: string | null
 }
 
 export async function POST(request: NextRequest) {
@@ -82,6 +83,7 @@ export async function POST(request: NextRequest) {
     status: body.status ?? 'planned',
     progress_percent: progress,
     sort_order: Number(body.sort_order ?? 0) || 0,
+    subcontractor_id: body.subcontractor_id ?? null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }

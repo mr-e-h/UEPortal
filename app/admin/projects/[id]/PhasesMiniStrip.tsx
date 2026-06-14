@@ -49,6 +49,7 @@ type EditDraft = {
   end: string
   status: PhaseStatus
   progress: string
+  subcontractor_id: string
 }
 
 /**
@@ -134,6 +135,9 @@ export default function PhasesMiniStrip({
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
 
+  // UE-er tildelt dette prosjektet: id → company_name
+  const [projectUes, setProjectUes] = useState<{ id: string; company_name: string }[]>([])
+
   // Redigeringsmodus + utkast.
   const [editMode, setEditMode] = useState(false)
   const [drafts, setDrafts] = useState<Record<string, RowDraft>>({})
@@ -142,7 +146,7 @@ export default function PhasesMiniStrip({
   // Legg til fase (instant — additiv).
   const [showAdd, setShowAdd] = useState(false)
   const emptyDraft = (typeId = ''): EditDraft => ({
-    phase_type_id: typeId, name: '', start: projectStart ?? '', end: projectEnd ?? '', status: 'planned', progress: '0',
+    phase_type_id: typeId, name: '', start: projectStart ?? '', end: projectEnd ?? '', status: 'planned', progress: '0', subcontractor_id: '',
   })
   const [addDraft, setAddDraft] = useState<EditDraft>(emptyDraft())
 
@@ -177,7 +181,30 @@ export default function PhasesMiniStrip({
 
   useEffect(() => {
     let cancelled = false
-    fetchPhases().then(() => { if (!cancelled) setLoaded(true) }).catch(() => setLoaded(true))
+
+    async function loadAll() {
+      await fetchPhases()
+      // Last prosjektets UE-er: koble project_subcontractors med subcontractors
+      try {
+        const [links, subs] = await Promise.all([
+          fetch(`/api/project-subcontractors?project_id=${encodeURIComponent(projectId)}`, { credentials: 'same-origin' }).then((r) => r.ok ? r.json() : []),
+          fetch('/api/subcontractors', { credentials: 'same-origin' }).then((r) => r.ok ? r.json() : []),
+        ])
+        if (!cancelled) {
+          const subMap = new Map<string, string>(
+            (subs as { id: string; company_name: string }[]).map((s) => [s.id, s.company_name])
+          )
+          const ues = (links as { subcontractor_id: string }[])
+            .map((l) => ({ id: l.subcontractor_id, company_name: subMap.get(l.subcontractor_id) ?? l.subcontractor_id }))
+            .filter((u) => u.id)
+          setProjectUes(ues)
+        }
+      } catch {
+        // UE-liste er ikke kritisk — fremdriftsplanen fungerer uten
+      }
+    }
+
+    loadAll().then(() => { if (!cancelled) setLoaded(true) }).catch(() => { if (!cancelled) setLoaded(true) })
     return () => { cancelled = true }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId])
@@ -185,6 +212,7 @@ export default function PhasesMiniStrip({
   if (!loaded) return null
 
   const typeMap = new Map(types.map((t) => [t.id, t]))
+  const ueMap = new Map(projectUes.map((u) => [u.id, u.company_name]))
 
   const baseRows: Row[] = [
     ...phases.map((p) => {
@@ -286,6 +314,7 @@ export default function PhasesMiniStrip({
         end: (d?.end !== undefined ? d.end : row.phase.end_date) ?? '',
         status: d?.status ?? row.phase.status,
         progress: String(d?.progress ?? row.phase.progress_percent),
+        subcontractor_id: d?.subcontractor_id !== undefined ? (d.subcontractor_id ?? '') : (row.phase.subcontractor_id ?? ''),
       })
     } else if (row.milestone) {
       setEditDraft({
@@ -293,7 +322,7 @@ export default function PhasesMiniStrip({
         name: d?.name ?? row.milestone.title,
         start: d?.start ?? row.milestone.start_date,
         end: (d?.end !== undefined ? d.end : row.milestone.end_date) ?? '',
-        status: 'planned', progress: '0',
+        status: 'planned', progress: '0', subcontractor_id: '',
       })
     }
   }
@@ -311,6 +340,7 @@ export default function PhasesMiniStrip({
               end: editDraft.end || null,
               status: editDraft.status,
               progress: Number(editDraft.progress) || 0,
+              subcontractor_id: editDraft.subcontractor_id || null,
             }
           : { ...prev[row.id], status: editDraft.status, progress: Number(editDraft.progress) || 0 })
         : { ...prev[row.id], name: editDraft.name, start: editDraft.start, end: editDraft.end || editDraft.start },
@@ -363,6 +393,7 @@ export default function PhasesMiniStrip({
                 ...(d.end !== undefined ? { end_date: d.end } : {}),
                 ...(d.status !== undefined ? { status: d.status } : {}),
                 ...(d.progress !== undefined ? { progress_percent: d.progress } : {}),
+                ...('subcontractor_id' in d ? { subcontractor_id: d.subcontractor_id ?? null } : {}),
               }
             : {
                 ...(d.status !== undefined ? { status: d.status } : {}),
@@ -415,6 +446,7 @@ export default function PhasesMiniStrip({
         end_date: addDraft.end || null,
         status: addDraft.status,
         progress_percent: Number(addDraft.progress) || 0,
+        subcontractor_id: addDraft.subcontractor_id || null,
       })
     } catch (err) {
       setSaving(false)
@@ -513,7 +545,7 @@ export default function PhasesMiniStrip({
 
       {/* Legg til fase */}
       {editMode && showAdd && canManage && (
-        <form onSubmit={submitAdd} className="bg-muted/40 border border-border rounded-lg p-3 mb-3 grid grid-cols-2 md:grid-cols-6 gap-2 items-end">
+        <form onSubmit={submitAdd} className="bg-muted/40 border border-border rounded-lg p-3 mb-3 grid grid-cols-2 md:grid-cols-7 gap-2 items-end">
           <label className="text-xs text-[var(--color-text-muted)] flex flex-col gap-1">Fase
             <select required value={addDraft.phase_type_id} onChange={(e) => setAddDraft((d) => ({ ...d, phase_type_id: e.target.value }))} className={inputCls}>
               <option value="">Velg…</option>
@@ -532,6 +564,12 @@ export default function PhasesMiniStrip({
           <label className="text-xs text-[var(--color-text-muted)] flex flex-col gap-1">Status
             <select value={addDraft.status} onChange={(e) => setAddDraft((d) => ({ ...d, status: e.target.value as Phase['status'] }))} className={inputCls}>
               {(Object.keys(STATUS_LABEL) as Phase['status'][]).map((s) => <option key={s} value={s}>{STATUS_LABEL[s]}</option>)}
+            </select>
+          </label>
+          <label className="text-xs text-[var(--color-text-muted)] flex flex-col gap-1">UE
+            <select value={addDraft.subcontractor_id} onChange={(e) => setAddDraft((d) => ({ ...d, subcontractor_id: e.target.value }))} className={inputCls}>
+              <option value="">Ingen</option>
+              {projectUes.map((u) => <option key={u.id} value={u.id}>{u.company_name}</option>)}
             </select>
           </label>
           <button type="submit" disabled={saving} className="px-3 py-1.5 text-xs font-medium rounded-lg bg-primary text-white hover:bg-primary-hover disabled:opacity-50">
@@ -572,8 +610,13 @@ export default function PhasesMiniStrip({
             return (
               <div key={r.id}>
                 <div className={`flex items-center gap-2 ${isDeleted ? 'opacity-40' : ''}`}>
-                  <span className={`w-28 flex-none text-xs text-[var(--color-text-secondary)] truncate ${isDeleted ? 'line-through' : ''}`} title={r.label}>
-                    {r.label}
+                  <span className={`w-28 flex-none flex flex-col min-w-0 ${isDeleted ? 'line-through' : ''}`}>
+                    <span className="text-xs text-[var(--color-text-secondary)] truncate" title={r.label}>{r.label}</span>
+                    {r.kind === 'phase' && r.phase?.subcontractor_id && (
+                      <span className="text-[10px] text-[var(--color-text-muted)] truncate leading-tight" title={ueMap.get(r.phase.subcontractor_id) ?? r.phase.subcontractor_id}>
+                        {ueMap.get(r.phase.subcontractor_id) ?? r.phase.subcontractor_id}
+                      </span>
+                    )}
                   </span>
                   <div data-track className="flex-1 relative h-3 rounded bg-muted overflow-hidden">
                     {/* Svakt måneds-rutenett bortover + «nå»-strek, aligna med
@@ -654,6 +697,12 @@ export default function PhasesMiniStrip({
                         </label>
                         <label className="text-[10px] text-[var(--color-text-muted)] flex flex-col gap-0.5">Navn
                           <input type="text" value={editDraft.name} onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Valgfritt" className={`${inputCls} w-28`} />
+                        </label>
+                        <label className="text-[10px] text-[var(--color-text-muted)] flex flex-col gap-0.5">UE
+                          <select value={editDraft.subcontractor_id} onChange={(e) => setEditDraft((d) => ({ ...d, subcontractor_id: e.target.value }))} className={inputCls}>
+                            <option value="">Ingen</option>
+                            {projectUes.map((u) => <option key={u.id} value={u.id}>{u.company_name}</option>)}
+                          </select>
                         </label>
                       </>
                     )}

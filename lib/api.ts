@@ -150,9 +150,10 @@ export const api = {
       end_date?: string | null
       status?: ProjectPhase['status']
       progress_percent?: number
+      subcontractor_id?: string | null
     }) => post<ProjectPhase>('/api/project-phases', body),
     update: (id: string, body: Partial<Pick<ProjectPhase,
-      'phase_type_id' | 'name' | 'start_date' | 'end_date' | 'status' | 'progress_percent'>>) =>
+      'phase_type_id' | 'name' | 'start_date' | 'end_date' | 'status' | 'progress_percent' | 'subcontractor_id'>>) =>
       patch<ProjectPhase>(`/api/project-phases/${id}`, body as unknown as Json),
     remove: (id: string) =>
       del<{ ok: true }>(`/api/project-phases/${id}`),

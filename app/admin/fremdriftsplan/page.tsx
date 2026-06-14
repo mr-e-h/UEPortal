@@ -79,6 +79,35 @@ export default async function FremdriftsplanPage() {
     milestones = (msData ?? []) as TimelineMilestone[]
   }
 
+  // UE-filter: hvilke UE-er er tilknyttet de synlige prosjektene?
+  const projectSubs: Record<string, string[]> = {}
+  let subcontractors: Array<{ id: string; name: string }> = []
+  if (projects.length > 0) {
+    const { data: psData } = await sb
+      .from('project_subcontractors')
+      .select('project_id, subcontractor_id')
+      .in('project_id', projects.map((p) => p.id))
+    const psRows = (psData ?? []) as Array<{ project_id: string; subcontractor_id: string }>
+
+    // Bygg opp project_id → [subcontractor_id] map.
+    for (const row of psRows) {
+      if (!projectSubs[row.project_id]) projectSubs[row.project_id] = []
+      projectSubs[row.project_id].push(row.subcontractor_id)
+    }
+
+    // Hent kun UE-ene som faktisk er brukt på disse prosjektene.
+    const usedIds = Array.from(new Set(psRows.map((r) => r.subcontractor_id)))
+    if (usedIds.length > 0) {
+      const { data: subData } = await sb
+        .from('subcontractors')
+        .select('id, company_name')
+        .in('id', usedIds)
+      subcontractors = ((subData ?? []) as Array<{ id: string; company_name: string }>)
+        .map((s) => ({ id: s.id, name: s.company_name }))
+        .sort((a, b) => a.name.localeCompare(b.name, 'nb'))
+    }
+  }
+
   const timelineProjects: TimelineProject[] = projects.map((p) => ({
     id: p.id,
     name: p.name,
@@ -96,6 +125,8 @@ export default async function FremdriftsplanPage() {
       phaseTypes={phaseTypes}
       milestones={milestones}
       phasesAvailable={phasesAvailable}
+      subcontractors={subcontractors}
+      projectSubs={projectSubs}
     />
   )
 }

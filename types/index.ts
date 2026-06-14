@@ -508,6 +508,8 @@ export interface ProjectPhase {
   status: 'planned' | 'in_progress' | 'done'
   progress_percent: number
   sort_order: number
+  /** Tildelt UE (null = generell fase / alle). Brukes til filter + UE-portal. */
+  subcontractor_id: string | null
 }
 
 /**

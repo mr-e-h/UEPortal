@@ -4,7 +4,7 @@ import { useEffect, useState, useCallback } from 'react'
 import dynamic from 'next/dynamic'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
 import { ChevronLeft, ChevronRight, Plus, TrendingUp, CheckCircle, Clock, BarChart3, ChevronDown } from 'lucide-react'
-import type { WeeklyReport, WeeklyReportLine, ChangeOrder, GanttMilestone, ActivityEntry } from '@/types'
+import type { WeeklyReport, WeeklyReportLine, ChangeOrder, GanttMilestone, ActivityEntry, PhaseType, ProjectPhase } from '@/types'
 import { getCurrentWeek, formatWeekLabel, prevWeek as prevISOWeek, nextWeek as nextISOWeek } from '@/lib/utils/weeks'
 import { calculateBudgetUsage, type LineWithReportStatus } from '@/lib/utils/budgetUsage'
 import NumberInput from '@/components/NumberInput'
@@ -22,6 +22,7 @@ const ChangeOrderModal = dynamic(() => import('@/components/subcontractor/Change
 const BudgetLineChart = dynamic(() => import('@/components/BudgetLineChart'), { ssr: false })
 const GanttView = dynamic(() => import('@/components/subcontractor/GanttView'), { ssr: false })
 const VersionDiffModal = dynamic(() => import('@/components/admin/VersionDiffModal'), { ssr: false })
+const UEFremdriftsplan = dynamic(() => import('@/components/subcontractor/UEFremdriftsplan'), { ssr: false })
 import { fmtNOK as fmt } from '@/lib/format'
 import { weeklyReportStatus, weeklyReportLineStatus, changeOrderType } from '@/lib/statuses'
 
@@ -118,6 +119,8 @@ export default function SubcontractorProjectPage() {
   const [editingDraft, setEditingDraft] = useState<UEChangeOrder | null>(null)
   const [changeOrders, setChangeOrders] = useState<UEChangeOrder[]>([])
   const [milestones, setMilestones] = useState<GanttMilestone[]>([])
+  const [phases, setPhases] = useState<ProjectPhase[]>([])
+  const [phaseTypes, setPhaseTypes] = useState<PhaseType[]>([])
   const [budgetSearch, setBudgetSearch] = useState('')
   const [expandedBudgetId, setExpandedBudgetId] = useState<string | null>(null)
   // Versjonsdiff-popup når UE klikker 'Se endringer'. /api/activity har
@@ -195,6 +198,18 @@ export default function SubcontractorProjectPage() {
     setMilestones(ms)
   }, [id])
 
+  const loadPhases = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/subcontractor/phases?project_id=${id}`)
+      if (!res.ok) return
+      const data = (await res.json()) as { phases: ProjectPhase[]; phaseTypes: PhaseType[] }
+      setPhases(data.phases ?? [])
+      setPhaseTypes(data.phaseTypes ?? [])
+    } catch {
+      // Soft-fail — phases section simply stays empty
+    }
+  }, [id])
+
   async function loadDraftLines(draftId: string) {
     const detail = await fetch(`/api/weekly-reports/${draftId}`).then((r) => r.json()) as EnrichedReport
     const newInputs: Record<string, { quantity: string; comment: string }> = {}
@@ -225,6 +240,7 @@ export default function SubcontractorProjectPage() {
         loadHistory(subId),
         loadChangeOrders(subId),
         loadMilestones(),
+        loadPhases(),
       ])
       const weekReports = reports.filter((r) => r.year === initWeek.year && r.week_number === initWeek.week)
       const draft = weekReports.find((r) => r.status === 'draft') ?? null
@@ -530,11 +546,29 @@ export default function SubcontractorProjectPage() {
       {milestones.length > 0 && (
         <Card className="overflow-hidden">
           <div className="px-6 py-4 border-b border-border">
-            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Fremdriftsplan</h2>
+            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Milepæler</h2>
           </div>
           <div className="p-4 overflow-x-auto">
             <GanttView
               milestones={milestones}
+              projectStart={project.start_date}
+              projectEnd={project.end_date}
+            />
+          </div>
+        </Card>
+      )}
+
+      {/* ─── Fremdriftsplan (faser) ──────────────────────────────────────────── */}
+      {phases.length > 0 && (
+        <Card className="overflow-hidden">
+          <div className="px-6 py-4 border-b border-border">
+            <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Fremdriftsplan</h2>
+          </div>
+          <div className="p-4 overflow-x-auto">
+            <UEFremdriftsplan
+              phases={phases}
+              phaseTypes={phaseTypes}
+              mySubId={subcontractorId || null}
               projectStart={project.start_date}
               projectEnd={project.end_date}
             />

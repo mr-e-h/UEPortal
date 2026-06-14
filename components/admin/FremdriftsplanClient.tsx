@@ -59,12 +59,16 @@ export default function FremdriftsplanClient({
   phaseTypes,
   milestones,
   phasesAvailable,
+  subcontractors,
+  projectSubs,
 }: {
   projects: TimelineProject[]
   phases: ProjectPhase[]
   phaseTypes: PhaseType[]
   milestones: TimelineMilestone[]
   phasesAvailable: boolean
+  subcontractors: Array<{ id: string; name: string }>
+  projectSubs: Record<string, string[]>
 }) {
   const router = useRouter()
   const { me } = useMe()
@@ -79,10 +83,13 @@ export default function FremdriftsplanClient({
   // markup — ellers ville Date.now() i render gi hydrerings-avvik.
   const [nowMs, setNowMs] = useState<number | null>(null)
   useEffect(() => { setNowMs(Date.now()) }, [])
-  const [fullSpan, setFullSpan] = useState(false)
+  // Standardvisningen er hele tidsspennet på tvers av år; man kan drille inn i
+  // ett år via årvelgeren (pilene/årstallet slår da av «hele perioden»).
+  const [fullSpan, setFullSpan] = useState(true)
   const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set())
   const [projectFilter, setProjectFilter] = useState('all')
   const [countyFilter, setCountyFilter] = useState('all')
+  const [subFilter, setSubFilter] = useState('all')
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [onlyChecked, setOnlyChecked] = useState(false)
@@ -427,6 +434,7 @@ export default function FremdriftsplanClient({
     if (onlyChecked && checked.size > 0) list = list.filter((p) => checked.has(p.id))
     if (projectFilter !== 'all') list = list.filter((p) => p.id === projectFilter)
     if (countyFilter !== 'all') list = list.filter((p) => p.county === countyFilter)
+    if (subFilter !== 'all') list = list.filter((p) => projectSubs[p.id]?.includes(subFilter))
     if (!fullSpan) {
       list = list.filter((p) => {
         const start = Date.parse(p.start_date)
@@ -441,7 +449,7 @@ export default function FremdriftsplanClient({
     return [...list].sort((a, b) =>
       (planSpan(a.id)?.start ?? a.start_date ?? '').localeCompare(planSpan(b.id)?.start ?? b.start_date ?? ''))
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [projects, projectFilter, countyFilter, year, onlyChecked, checked, fullSpan, phases, milestones, addedPhases])
+  }, [projects, projectFilter, countyFilter, subFilter, projectSubs, year, onlyChecked, checked, fullSpan, phases, milestones, addedPhases])
 
   // Tidslinjens spenn + månedskolonner (basisverdier — utkast flytter ikke
   // skalaen under hånden).
@@ -539,19 +547,30 @@ export default function FremdriftsplanClient({
           <div className="flex items-center gap-1 bg-card border border-border rounded-lg p-0.5">
             <button
               type="button"
-              onClick={() => setYear((y) => y - 1)}
-              disabled={fullSpan}
-              className="p-1.5 text-[var(--color-text-secondary)] hover:bg-muted rounded-md disabled:opacity-30"
+              onClick={() => { setFullSpan(false); setYear((y) => y - 1) }}
+              className="p-1.5 text-[var(--color-text-secondary)] hover:bg-muted rounded-md"
               aria-label="Forrige år"
             >
               <ChevronLeft size={14} />
             </button>
-            <span className={`px-2 text-xs font-semibold ${fullSpan ? 'text-[var(--color-text-muted)]' : 'text-[var(--color-text-primary)]'}`}>{year}</span>
+            {/* Årstallet er klikkbart: i «hele perioden» drar det deg inn i dette
+                årets visning. Pilene gjør det samme for forrige/neste år. */}
             <button
               type="button"
-              onClick={() => setYear((y) => y + 1)}
-              disabled={fullSpan}
-              className="p-1.5 text-[var(--color-text-secondary)] hover:bg-muted rounded-md disabled:opacity-30"
+              onClick={() => setFullSpan(false)}
+              title={fullSpan ? 'Vis kun dette året' : undefined}
+              className={`px-2 text-xs font-semibold rounded-md ${
+                fullSpan
+                  ? 'text-[var(--color-text-muted)] hover:bg-muted hover:text-[var(--color-text-primary)]'
+                  : 'text-[var(--color-text-primary)]'
+              }`}
+            >
+              {year}
+            </button>
+            <button
+              type="button"
+              onClick={() => { setFullSpan(false); setYear((y) => y + 1) }}
+              className="p-1.5 text-[var(--color-text-secondary)] hover:bg-muted rounded-md"
               aria-label="Neste år"
             >
               <ChevronRight size={14} />
@@ -660,6 +679,18 @@ export default function FremdriftsplanClient({
               ))}
             </select>
           )}
+          {subcontractors.length > 0 && (
+            <select
+              value={subFilter}
+              onChange={(e) => setSubFilter(e.target.value)}
+              className="px-3 py-1.5 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
+            >
+              <option value="all">Alle UE</option>
+              {subcontractors.map((s) => (
+                <option key={s.id} value={s.id}>{s.name}</option>
+              ))}
+            </select>
+          )}
 
           {/* Valg + PDF: huk av prosjekter i lista for å sammenligne/eksportere */}
           {checked.size > 0 && (
@@ -734,7 +765,10 @@ export default function FremdriftsplanClient({
           </div>
         ) : (
           rows.map((p) => {
-            const isOpen = expanded.has(p.id)
+            // Aktivt fasefilter (f.eks. «Skjøting») sprer automatisk ut alle
+            // radene, så de valgte fasene vises direkte — uten å måtte åpne
+            // hvert prosjekt for hånd. Tomme rader røper hvor jobben mangler.
+            const isOpen = expanded.has(p.id) || selectedTypes.size > 0
             // Lukket visning: varigheten PLANEN sier (første fasestart →
             // siste slutt) — prosjektets egne datoer kun som fallback.
             const ps = planSpan(p.id)
