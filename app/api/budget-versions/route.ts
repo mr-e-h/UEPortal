@@ -27,9 +27,12 @@ export async function GET(req: NextRequest) {
     const allowedProjectIds = new Set(
       ((links ?? []) as Pick<ProjectSubcontractor, 'project_id'>[]).map((l) => l.project_id),
     )
+    // Strip BÅDE kundeside-salget OG den samlede UE-kosten: total_cost_value er
+    // summen av ALLE UE-ers kost på prosjektet, så en UE kunne ellers utlede hva
+    // konkurrentene koster. UE-en ser sin egen kost via /api/budget-lines.
     versions = versions
       .filter((v) => allowedProjectIds.has(v.project_id))
-      .map((v) => ({ ...v, total_sales_value: 0 }))
+      .map((v) => ({ ...v, total_sales_value: 0, total_cost_value: 0 }))
     return NextResponse.json(versions)
   }
 

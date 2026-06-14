@@ -8,6 +8,7 @@ import { useProjectData } from './useProjectData'
 import { useMe } from '@/lib/useMe'
 import type { Product } from '@/types'
 import { fmtProductLabel } from '@/lib/format'
+import { internalCostTotal, fallbackEndMonthIndex } from '@/lib/internal-costs'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import ErrorBox from '@/components/ui/ErrorBox'
 import { useConfirm } from '@/components/ui/useConfirm'
@@ -23,7 +24,6 @@ import ForecastSection from './ForecastSection'
 import OverviewSection from './OverviewSection'
 import BudgetLinesSection from './BudgetLinesSection'
 import FremdriftsplanSection from './FremdriftsplanSection'
-import KostSection from './KostSection'
 import ProjectStatusHero from './ProjectStatusHero'
 import ChecklistSection from './ChecklistSection'
 
@@ -32,7 +32,6 @@ const TABS = [
   { id: 'budsjett', label: 'Budsjett' },
   { id: 'sjekkliste', label: 'Sjekkliste' },
   { id: 'fremdriftsplan', label: 'Fremdriftsplan' },
-  { id: 'kost', label: 'Kost' },
   { id: 'prognose', label: 'Prognose' },
   { id: 'interne', label: 'Interne kostnader' },
   { id: 'materiell', label: 'Materiell' },
@@ -86,8 +85,6 @@ export default function ProjectDetailPage() {
   const [bulkSubcontractor, setBulkSubcontractor] = useState('')
   const [bulkError, setBulkError] = useState('')
   const [missingPriceDialog, setMissingPriceDialog] = useState<{ subId: string; subName: string; products: Product[] } | null>(null)
-
-  const [addSubId, setAddSubId] = useState('')
 
   const [confirmRemoveSubId, setConfirmRemoveSubId] = useState<string | null>(null)
   const [confirmDeleteCostId, setConfirmDeleteCostId] = useState<string | null>(null)
@@ -203,10 +200,9 @@ export default function ProjectDetailPage() {
     fetchAll()
   }
 
-  async function addSubToProject() {
-    if (!addSubId) return
-    await addSubHandler(addSubId)
-    setAddSubId('')
+  async function addSubToProject(subId: string) {
+    if (!subId) return
+    await addSubHandler(subId)
   }
 
   async function handlePostImport(file: File) {
@@ -243,14 +239,13 @@ export default function ProjectDetailPage() {
   const manualLines = budgetLines.filter((bl) => !bl.source || bl.source === 'manual')
 
   const originalBudgetSales = manualLines.reduce((s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot, 0)
-  const originalBudgetCost = manualLines.filter((bl) => bl.assigned_subcontractor_id).reduce((s, bl) => s + bl.budget_quantity * bl.subcontractor_cost_price_snapshot, 0)
 
   const approvedCOs = changeOrders.filter((co) => co.status === 'approved')
   const coAddedSales = approvedCOs.reduce((s, co) => s + co.total_customer_value, 0)
-  const coAddedCost = approvedCOs.reduce((s, co) => s + co.total_cost, 0)
 
+  // Salgsverdi (ordrebok + godkjente EM) — brukes av Prognose-fanen. Hele
+  // kost/fortjeneste-bildet bor i hero-ens Lønnsomhet (egen Kost-fane fjernet).
   const totalSales = originalBudgetSales + coAddedSales
-  const totalCost = originalBudgetCost + coAddedCost
 
   // OverviewSection owns the heavy derived computations now (subFlowData,
   // internLines, totalUEBudgetCost, etc). Parent only keeps what the
@@ -258,7 +253,8 @@ export default function ProjectDetailPage() {
   const assignedSubIds = new Set(projectSubs.map((ps) => ps.subcontractor_id))
   const projectSubDetails = allSubs.filter((s) => assignedSubIds.has(s.id))
 
-  const totalInternalCost = internalCosts.reduce((s, c) => s + c.amount, 0)
+  // Engangs + løpende månedlige interne kostnader, utvidet over periodene.
+  const totalInternalCost = internalCostTotal(internalCosts, fallbackEndMonthIndex(project.end_date, new Date()))
 
   // "Select all" must match the visible filter — selecting hidden rows is
   // confusing and the count "X valgt" would be wrong. Filter the same way
@@ -414,18 +410,22 @@ export default function ProjectDetailPage() {
           projectId={id}
           projectStart={project.start_date}
           projectEnd={project.end_date}
+          plannedHoursOverride={project.planned_hours}
+          orderValue={totalSales}
           onOpenFremdriftsplan={() => setActiveTab('fremdriftsplan')}
+          onOpenInternalCosts={() => setActiveTab('interne')}
+          onOpenInvoices={() => setActiveTab('fakturagrunnlag')}
           milestones={milestones}
           budgetLines={budgetLines}
           internalCosts={internalCosts}
+          totalInternalCost={totalInternalCost}
           allProducts={allProducts}
           allSubs={allSubs}
           projectSubs={projectSubs}
           weeklyReportsWL={weeklyReportsWL}
-          addSubId={addSubId}
-          setAddSubId={setAddSubId}
           onAddSub={addSubToProject}
           onRequestRemoveSub={setConfirmRemoveSubId}
+          onProjectUpdated={fetchAll}
         />
       )}
       {/* ── BUDSJETT ─────────────────────────────────────────────────── */}
@@ -493,15 +493,6 @@ export default function ProjectDetailPage() {
         </div>
       )}
 
-      {/* ── KOST ─────────────────────────────────────────────────────── */}
-      {activeTab === 'kost' && (
-        <KostSection
-          totalSales={totalSales}
-          totalCost={totalCost}
-          totalInternalCost={totalInternalCost}
-        />
-      )}
-
       {/* ── PROGNOSE ─────────────────────────────────────────────────── */}
       {activeTab === 'prognose' && (
         <ForecastSection
@@ -522,6 +513,7 @@ export default function ProjectDetailPage() {
           projectId={id}
           internalCosts={internalCosts}
           totalInternalCost={totalInternalCost}
+          projectEnd={project.end_date}
           onAdded={fetchAll}
           onRequestDelete={setConfirmDeleteCostId}
         />

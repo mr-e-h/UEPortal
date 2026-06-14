@@ -32,6 +32,9 @@ export async function POST(request: NextRequest) {
     month: number
     amount: number
     comment: string
+    recurrence?: 'one_time' | 'monthly'
+    end_year?: number | null
+    end_month?: number | null
   }
   if (!body.project_id) {
     return NextResponse.json({ error: 'project_id mangler' }, { status: 400 })
@@ -47,6 +50,22 @@ export async function POST(request: NextRequest) {
   if (!Number.isInteger(month) || month < 1 || month > 12) {
     return NextResponse.json({ error: 'Ugyldig måned' }, { status: 400 })
   }
+  const recurrence = body.recurrence === 'monthly' ? 'monthly' : 'one_time'
+
+  // Løpende månedlig kan ha en valgfri sluttmåned (tom = ut prosjektet). Når
+  // satt må den ikke ligge før startmåneden.
+  let endYear: number | null = null
+  let endMonth: number | null = null
+  if (recurrence === 'monthly' && body.end_year != null && body.end_month != null) {
+    endYear = Number(body.end_year); endMonth = Number(body.end_month)
+    if (!Number.isInteger(endYear) || endYear < 2020 || endYear > 2040 ||
+        !Number.isInteger(endMonth) || endMonth < 1 || endMonth > 12) {
+      return NextResponse.json({ error: 'Ugyldig sluttmåned' }, { status: 400 })
+    }
+    if (endYear * 12 + endMonth < year * 12 + month) {
+      return NextResponse.json({ error: 'Sluttmåned kan ikke være før startmåned' }, { status: 400 })
+    }
+  }
 
   const denied = await ensureProjectWritable(auth.user, body.project_id)
   if (denied) return denied
@@ -57,6 +76,9 @@ export async function POST(request: NextRequest) {
     year, month, amount,
     comment: body.comment ?? '',
     created_at: new Date().toISOString(),
+    recurrence,
+    end_year: endYear,
+    end_month: endMonth,
   }
   const { error } = await getSupabaseAdmin().from('project_internal_costs').insert(entry)
   if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })

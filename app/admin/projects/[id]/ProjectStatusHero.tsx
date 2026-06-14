@@ -6,6 +6,7 @@ import { AlertTriangle, AlertCircle, CheckCircle2, Mail } from 'lucide-react'
 import type { Project, ProjectBudgetLine, ChangeOrder, ProjectInternalCostEntry } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
 import { computeProjectEconomy } from '@/lib/project-economy'
+import { internalCostTotal as sumInternalCosts, fallbackEndMonthIndex } from '@/lib/internal-costs'
 import type { WRWithLines, ProjectManagerRow } from './useProjectData'
 
 /**
@@ -34,26 +35,42 @@ interface Props {
   onGoToTab: (tab: 'endringsmeldinger' | 'rapporteringer') => void
 }
 
-interface KpiTileProps {
+/** Én linje i lønnsomhets-oppstillingen: etikett venstre, beløp høyre. */
+function ResultRow({
+  label, value, sub, sign, strong, tone = 'default',
+}: {
   label: string
   value: string
-  context?: string
-  tone?: 'default' | 'green' | 'amber' | 'red'
+  sub?: string
+  sign?: '−' | '='
+  strong?: boolean
+  tone?: 'default' | 'green' | 'red' | 'muted'
+}) {
+  const toneClass = tone === 'green' ? 'text-green-700' : tone === 'red' ? 'text-red-600' : tone === 'muted' ? 'text-[var(--color-text-secondary)]' : 'text-[var(--color-text-primary)]'
+  return (
+    <div className="flex items-baseline justify-between gap-3">
+      <span className={`${strong ? 'font-semibold text-[var(--color-text-primary)]' : 'text-[var(--color-text-secondary)]'} text-sm`}>
+        {sign && <span className="text-[var(--color-text-muted)] mr-1 tabular-nums">{sign}</span>}{label}
+      </span>
+      <span className="text-right">
+        <span className={`tabular-nums ${strong ? 'text-lg font-bold' : 'text-sm'} ${toneClass}`}>{value}</span>
+        {sub && <span className="block text-[10px] text-[var(--color-text-muted)] leading-tight">{sub}</span>}
+      </span>
+    </div>
+  )
 }
 
-function KpiTile({ label, value, context, tone = 'default' }: KpiTileProps) {
-  const valueClass = tone === 'green'
-    ? 'text-green-700'
-    : tone === 'amber'
-    ? 'text-amber-700'
-    : tone === 'red'
-    ? 'text-red-700'
-    : 'text-[var(--color-text-primary)]'
+/** Én leveranse-linje: farget prikk + etikett + beløp (+ valgfri %). */
+function DeliveryRow({ dot, label, value, pct }: { dot: string; label: string; value: string; pct?: string }) {
   return (
-    <div className="px-4 py-3">
-      <p className="text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest">{label}</p>
-      <p className={`text-xl font-bold mt-1 leading-tight ${valueClass}`}>{value}</p>
-      {context && <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{context}</p>}
+    <div className="flex items-baseline justify-between gap-3 text-sm">
+      <span className="flex items-center gap-2 text-[var(--color-text-secondary)]">
+        <span className={`w-2 h-2 rounded-full flex-none ${dot}`} />
+        {label}
+      </span>
+      <span className="text-right tabular-nums text-[var(--color-text-primary)]">
+        {value}{pct && <span className="text-[var(--color-text-muted)] ml-1.5 text-xs">{pct}</span>}
+      </span>
     </div>
   )
 }
@@ -74,9 +91,10 @@ export default function ProjectStatusHero({
       budgetLines,
       weeklyReports: weeklyReportsWL,
       changeOrders,
-      internalCosts,
+      // Engangs + løpende månedlige interne kostnader, utvidet over periodene.
+      internalCostTotal: sumInternalCosts(internalCosts, fallbackEndMonthIndex(project.end_date, new Date())),
     }),
-    [budgetLines, changeOrders, weeklyReportsWL, internalCosts],
+    [budgetLines, changeOrders, weeklyReportsWL, internalCosts, project.end_date],
   )
 
   // Bar widths as % of totalContract (or zeroed if no contract yet)
@@ -116,69 +134,63 @@ export default function ProjectStatusHero({
     s ? new Date(s).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: '2-digit' }) : '—'
   const dateRange = `${fmtDate(project.start_date)} – ${fmtDate(project.end_date)}`
 
+  const marginPct = summary.totalContract > 0 ? Math.round((summary.expectedProfit / summary.totalContract) * 100) : 0
+  const deliveredPct = summary.totalContract > 0 ? Math.round((summary.delivered / summary.totalContract) * 100) : 0
+
   return (
     <section className="bg-card border border-border rounded-xl overflow-hidden">
-      {/* Progress bar */}
-      <div className="px-5 pt-5">
-        <div className="flex items-end justify-between gap-4 mb-2">
-          <p className="text-xs font-semibold text-[var(--color-text-muted)] uppercase tracking-widest">Status</p>
-          <p className="text-sm font-bold text-[var(--color-text-primary)]">
-            {summary.progressPct}% levert
-            {summary.overBudget && <span className="ml-2 text-red-600 text-xs">(overskredet)</span>}
+      {/* To grupperte blokker: LEVERANSE (hvor mye av kontrakten er levert) og
+          LØNNSOMHET (et lite resultatregnskap der tallene står under hverandre
+          og går opp i fortjeneste). Erstatter den brede 6-flis-raden. */}
+      <div className="grid grid-cols-1 md:grid-cols-2 divide-y md:divide-y-0 md:divide-x divide-border">
+        {/* ── Leveranse ─────────────────────────────────────────────── */}
+        <div className="p-5">
+          <div className="flex items-baseline justify-between gap-3 mb-3">
+            <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest">Leveranse</p>
+            <p className="text-sm font-bold text-[var(--color-text-primary)]">
+              {summary.progressPct}% levert
+              {summary.overBudget && <span className="ml-1.5 text-red-600 text-xs">(overskredet)</span>}
+            </p>
+          </div>
+          <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Total ordreverdi</p>
+          <p className="text-3xl font-bold text-[var(--color-text-primary)] tabular-nums leading-tight mt-0.5">{fmt(summary.totalContract)}</p>
+          <p className="text-[11px] text-[var(--color-text-muted)] tabular-nums mt-1">
+            Original {fmt(summary.originalBudget)} <span className="text-[var(--color-text-muted)]">+</span> EM {fmt(summary.approvedEMValue)}
           </p>
+          {/* Stablet fremdriftsbar */}
+          <div className="flex w-full h-2.5 rounded-full overflow-hidden bg-muted mt-3 mb-3">
+            {wDelivered > 0 && <div className="h-full bg-green-500" style={{ width: `${wDelivered}%` }} title={`Levert: ${fmt(summary.delivered)}`} />}
+            {wPending > 0 && <div className="h-full bg-amber-400" style={{ width: `${wPending}%` }} title={`Til godkjenning: ${fmt(summary.pendingDelivery)}`} />}
+            {wRemaining > 0 && <div className="h-full bg-gray-200" style={{ width: `${wRemaining}%` }} title={`Gjenstår: ${fmt(summary.remaining)}`} />}
+          </div>
+          <div className="space-y-1.5">
+            <DeliveryRow dot="bg-green-500" label="Levert" value={fmt(summary.delivered)} pct={summary.totalContract > 0 ? `${deliveredPct}%` : undefined} />
+            {summary.pendingDelivery > 0 && (
+              <DeliveryRow dot="bg-amber-400" label="Til godkjenning" value={fmt(summary.pendingDelivery)} />
+            )}
+            <DeliveryRow dot="bg-gray-300" label="Gjenstår" value={fmt(summary.remaining)} />
+          </div>
         </div>
-        {/* Tallene bor i KPI-kortene under — baren trenger ingen egen legend.
-            Segment-tooltips beholder detaljene ved hover (inkl. «til
-            godkjenning», som ikke har eget kort). */}
-        <div className="flex w-full h-3 rounded-full overflow-hidden bg-muted">
-          {wDelivered > 0 && <div className="h-full bg-green-500" style={{ width: `${wDelivered}%` }} title={`Levert: ${fmt(summary.delivered)}`} />}
-          {wPending > 0 && <div className="h-full bg-amber-400" style={{ width: `${wPending}%` }} title={`Til godkjenning: ${fmt(summary.pendingDelivery)}`} />}
-          {wRemaining > 0 && <div className="h-full bg-gray-200" style={{ width: `${wRemaining}%` }} title={`Gjenstår: ${fmt(summary.remaining)}`} />}
-        </div>
-      </div>
 
-      {/* KPI tiles — ALL prosjektøkonomi samlet her (UE-kost + fortjeneste
-          bodde tidligere i en egen Kostnadsflyt-rad som dupliserte totalen). */}
-      <div className="grid grid-cols-2 md:grid-cols-3 xl:grid-cols-6 divide-x divide-y xl:divide-y-0 divide-border border-t border-border mt-5">
-        {/* EM-bidraget vises i EM netto-kortet — ingen duplisert undertekst her. */}
-        <KpiTile
-          label="Total ordreverdi"
-          value={fmt(summary.totalContract)}
-          context="inkl. godkjente EM"
-        />
-        <KpiTile
-          label="Levert til nå"
-          value={fmt(summary.delivered)}
-          context={summary.totalContract > 0 ? `${Math.round((summary.delivered / summary.totalContract) * 100)}% av total` : '—'}
-          tone="green"
-        />
-        <KpiTile
-          label="Gjenstår"
-          value={fmt(summary.remaining)}
-          context={summary.totalContract > 0 ? `${Math.round((summary.remaining / summary.totalContract) * 100)}% av total` : '—'}
-          tone={summary.remaining < summary.totalContract * 0.1 && summary.totalContract > 0 ? 'red' : 'default'}
-        />
-        <KpiTile
-          label="EM netto"
-          value={summary.approvedEMValue > 0 ? `+${fmt(summary.approvedEMValue)}` : fmt(0)}
-          context={
-            summary.pendingEMCount > 0
-              ? `${summary.approvedEMCount} godkjent · ${summary.pendingEMCount} venter`
-              : `${summary.approvedEMCount} godkjent`
-          }
-          tone={summary.approvedEMValue > 0 ? 'green' : 'default'}
-        />
-        <KpiTile
-          label="UE-kostnad"
-          value={fmt(summary.ueBudgetCost)}
-          context={`Rapportert ${fmt(summary.ueReportedCost)}`}
-        />
-        <KpiTile
-          label="Forventet fortjeneste"
-          value={fmt(summary.expectedProfit)}
-          context="ordre − UE − intern"
-          tone={summary.expectedProfit >= 0 ? 'green' : 'red'}
-        />
+        {/* ── Lønnsomhet (resultatregnskap) ─────────────────────────── */}
+        <div className="p-5">
+          <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest mb-3">Lønnsomhet</p>
+          <div className="space-y-2">
+            <ResultRow label="Ordreverdi" value={fmt(summary.totalContract)} sub="inkl. godkjente EM" tone="muted" />
+            <ResultRow sign="−" label="UE-kostnad" value={fmt(summary.ueBudgetCost)} sub={`rapportert ${fmt(summary.ueReportedCost)}`} tone="muted" />
+            <ResultRow sign="−" label="Internkostnad" value={fmt(summary.internCost)} tone="muted" />
+            <div className="border-t border-border pt-2">
+              <ResultRow
+                sign="="
+                label="Forventet fortjeneste"
+                value={fmt(summary.expectedProfit)}
+                sub={summary.totalContract > 0 ? `margin ${marginPct}%` : undefined}
+                strong
+                tone={summary.expectedProfit >= 0 ? 'green' : 'red'}
+              />
+            </div>
+          </div>
+        </div>
       </div>
 
       {/* Attention banner */}

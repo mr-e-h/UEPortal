@@ -17,6 +17,8 @@ export interface ProjectBreakdown {
   // semantic clarity at the call site.
   plannedRevenue: number
   plannedCost: number
+  /** Fakturert hittil i år (Σ project_invoices.amount i inneværende år). */
+  invoiced: number
 }
 
 function fmt(n: number) {

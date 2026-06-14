@@ -2,8 +2,9 @@
 
 import { useMemo, useState } from 'react'
 import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
-import ProjectManagersCard from './ProjectManagersCard'
-import SiteManagersCard from './SiteManagersCard'
+import ProjectSetupCard from './ProjectSetupCard'
+import InternalCostsSummaryCard from './InternalCostsSummaryCard'
+import InvoicingSummaryCard from './InvoicingSummaryCard'
 import PhasesMiniStrip from './PhasesMiniStrip'
 import type {
   ProjectBudgetLine,
@@ -22,71 +23,65 @@ interface Props {
   projectId: string
   projectStart: string | null
   projectEnd: string | null
+  /** Manuell overstyring av tiltenkte timer (null = bruk beregnet). */
+  plannedHoursOverride: number | null
+  /** Ordreverdi (salgsverdi + godkjente EM) — referanse for fakturering. */
+  orderValue: number
   onOpenFremdriftsplan: () => void
+  onOpenInternalCosts: () => void
+  onOpenInvoices: () => void
   /** Fra useProjectData — samme objekt Gantt-en på Fremdriftsplan-fanen får. */
   milestones: GanttMilestone[]
   budgetLines: ProjectBudgetLine[]
   internalCosts: ProjectInternalCostEntry[]
+  /** Ferdig utvidet internkost-total (engang + løpende), regnet i forelderen. */
+  totalInternalCost: number
   allProducts: Product[]
   allSubs: Subcontractor[]
   projectSubs: ProjectSubcontractor[]
   weeklyReportsWL: WRWithLines[]
-  // Add-UE row state lives in the parent because the form spans tab boundaries
-  // visually (it's a section, not the whole tab).
-  addSubId: string
-  setAddSubId: (v: string) => void
-  onAddSub: () => Promise<void> | void
+  /** Legg til UE (ett-klikks, id direkte) + fjern via bekreftelse — fra forelder. */
+  onAddSub: (subId: string) => Promise<void> | void
   onRequestRemoveSub: (linkId: string) => void
+  /** Re-hent etter at oppsett (timer tiltenkt) er endret. */
+  onProjectUpdated: () => void
 }
 
 /**
- * "Oversikt"-tab: project KPIs, budget version history, Excel import,
- * Gantt, cost-flow per UE, and the project-UE management list.
- *
- * Derived totals (totalSales, subFlowData, internPct...) are computed
- * inline here via useMemo — they're only needed when this tab is active,
- * so there's no reason to push them into useProjectData(). Forecast and
- * internal-cost totals that other tabs ALSO need stay computed in the
- * parent (cheap recompute).
+ * "Oversikt"-tab. Rekkefølge: Oppsett (PL/byggeleder/UE/timer) → fremdriftsplan
+ * → interne kostnader → UE-kostnadsflyt per UE. Heroen (all toppøkonomi) ligger
+ * over fanene i page.tsx. Summene (salgsverdi/UE-kost/fortjeneste) bor i heroen
+ * — dupliseres ikke her.
  */
 export default function OverviewSection({
   projectId,
   projectStart,
   projectEnd,
+  plannedHoursOverride,
+  orderValue,
   onOpenFremdriftsplan,
+  onOpenInternalCosts,
+  onOpenInvoices,
   milestones,
   budgetLines,
   internalCosts,
+  totalInternalCost,
   allProducts,
   allSubs,
   projectSubs,
   weeklyReportsWL,
-  addSubId,
-  setAddSubId,
   onAddSub,
   onRequestRemoveSub,
+  onProjectUpdated,
 }: Props) {
   // Tab-local UI state (cost-flow accordion).
   const [expandedSub, setExpandedSub] = useState<string | null>(null)
 
-  // ── Derived totals ────────────────────────────────────────────────
-  const {
-    totalInternalCost,
-    subFlowData,
-    internLines,
-    internBudgetSales,
-    internPct,
-    availableSubs,
-  } = useMemo(() => {
-    // Summene (salgsverdi/UE-kost/fortjeneste) regnes i ProjectStatusHero —
-    // her trengs kun internkost (intern-kortet) + per-UE-flyt.
-    const totalInternalCost = internalCosts.reduce((s, c) => s + c.amount, 0)
-
+  // ── Derived per-UE flow + intern-kort-grunnlag ────────────────────────
+  const { subFlowData, internLines, internBudgetSales, internPct } = useMemo(() => {
     const assignedSubIds = new Set(projectSubs.map((ps) => ps.subcontractor_id))
     const projectSubDetails = allSubs.filter((s) => assignedSubIds.has(s.id))
-    const availableSubs = allSubs.filter((s) => s.active && !assignedSubIds.has(s.id))
 
-    // UE flow data: budget vs reported per UE, drillable to product level.
     const approvedWRLines = weeklyReportsWL
       .filter((wr) => wr.status === 'approved' || wr.status === 'partially_approved')
       .flatMap((wr) => wr.lines.filter((l) => l.status === 'approved'))
@@ -125,7 +120,6 @@ export default function OverviewSection({
         id: sub.id,
         name: sub.company_name,
         contact: sub.contact_person,
-        linkId: projectSubs.find((ps) => ps.subcontractor_id === sub.id)?.id ?? null,
         budgetCost,
         reportedCost,
         remaining: Math.max(0, budgetCost - reportedCost),
@@ -139,23 +133,32 @@ export default function OverviewSection({
       (s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot,
       0,
     )
-    const internPct = internBudgetSales > 0
-      ? Math.round((totalInternalCost / internBudgetSales) * 100)
-      : 0
+    const internPct = internBudgetSales > 0 ? Math.round((totalInternalCost / internBudgetSales) * 100) : 0
 
-    return {
-      totalInternalCost,
-      subFlowData, internLines, internBudgetSales, internPct,
-      availableSubs,
-    }
-  }, [budgetLines, internalCosts, projectSubs, allSubs, weeklyReportsWL, allProducts])
+    return { subFlowData, internLines, internBudgetSales, internPct }
+  }, [budgetLines, projectSubs, allSubs, weeklyReportsWL, allProducts, totalInternalCost])
 
   return (
     <div className="space-y-8">
-      {/* Prosjektstatistikk → Kost-fanen. Budsjettversjonhistorikk +
-          Excel-import → Budsjett-fanen. Redigerbar plan → Fremdriftsplan-
-          fanen. Oversikt = hero (all økonomi) + røff fase-stripe + UE + team. */}
+      {/* Oppsett + Fakturering side om side som to halvbokser. */}
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6 items-start">
+        <ProjectSetupCard
+          projectId={projectId}
+          projectSubs={projectSubs}
+          allSubs={allSubs}
+          plannedHoursOverride={plannedHoursOverride}
+          onAddSub={onAddSub}
+          onRequestRemoveSub={onRequestRemoveSub}
+          onProjectUpdated={onProjectUpdated}
+        />
+        <InvoicingSummaryCard
+          projectId={projectId}
+          orderValue={orderValue}
+          onOpenInvoices={onOpenInvoices}
+        />
+      </div>
 
+      {/* Fremdriftsplan (vises som før — uendret). */}
       <PhasesMiniStrip
         projectId={projectId}
         projectStart={projectStart}
@@ -164,135 +167,107 @@ export default function OverviewSection({
         onOpenFremdriftsplan={onOpenFremdriftsplan}
       />
 
-      {/* UE-seksjonen: per-UE-kortene bærer både fremdrift (rapportert/
-          budsjett/gjenstår + produktdrilldown) og administrasjon (kontakt +
-          fjern); legg-til bor i seksjonsheaderen. Summene (salgsverdi/UE-kost/
-          fortjeneste) bor i status-heroen — IKKE dupliser dem her. */}
-      <section>
-          <div className="flex items-center justify-between gap-3 flex-wrap mb-4">
-            <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Underentreprenører</h2>
-            <div className="flex gap-2 items-center">
-              <select
-                value={addSubId}
-                onChange={(e) => setAddSubId(e.target.value)}
-                className="text-sm text-[var(--color-text-primary)] border border-border rounded px-2 py-1 focus:outline-none focus:ring-blue-500"
-              >
-                <option value="">+ Legg til UE</option>
-                {availableSubs.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
-              </select>
-              <button
-                onClick={() => onAddSub()}
-                disabled={!addSubId}
-                className="px-2.5 py-1 bg-blue-600 text-white text-xs rounded hover:bg-blue-700 disabled:opacity-40"
-              >
-                Legg til
-              </button>
-            </div>
-          </div>
-          <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
-            {internLines.length > 0 && (
-              <div className="bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
-                <div className="p-4">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-semibold text-[var(--color-text-primary)] text-sm">Intern / MinUE</span>
-                    <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-medium">Intern</span>
-                  </div>
-                  <div className="mb-2">
-                    <div className="flex justify-between text-xs text-[var(--color-text-muted)] mb-1">
-                      <span>Internkost brukt {internPct}%</span>
-                      <span>{fmt(totalInternalCost)} / {fmt(internBudgetSales)}</span>
-                    </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${internPct > 100 ? 'bg-red-500' : internPct > 80 ? 'bg-orange-400' : 'bg-indigo-500'}`} style={{ width: `${Math.min(internPct, 100)}%` }} />
-                    </div>
-                  </div>
-                  <div className="flex flex-col gap-0.5 text-xs mt-2">
-                    <span className="text-[var(--color-text-muted)]">Salgsverdi intern: <span className="font-medium text-[var(--color-text-primary)]">{fmt(internBudgetSales)}</span></span>
-                    <span className="text-[var(--color-text-muted)]">Registrert internkost: <span className="font-medium text-[var(--color-text-primary)]">{fmt(totalInternalCost)}</span></span>
-                    <span className={`font-medium ${internBudgetSales - totalInternalCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>Fortjeneste: {fmt(internBudgetSales - totalInternalCost)}</span>
-                  </div>
-                </div>
-              </div>
-            )}
-            {subFlowData.map((sf) => (
-              <div key={sf.id} className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
-                <button onClick={() => setExpandedSub(expandedSub === sf.id ? null : sf.id)} className="w-full text-left p-4 hover:bg-muted transition-colors">
-                  <div className="flex items-center justify-between mb-3">
-                    <span className="font-semibold text-[var(--color-text-primary)] text-sm">{sf.name}</span>
-                    <span className="text-xs text-[var(--color-text-muted)]">{expandedSub === sf.id ? '▲' : '▼'}</span>
-                  </div>
-                  <div className="mb-2">
-                    <div className="flex justify-between text-xs text-[var(--color-text-muted)] mb-1">
-                      <span>Rapportert {sf.pct}%</span>
-                      <span>{fmt(sf.reportedCost)} / {fmt(sf.budgetCost)}</span>
-                    </div>
-                    <div className="h-2 bg-muted rounded-full overflow-hidden">
-                      <div className={`h-full rounded-full transition-all ${sf.pct > 90 ? 'bg-red-500' : sf.pct > 70 ? 'bg-orange-400' : 'bg-green-500'}`} style={{ width: `${Math.min(sf.pct, 100)}%` }} />
-                    </div>
-                  </div>
-                  <div className="flex gap-3 text-xs">
-                    <span className="text-[var(--color-text-muted)]">Gjenstår: <span className="font-medium text-[var(--color-text-primary)]">{fmt(sf.remaining)}</span></span>
-                    <span className="text-[var(--color-text-muted)]">|</span>
-                    <span className="text-[var(--color-text-muted)]">Budsjett: <span className="font-medium text-[var(--color-text-primary)]">{fmt(sf.budgetCost)}</span></span>
-                  </div>
-                </button>
-                {/* Kontakt + fjern utenfor expand-knappen (gyldig HTML, og
-                    ingen utilsiktede klikk på destruktiv handling). */}
-                <div className="border-t border-border px-4 py-2 flex items-center justify-between gap-2">
-                  <span className="text-xs text-[var(--color-text-muted)] truncate">{sf.contact || ''}</span>
-                  {sf.linkId && (
-                    <button
-                      onClick={() => onRequestRemoveSub(sf.linkId!)}
-                      className="text-xs text-red-500 hover:text-red-700 flex-none"
-                    >
-                      Fjern
-                    </button>
-                  )}
-                </div>
-                {expandedSub === sf.id && (
-                  <div className="border-t border-border overflow-x-auto">
-                    <table className="w-full text-xs">
-                      <thead>
-                        <tr className="bg-muted border-b border-border">
-                          <th className="px-3 py-2 text-left font-medium text-[var(--color-text-muted)]">Produkt</th>
-                          <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">Budsjett</th>
-                          <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">Rapportert</th>
-                          <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">%</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {sf.products.map((prod) => (
-                          <tr key={prod.id} className="border-b border-gray-50 last:border-0 hover:bg-muted">
-                            <td className="px-3 py-2 text-[var(--color-text-primary)] max-w-[140px] truncate" title={prod.name}>{prod.name}<span className="text-[var(--color-text-muted)] ml-1">({prod.unit})</span></td>
-                            <td className="px-3 py-2 text-right text-[var(--color-text-secondary)]">{prod.budgetQty}</td>
-                            <td className="px-3 py-2 text-right text-[var(--color-text-secondary)]">{prod.reportedQty}</td>
-                            <td className={`px-3 py-2 text-right font-semibold ${prod.pct > 90 ? 'text-red-600' : prod.pct > 70 ? 'text-orange-500' : 'text-green-600'}`}>{prod.pct}%</td>
-                          </tr>
-                        ))}
-                        <tr className="bg-muted border-t border-border">
-                          <td className="px-3 py-2 text-xs font-semibold text-[var(--color-text-secondary)] uppercase">Totalt kostnad</td>
-                          <td className="px-3 py-2 text-right font-semibold text-[var(--color-text-primary)]">{fmt(sf.budgetCost)}</td>
-                          <td className="px-3 py-2 text-right font-semibold text-[var(--color-text-primary)]">{fmt(sf.reportedCost)}</td>
-                          <td className={`px-3 py-2 text-right font-bold ${sf.pct > 90 ? 'text-red-600' : sf.pct > 70 ? 'text-orange-500' : 'text-green-600'}`}>{sf.pct}%</td>
-                        </tr>
-                      </tbody>
-                    </table>
-                  </div>
-                )}
-              </div>
-            ))}
-          </div>
-          {subFlowData.length === 0 && internLines.length === 0 && (
-            <p className="text-sm text-[var(--color-text-muted)]">Ingen UE-er tildelt ennå — bruk «Legg til UE» over.</p>
-          )}
-        </section>
+      {/* Interne kostnader — oppsummering + hurtig-innlegging. */}
+      <InternalCostsSummaryCard
+        projectId={projectId}
+        internalCosts={internalCosts}
+        totalInternalCost={totalInternalCost}
+        onAdded={onProjectUpdated}
+        onOpenFull={onOpenInternalCosts}
+      />
 
-      {/* Team: PL + byggeledere side ved side. Kortene har egne titler —
-          ingen ekstra caps-etiketter over. UE-administrasjonen bor i
-          Kostnadsflyt-seksjonen (ett sted per aktør, ikke to). */}
-      <section className="grid grid-cols-1 md:grid-cols-2 gap-4 items-start">
-        <ProjectManagersCard projectId={projectId} />
-        <SiteManagersCard projectId={projectId} />
+      {/* UE-kostnadsflyt: per-UE budsjett vs. rapportert + produktdrilldown.
+          Administrasjon (legg til / fjern) bor i Oppsett-kortet over. */}
+      <section>
+        <h2 className="text-lg font-semibold text-[var(--color-text-primary)] mb-4">Kostnadsflyt UE</h2>
+        <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4">
+          {internLines.length > 0 && (
+            <div className="bg-white rounded-xl border border-indigo-200 shadow-sm overflow-hidden">
+              <div className="p-4">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-semibold text-[var(--color-text-primary)] text-sm">Intern / MinUE</span>
+                  <span className="text-xs bg-indigo-100 text-indigo-700 px-2 py-0.5 rounded font-medium">Intern</span>
+                </div>
+                <div className="mb-2">
+                  <div className="flex justify-between text-xs text-[var(--color-text-muted)] mb-1">
+                    <span>Internkost brukt {internPct}%</span>
+                    <span>{fmt(totalInternalCost)} / {fmt(internBudgetSales)}</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${internPct > 100 ? 'bg-red-500' : internPct > 80 ? 'bg-orange-400' : 'bg-indigo-500'}`} style={{ width: `${Math.min(internPct, 100)}%` }} />
+                  </div>
+                </div>
+                <div className="flex flex-col gap-0.5 text-xs mt-2">
+                  <span className="text-[var(--color-text-muted)]">Salgsverdi intern: <span className="font-medium text-[var(--color-text-primary)]">{fmt(internBudgetSales)}</span></span>
+                  <span className="text-[var(--color-text-muted)]">Registrert internkost: <span className="font-medium text-[var(--color-text-primary)]">{fmt(totalInternalCost)}</span></span>
+                  <span className={`font-medium ${internBudgetSales - totalInternalCost >= 0 ? 'text-green-600' : 'text-red-600'}`}>Fortjeneste: {fmt(internBudgetSales - totalInternalCost)}</span>
+                </div>
+              </div>
+            </div>
+          )}
+          {subFlowData.map((sf) => (
+            <div key={sf.id} className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
+              <button onClick={() => setExpandedSub(expandedSub === sf.id ? null : sf.id)} className="w-full text-left p-4 hover:bg-muted transition-colors">
+                <div className="flex items-center justify-between mb-3">
+                  <span className="font-semibold text-[var(--color-text-primary)] text-sm">{sf.name}</span>
+                  <span className="text-xs text-[var(--color-text-muted)]">{expandedSub === sf.id ? '▲' : '▼'}</span>
+                </div>
+                <div className="mb-2">
+                  <div className="flex justify-between text-xs text-[var(--color-text-muted)] mb-1">
+                    <span>Rapportert {sf.pct}%</span>
+                    <span>{fmt(sf.reportedCost)} / {fmt(sf.budgetCost)}</span>
+                  </div>
+                  <div className="h-2 bg-muted rounded-full overflow-hidden">
+                    <div className={`h-full rounded-full transition-all ${sf.pct > 90 ? 'bg-red-500' : sf.pct > 70 ? 'bg-orange-400' : 'bg-green-500'}`} style={{ width: `${Math.min(sf.pct, 100)}%` }} />
+                  </div>
+                </div>
+                <div className="flex gap-3 text-xs">
+                  <span className="text-[var(--color-text-muted)]">Gjenstår: <span className="font-medium text-[var(--color-text-primary)]">{fmt(sf.remaining)}</span></span>
+                  <span className="text-[var(--color-text-muted)]">|</span>
+                  <span className="text-[var(--color-text-muted)]">Budsjett: <span className="font-medium text-[var(--color-text-primary)]">{fmt(sf.budgetCost)}</span></span>
+                </div>
+              </button>
+              {sf.contact && (
+                <div className="border-t border-border px-4 py-2">
+                  <span className="text-xs text-[var(--color-text-muted)] truncate">{sf.contact}</span>
+                </div>
+              )}
+              {expandedSub === sf.id && (
+                <div className="border-t border-border overflow-x-auto">
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr className="bg-muted border-b border-border">
+                        <th className="px-3 py-2 text-left font-medium text-[var(--color-text-muted)]">Produkt</th>
+                        <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">Budsjett</th>
+                        <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">Rapportert</th>
+                        <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {sf.products.map((prod) => (
+                        <tr key={prod.id} className="border-b border-gray-50 last:border-0 hover:bg-muted">
+                          <td className="px-3 py-2 text-[var(--color-text-primary)] max-w-[140px] truncate" title={prod.name}>{prod.name}<span className="text-[var(--color-text-muted)] ml-1">({prod.unit})</span></td>
+                          <td className="px-3 py-2 text-right text-[var(--color-text-secondary)]">{prod.budgetQty}</td>
+                          <td className="px-3 py-2 text-right text-[var(--color-text-secondary)]">{prod.reportedQty}</td>
+                          <td className={`px-3 py-2 text-right font-semibold ${prod.pct > 90 ? 'text-red-600' : prod.pct > 70 ? 'text-orange-500' : 'text-green-600'}`}>{prod.pct}%</td>
+                        </tr>
+                      ))}
+                      <tr className="bg-muted border-t border-border">
+                        <td className="px-3 py-2 text-xs font-semibold text-[var(--color-text-secondary)] uppercase">Totalt kostnad</td>
+                        <td className="px-3 py-2 text-right font-semibold text-[var(--color-text-primary)]">{fmt(sf.budgetCost)}</td>
+                        <td className="px-3 py-2 text-right font-semibold text-[var(--color-text-primary)]">{fmt(sf.reportedCost)}</td>
+                        <td className={`px-3 py-2 text-right font-bold ${sf.pct > 90 ? 'text-red-600' : sf.pct > 70 ? 'text-orange-500' : 'text-green-600'}`}>{sf.pct}%</td>
+                      </tr>
+                    </tbody>
+                  </table>
+                </div>
+              )}
+            </div>
+          ))}
+        </div>
+        {subFlowData.length === 0 && internLines.length === 0 && (
+          <p className="text-sm text-[var(--color-text-muted)]">Ingen UE-er tildelt ennå — legg til i Oppsett over.</p>
+        )}
       </section>
     </div>
   )

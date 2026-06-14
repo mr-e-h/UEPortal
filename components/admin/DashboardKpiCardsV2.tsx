@@ -1,7 +1,7 @@
 'use client'
 
 import Link from 'next/link'
-import { TrendingUp, Calculator, PieChart, ClipboardCheck } from 'lucide-react'
+import { TrendingUp, Receipt, Calculator, PieChart, ClipboardCheck } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 
 function fmt(n: number) {
@@ -43,6 +43,7 @@ function KpiCard({ icon: Icon, iconBg, iconColor, label, value, sub, href }: Kpi
 
 interface Props {
   yearRevenue: number
+  yearInvoiced: number
   yearCost: number
   yearProfit: number
   profitMargin: number
@@ -54,6 +55,7 @@ interface Props {
 
 export default function DashboardKpiCardsV2({
   yearRevenue,
+  yearInvoiced,
   yearCost,
   yearProfit,
   profitMargin,
@@ -63,8 +65,9 @@ export default function DashboardKpiCardsV2({
   currentWeek,
 }: Props) {
   const pendingTotal = pendingReports + pendingCOCount
+  const invoicedPct = yearRevenue > 0 ? Math.round((yearInvoiced / yearRevenue) * 100) : 0
   return (
-    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4">
       <KpiCard
         icon={TrendingUp}
         iconBg="bg-blue-50"
@@ -73,6 +76,14 @@ export default function DashboardKpiCardsV2({
         value={fmt(yearRevenue)}
         sub="Klikk for fordeling →"
         href="/admin/invoice-basis?type=customer"
+      />
+      <KpiCard
+        icon={Receipt}
+        iconBg="bg-cyan-50"
+        iconColor="text-cyan-600"
+        label="Fakturert"
+        value={fmt(yearInvoiced)}
+        sub={yearRevenue > 0 ? `${invoicedPct}% av omsetning` : 'hittil i år'}
       />
       <KpiCard
         icon={Calculator}

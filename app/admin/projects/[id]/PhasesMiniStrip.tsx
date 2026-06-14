@@ -51,6 +51,59 @@ type EditDraft = {
   progress: string
 }
 
+/**
+ * Månedsgrensene (i ms) som ligger strengt INNE i [min, max]. Brukes til å
+ * tegne et svakt måneds-rutenett bortover bak barene, så det er lettere å se
+ * hvor månedene (og dermed hvor ting starter) ligger. UTC for å matche
+ * Date.parse av ISO-datoene barene bruker.
+ */
+function monthStartsBetween(min: number, max: number): number[] {
+  if (!(max > min)) return []
+  const out: number[] = []
+  const d = new Date(min)
+  let y = d.getUTCFullYear()
+  let m = d.getUTCMonth()
+  let cur = Date.UTC(y, m, 1)
+  while (cur <= max && out.length < 240) {
+    if (cur > min) out.push(cur)
+    m++
+    if (m > 11) { m = 0; y++ }
+    cur = Date.UTC(y, m, 1)
+  }
+  return out
+}
+
+const MONTHS_ABBR = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des']
+
+/**
+ * Synlige måneds-segmenter i [min, max] med midtpunkt (ms) for å plassere en
+ * måneds-etikett midt i hver måned. Året vises på første måned og hver januar
+ * så aksen er lett å lese uten å gjenta året overalt.
+ */
+function monthSegments(min: number, max: number): { mid: number; label: string }[] {
+  if (!(max > min)) return []
+  const out: { mid: number; label: string }[] = []
+  const d = new Date(min)
+  let y = d.getUTCFullYear()
+  let m = d.getUTCMonth()
+  let segStart = Date.UTC(y, m, 1)
+  let first = true
+  while (segStart < max && out.length < 240) {
+    const next = Date.UTC(m === 11 ? y + 1 : y, (m + 1) % 12, 1)
+    const visStart = Math.max(segStart, min)
+    const visEnd = Math.min(next, max)
+    if (visEnd > visStart) {
+      const showYear = first || m === 0
+      out.push({ mid: (visStart + visEnd) / 2, label: showYear ? `${MONTHS_ABBR[m]} ${String(y).slice(2)}` : MONTHS_ABBR[m] })
+      first = false
+    }
+    m++
+    if (m > 11) { m = 0; y++ }
+    segStart = next
+  }
+  return out
+}
+
 export default function PhasesMiniStrip({
   projectId,
   projectStart,
@@ -199,6 +252,8 @@ export default function PhasesMiniStrip({
   const min = hasSpan ? Math.min(...dates) : 0
   const max = hasSpan ? Math.max(Math.max(...dates), min + 30 * DAY) : 1
   const span = max - min
+  const monthLines = monthStartsBetween(min, max)
+  const monthSegs = monthSegments(min, max)
 
   const rows = baseRows
     .map(applyDraft)
@@ -490,14 +545,21 @@ export default function PhasesMiniStrip({
           Ingen faser eller milepæler registrert ennå{manage && canManage ? ' — trykk «Rediger fremdriftsplan» for å legge til.' : '.'}
         </p>
       ) : (
-        <div className={`relative space-y-1.5 ${dragging ? 'select-none cursor-ew-resize' : ''}`}>
-          {todayPct !== null && (
-            <div
-              className="absolute top-0 bottom-0 w-px bg-red-400/70 z-10 pointer-events-none"
-              style={{ left: `${todayPct}%` }}
-              title="I dag"
-            />
-          )}
+        <>
+          {/* Måneds-etiketter over tidslinjen — samme kolonnebredder som
+              radene under, så de står rett over bar-sporet og månedslinjene. */}
+          <div className="flex items-center gap-2 mb-1 print:hidden">
+            <span className="w-28 flex-none" />
+            <div className="flex-1 relative h-3">
+              {monthSegs.map((s) => (
+                <span key={s.mid} className="absolute -translate-x-1/2 text-[9px] text-[var(--color-text-muted)] whitespace-nowrap" style={{ left: `${pctPos(s.mid, min, max)}%` }}>{s.label}</span>
+              ))}
+            </div>
+            <span className="w-[8.5rem] flex-none" />
+            <span className="w-9 flex-none" />
+            {editMode && <span className="w-12 flex-none" />}
+          </div>
+          <div className={`relative space-y-1.5 ${dragging ? 'select-none cursor-ew-resize' : ''}`}>
           {rows.map((r) => {
             const isDeleted = deleted.has(r.id)
             const hasDraft = !!drafts[r.id]
@@ -514,6 +576,14 @@ export default function PhasesMiniStrip({
                     {r.label}
                   </span>
                   <div data-track className="flex-1 relative h-3 rounded bg-muted overflow-hidden">
+                    {/* Svakt måneds-rutenett bortover + «nå»-strek, aligna med
+                        barene siden de deler samme min/max-koordinatrom. */}
+                    {monthLines.map((ms) => (
+                      <span key={ms} className="absolute top-0 bottom-0 w-px pointer-events-none" style={{ left: `${pctPos(ms, min, max)}%`, background: 'rgba(100,116,139,0.18)' }} />
+                    ))}
+                    {todayPct !== null && (
+                      <span className="absolute top-0 bottom-0 w-px bg-red-400/70 z-10 pointer-events-none" style={{ left: `${todayPct}%` }} title="I dag" />
+                    )}
                     <TimelineBar
                       item={r}
                       draggable={editMode && canManage && !isDeleted}
@@ -633,7 +703,8 @@ export default function PhasesMiniStrip({
               </div>
             )
           })}
-        </div>
+          </div>
+        </>
       )}
 
       {editMode && changeCount > 0 && (

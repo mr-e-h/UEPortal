@@ -10,7 +10,7 @@ import type { Project } from '@/types'
  */
 const EDITABLE_FIELDS: (keyof Project)[] = [
   'name', 'project_number', 'order_number', 'customer', 'county',
-  'status', 'start_date', 'end_date',
+  'status', 'start_date', 'end_date', 'planned_hours',
 ]
 
 /**
@@ -57,6 +57,14 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
   if (body.status && !['active', 'completed', 'archived'].includes(body.status)) {
     return NextResponse.json({ error: 'Ugyldig status' }, { status: 400 })
+  }
+  // planned_hours er en overstyring: null = bruk beregnet, ellers ikke-negativt tall.
+  if ('planned_hours' in updates && updates.planned_hours != null) {
+    const h = Number(updates.planned_hours)
+    if (!Number.isFinite(h) || h < 0) {
+      return NextResponse.json({ error: 'Ugyldig timeantall' }, { status: 400 })
+    }
+    updates.planned_hours = h
   }
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'Ingen felter å oppdatere' }, { status: 400 })

@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
-import { LayoutGrid, List, Bell, CalendarRange, HardHat, User as UserIcon } from 'lucide-react'
+import { LayoutGrid, List, Bell, CalendarRange, HardHat, Wallet, User as UserIcon } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import type { BadgeStatus } from '@/components/ui/Badge'
@@ -23,6 +23,8 @@ export type ProjectCardData = {
   /** 0–100, eller null når verken volum- eller tidsgrunnlag finnes. */
   progress: number | null
   progress_source: 'volum' | 'tid' | null
+  /** Ordreverdi (total kontraktsverdi). null for byggeleder — aldri serialisert. */
+  revenue: number | null
   attention: {
     change_orders: number
     weekly_reports: number
@@ -144,7 +146,7 @@ export default function ProjectsOverviewClient({
   )
 }
 
-import { fmtDateShort as fmtDate } from '@/lib/format'
+import { fmtDateShort as fmtDate, fmtNOK } from '@/lib/format'
 
 function ProjectCard({ card }: { card: ProjectCardData }) {
   const maxChips = 3
@@ -183,6 +185,12 @@ function ProjectCard({ card }: { card: ProjectCardData }) {
           <CalendarRange size={12} className="flex-none text-[var(--color-text-muted)]" />
           {fmtDate(card.start_date)} – {card.end_date ? fmtDate(card.end_date) : 'pågående'}
         </p>
+        {card.revenue !== null && (
+          <p className="flex items-center gap-1.5">
+            <Wallet size={12} className="flex-none text-[var(--color-text-muted)]" />
+            <span>Ordreverdi: <span className="font-medium text-[var(--color-text-primary)] tabular-nums">{fmtNOK(card.revenue)}</span></span>
+          </p>
+        )}
       </div>
 
       {/* UE-chips */}

@@ -1,7 +1,8 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { Plus, Trash2, ChevronDown, ChevronRight, Save, Pencil, Check, X } from 'lucide-react'
+import Link from 'next/link'
+import { Plus, Trash2, ChevronDown, ChevronRight, ChevronLeft, Save, Pencil, Check, X, GripVertical } from 'lucide-react'
 import type { PhaseType } from '@/components/admin/FremdriftsplanClient'
 import Card from '@/components/ui/Card'
 import Field from '@/components/ui/Field'
@@ -101,6 +102,9 @@ export default function ProjectTypesPage() {
   return (
     <div className="p-6 space-y-6">
       {confirmDialog}
+      <Link href="/admin/innstillinger" className="inline-flex items-center gap-1 text-xs text-[var(--color-text-muted)] hover:text-primary">
+        <ChevronLeft size={14} /> Innstillinger
+      </Link>
       <div>
         <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Type prosjekt</h1>
         <p className="text-sm text-[var(--color-text-muted)] mt-0.5">
@@ -367,7 +371,8 @@ function TypeCard({ type, isExpanded, onToggle, onDelete, onRename, onChange }: 
  */
 function DefaultPhasesEditor({ typeId }: { typeId: string }) {
   const [phaseTypes, setPhaseTypes] = useState<PhaseType[]>([])
-  const [selected, setSelected] = useState<Set<string>>(new Set())
+  // Fasene i denne typens standard rekkefølge (phase_type_id-er i rekkefølge).
+  const [ordered, setOrdered] = useState<string[]>([])
   const [configured, setConfigured] = useState(false)
   const [loaded, setLoaded] = useState(false)
   const [dirty, setDirty] = useState(false)
@@ -385,6 +390,10 @@ function DefaultPhasesEditor({ typeId }: { typeId: string }) {
   const [editPhaseColor, setEditPhaseColor] = useState('#2563EB')
   const [savingEdit, setSavingEdit] = useState(false)
   const { confirm: confirmAction, confirmDialog } = useConfirm()
+
+  // Drag-and-drop-tilstand for å endre rekkefølge ved å dra fasene.
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
 
   async function savePhaseEdit() {
     if (!editPhaseId || !editPhaseName.trim()) return
@@ -416,11 +425,7 @@ function DefaultPhasesEditor({ typeId }: { typeId: string }) {
       return
     }
     setPhaseTypes((prev) => prev.filter((t) => t.id !== pt.id))
-    setSelected((prev) => {
-      const next = new Set(prev)
-      next.delete(pt.id)
-      return next
-    })
+    setOrdered((prev) => prev.filter((x) => x !== pt.id))
   }
 
   async function addPhaseType() {
@@ -437,15 +442,9 @@ function DefaultPhasesEditor({ typeId }: { typeId: string }) {
     }
     setAddingPhase(false)
     setPhaseTypes((prev) => [...prev, created])
-    // Forhåndsvelg den nye fasen i malen. Var alt valgt fra før («alle er
-    // standard»), forblir alt valgt — lagring gir fortsatt tom mal.
-    setSelected((prev) => {
-      const next = new Set(prev)
-      next.add(created.id)
-      return next
-    })
+    // Ny fasetype legges i registeret. Uten egen rekkefølge er den automatisk
+    // standard; har typen egen rekkefølge, legger du den til i lista når du vil.
     setNewPhaseName('')
-    if (configured) setDirty(true)
   }
 
   useEffect(() => {
@@ -460,8 +459,9 @@ function DefaultPhasesEditor({ typeId }: { typeId: string }) {
       setPhaseTypes(active)
       const c = cfg as { configured: boolean; phase_type_ids: string[] }
       setConfigured(c.configured)
-      // Ingen mal = alle er standard → alt forhåndshukes.
-      setSelected(new Set(c.configured ? c.phase_type_ids : active.map((t) => t.id)))
+      // Ingen egen rekkefølge = alle aktive fasetyper er standard (vist i
+      // registerets rekkefølge, redigerbart).
+      setOrdered(c.configured ? c.phase_type_ids : active.map((t) => t.id))
       setLoaded(true)
     }).catch(() => setLoaded(true))
     return () => { cancelled = true }
@@ -469,79 +469,105 @@ function DefaultPhasesEditor({ typeId }: { typeId: string }) {
 
   if (!loaded || phaseTypes.length === 0) return null
 
-  function toggle(id: string) {
-    setSelected((prev) => {
-      const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+  const phaseById = new Map(phaseTypes.map((t) => [t.id, t]))
+  const notInList = phaseTypes.filter((t) => !ordered.includes(t.id))
+
+  // Flytt en fase fra én posisjon til en annen (drag-and-drop). `to` er
+  // indeksen i den opprinnelige lista der fasen skal slippes.
+  function reorder(from: number, to: number) {
+    if (from === to || from < 0 || to < 0) return
+    setOrdered((prev) => {
+      const next = [...prev]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
       return next
     })
+    setDirty(true)
+  }
+  function removeFromList(id: string) {
+    setOrdered((prev) => prev.filter((x) => x !== id))
+    setDirty(true)
+  }
+  function addToList(id: string) {
+    setOrdered((prev) => (prev.includes(id) ? prev : [...prev, id]))
     setDirty(true)
   }
 
   async function save() {
     setSaving(true); setError('')
-    // Alle huket av = ingen egen mal (tom liste) → «alle er standard».
-    const allChecked = selected.size === phaseTypes.length
-    const ids = allChecked ? [] : phaseTypes.filter((t) => selected.has(t.id)).map((t) => t.id)
+    // Rekkefølgen lagres som den er. Tom liste = ingen egen rekkefølge →
+    // «alle fasetyper er standard».
     try {
-      await api.defaultPhases.save(typeId, ids)
+      await api.defaultPhases.save(typeId, ordered)
     } catch (err) {
       setSaving(false)
       setError(apiErrorMessage(err, 'Lagring feilet'))
       return
     }
     setSaving(false)
-    setConfigured(ids.length > 0)
+    setConfigured(ordered.length > 0)
     setDirty(false)
   }
 
   return (
     <div className="pt-3 border-t border-border space-y-2">
       {confirmDialog}
-      <div className="flex items-center gap-2">
+      <div className="flex items-center gap-2 flex-wrap">
         <h4 className="text-xs font-semibold text-[var(--color-text-primary)]">Standardfaser</h4>
         <span className="text-[10px] text-[var(--color-text-muted)]">
-          {configured ? 'Egen mal for denne typen' : 'Alle fasetyper er standard'}
+          {configured ? 'Egen rekkefølge — brukes ved «Legg til standardfaser»' : 'Alle fasetyper er standard (registerets rekkefølge)'}
         </span>
       </div>
-      <div className="flex items-center gap-2 flex-wrap">
-        {phaseTypes.map((t) => {
-          const checked = selected.has(t.id)
-          return (
-            <label
-              key={t.id}
-              className={`group inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium border cursor-pointer transition-colors ${
-                checked
-                  ? 'bg-card border-[var(--color-border-strong)] text-[var(--color-text-primary)]'
-                  : 'bg-muted/50 border-border text-[var(--color-text-muted)] opacity-60'
-              }`}
-            >
-              <input type="checkbox" checked={checked} onChange={() => toggle(t.id)} className="sr-only" />
-              <span className="w-2 h-2 rounded-full flex-none" style={{ backgroundColor: t.color ?? '#94A3B8' }} />
-              {t.name}
-              <button
-                type="button"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); setEditPhaseId(t.id); setEditPhaseName(t.name); setEditPhaseColor(t.color ?? '#94A3B8') }}
-                className="p-0.5 rounded-full text-[var(--color-text-muted)] hover:text-primary hover:bg-primary-soft"
-                title={`Rediger «${t.name}» (navn/farge)`}
-                aria-label={`Rediger ${t.name}`}
+
+      {/* Ordnet liste = standard rekkefølge for denne typen */}
+      {ordered.length > 0 ? (
+        <ol className="space-y-1">
+          {ordered.map((id, idx) => {
+            const t = phaseById.get(id)
+            if (!t) return null
+            const isDragging = dragIndex === idx
+            const isDropTarget = overIndex === idx && dragIndex !== null && dragIndex !== idx
+            return (
+              <li
+                key={id}
+                draggable
+                onDragStart={(e) => { setDragIndex(idx); e.dataTransfer.effectAllowed = 'move' }}
+                onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (overIndex !== idx) setOverIndex(idx) }}
+                onDrop={(e) => { e.preventDefault(); if (dragIndex !== null) reorder(dragIndex, idx); setDragIndex(null); setOverIndex(null) }}
+                onDragEnd={() => { setDragIndex(null); setOverIndex(null) }}
+                className={`flex items-center gap-2 bg-card border rounded-lg px-2.5 py-1.5 transition-colors ${isDragging ? 'opacity-40' : ''} ${isDropTarget ? 'border-primary border-dashed bg-primary-soft' : 'border-border'}`}
               >
-                <Pencil size={10} />
+                <span className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 text-[var(--color-text-muted)] hover:text-primary touch-none" title="Dra for å endre rekkefølge" aria-label={`Dra ${t.name}`}><GripVertical size={14} /></span>
+                <span className="w-4 text-right text-[10px] text-[var(--color-text-muted)] font-mono tabular-nums">{idx + 1}</span>
+                <span className="w-2 h-2 rounded-full flex-none" style={{ backgroundColor: t.color ?? '#94A3B8' }} />
+                <span className="text-xs text-[var(--color-text-primary)] flex-1 truncate">{t.name}</span>
+                <button type="button" onClick={() => { setEditPhaseId(t.id); setEditPhaseName(t.name); setEditPhaseColor(t.color ?? '#94A3B8') }} className="p-0.5 rounded text-[var(--color-text-muted)] hover:text-primary hover:bg-primary-soft" title={`Rediger «${t.name}»`} aria-label={`Rediger ${t.name}`}><Pencil size={12} /></button>
+                <button type="button" onClick={() => removeFromList(id)} className="p-0.5 rounded text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-50" title="Fjern fra rekkefølgen" aria-label={`Fjern ${t.name} fra rekkefølgen`}><X size={13} /></button>
+              </li>
+            )
+          })}
+        </ol>
+      ) : (
+        <p className="text-[11px] text-[var(--color-text-muted)]">Ingen egen rekkefølge — alle fasetyper er standard. Legg til faser under for å sette rekkefølgen.</p>
+      )}
+
+      {/* Faser som ikke er i lista — klikk for å legge til */}
+      {notInList.length > 0 && (
+        <div className="flex items-center gap-1.5 flex-wrap pt-1">
+          <span className="text-[10px] text-[var(--color-text-muted)]">Legg til:</span>
+          {notInList.map((t) => (
+            <span key={t.id} className="inline-flex items-center gap-1.5 px-2 py-1 rounded-full text-xs font-medium border border-border bg-muted/40 text-[var(--color-text-secondary)]">
+              <button type="button" onClick={() => addToList(t.id)} className="inline-flex items-center gap-1.5 hover:text-primary" title={`Legg til ${t.name}`}>
+                <Plus size={11} />
+                <span className="w-2 h-2 rounded-full flex-none" style={{ backgroundColor: t.color ?? '#94A3B8' }} />
+                {t.name}
               </button>
-              <button
-                type="button"
-                onClick={(e) => { e.preventDefault(); e.stopPropagation(); deletePhaseType(t) }}
-                className="-mr-1 p-0.5 rounded-full text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-50"
-                title={`Slett «${t.name}» fra registeret`}
-                aria-label={`Slett ${t.name}`}
-              >
-                <Trash2 size={10} />
-              </button>
-            </label>
-          )
-        })}
-      </div>
+              <button type="button" onClick={() => { setEditPhaseId(t.id); setEditPhaseName(t.name); setEditPhaseColor(t.color ?? '#94A3B8') }} className="p-0.5 rounded-full text-[var(--color-text-muted)] hover:text-primary" title={`Rediger «${t.name}»`} aria-label={`Rediger ${t.name}`}><Pencil size={10} /></button>
+              <button type="button" onClick={() => deletePhaseType(t)} className="-mr-1 p-0.5 rounded-full text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-50" title={`Slett «${t.name}» fra registeret`} aria-label={`Slett ${t.name}`}><Trash2 size={10} /></button>
+            </span>
+          ))}
+        </div>
+      )}
       {/* Inline-redigering av valgt fase (navn/farge — globalt) */}
       {editPhaseId && (
         <div className="flex items-center gap-2 flex-wrap bg-muted/40 border border-border rounded-lg p-2">
@@ -613,10 +639,10 @@ function DefaultPhasesEditor({ typeId }: { typeId: string }) {
       {error && <p className="text-xs text-red-600">{error}</p>}
       {dirty && (
         <div className="flex items-center gap-3">
-          <Button type="button" onClick={save} disabled={saving || selected.size === 0}>
-            <Save size={14} className="mr-1" /> {saving ? 'Lagrer…' : 'Lagre standardfaser'}
+          <Button type="button" onClick={save} disabled={saving}>
+            <Save size={14} className="mr-1" /> {saving ? 'Lagrer…' : 'Lagre rekkefølge'}
           </Button>
-          {selected.size === 0 && <span className="text-xs text-amber-700">Velg minst én fase</span>}
+          {ordered.length === 0 && <span className="text-xs text-[var(--color-text-muted)]">Tom liste = alle fasetyper er standard</span>}
         </div>
       )}
     </div>

@@ -9,11 +9,16 @@ import type {
   WeeklyReport,
   WeeklyReportLine,
   ChangeOrder,
-  HourEntry,
   Subcontractor,
+  InternalHoursMonthly,
 } from '@/types'
 import { getISOWeek, formatWeekLabel, getISOWeeksInYear } from '@/lib/utils/weeks'
 import { isInOsloYear, osloYearMonth } from '@/lib/utils/dates'
+import { budgetSalesValue, emCustomerValue } from '@/lib/project-economy'
+import {
+  computeSpanISO, monthIndexFromISO, allocateActualInternalCost,
+  type ProjectSpan, type MonthlyActual,
+} from '@/lib/resource-allocation'
 import DashboardClient from '@/components/admin/DashboardClient'
 import type { WeekPoint } from '@/components/admin/DashboardChart'
 import type { PendingRow } from '@/components/admin/PendingTable'
@@ -65,28 +70,38 @@ export default async function AdminDashboard() {
     budgetLinesRes,
     weeklyReportsRes,
     changeOrdersRes,
-    hourEntriesRes,
     subsRes,
     invoicesRes,
+    phasesRes,
+    milestonesRes,
+    monthlyActualsRes,
   ] = await Promise.all([
     sb.from('projects').select('*').neq('deleted', true),
     sb.from('project_budget_lines').select('id, project_id, budget_quantity, customer_price_snapshot, subcontractor_cost_price_snapshot'),
     sb.from('weekly_reports').select('id, project_id, subcontractor_id, status, year, week_number, submitted_at, submission_number').gte('year', thisYear - 1).lte('year', thisYear),
     sb.from('change_orders').select('id, project_id, subcontractor_id, status, reviewed_at, submitted_at, total_customer_value, total_cost, reason').gte('submitted_at', lastYearStart).neq('status', 'draft'),
-    sb.from('hour_entries').select('*').gte('date', lastYearStart),
     sb.from('subcontractors').select('id, company_name'),
     // Invoices for the per-month bar chart — bounded to current year so we
     // don't ship a project's full billing history every dashboard render.
     sb.from('project_invoices').select('project_id, amount, invoice_date').gte('invoice_date', `${thisYear}-01-01`).lte('invoice_date', `${thisYear}-12-31`),
+    // Internkost: prosjektenes aktive span (fremdriftsplan) + de avstemte
+    // månedene. Den faktiske internkosten fordeles på prosjektene som var aktive
+    // hver måned, vektet på omsetning — samme fordeling som ressurs-estimatet.
+    sb.from('project_phases').select('project_id, start_date, end_date'),
+    sb.from('milestones').select('project_id, start_date, end_date'),
+    sb.from('internal_hours_monthly').select('*').eq('year', thisYear),
   ])
 
   const allProjects = (projectsRes.data ?? []) as Project[]
   const allBudgetLines = (budgetLinesRes.data ?? []) as ProjectBudgetLine[]
   const allWeeklyReports = (weeklyReportsRes.data ?? []) as WeeklyReport[]
   const allChangeOrders = (changeOrdersRes.data ?? []) as ChangeOrder[]
-  const allHourEntries = (hourEntriesRes.data ?? []) as HourEntry[]
   const subcontractors = (subsRes.data ?? []) as Subcontractor[]
   const allInvoices = (invoicesRes.data ?? []) as Array<{ project_id: string; amount: number; invoice_date: string }>
+  type DateRow = { project_id: string; start_date: string | null; end_date: string | null }
+  const allPhases = (phasesRes.data ?? []) as DateRow[]
+  const allMilestones = (milestonesRes.data ?? []) as DateRow[]
+  const monthlyActuals = (monthlyActualsRes.data ?? []) as InternalHoursMonthly[]
 
   // PM scope: project_manager dashboards see only the projects they're
   // assigned to. main / company see everything (scope is null). Every
@@ -107,7 +122,6 @@ export default async function AdminDashboard() {
   const budgetLines = allBudgetLines.filter((bl) => activeProjectIds.has(bl.project_id))
   const weeklyReports = allWeeklyReports.filter((r) => activeProjectIds.has(r.project_id))
   const changeOrders = allChangeOrders.filter((co) => activeProjectIds.has(co.project_id))
-  const hourEntries = allHourEntries.filter((he) => activeProjectIds.has(he.project_id))
 
   // `now` / `thisYear` were resolved at the top so we could bound queries
   // by year — reuse them here. Only the ISO week is needed locally.
@@ -157,13 +171,44 @@ export default async function AdminDashboard() {
       0
     ) + approvedCOs.reduce((s, co) => s + co.total_cost, 0)
 
-  // Use the work date (`he.date`), not when the entry was typed in.
-  // Backfilling a timesheet from last year should land in last year's KPI,
-  // not today's. `he.date` is a date-only string so isInOsloYear takes the
-  // cheap path (no timezone shift possible).
-  const yearInternalCost = hourEntries
-    .filter((he) => isInOsloYear(he.date, thisYear))
-    .reduce((s, he) => s + he.hours * he.cost_per_hour_snapshot, 0)
+  // ── Faktisk internkost (fra månedlig avstemming) ────────────────────────
+  // Hvert prosjekts aktive span (fremdriftsplan, fallback prosjektdatoer) +
+  // omsetning (ordrebok + godkjente EM-er). Den avstemte månedskosten fordeles
+  // på prosjektene som var aktive den måneden, vektet på omsetning — nøyaktig
+  // samme fordeling som ressurs-estimatet på Ressurser-siden. Fordelingen skjer
+  // over prosjektene i scope (for PM: deres prosjekter), så ingen porteføljevid
+  // data lekker; for main/company (scope = alle) er totalen den fulle internkosten.
+  const phasesByProject = new Map<string, DateRow[]>()
+  for (const r of allPhases) {
+    const arr = phasesByProject.get(r.project_id)
+    if (arr) arr.push(r); else phasesByProject.set(r.project_id, [r])
+  }
+  const milestonesByProject = new Map<string, DateRow[]>()
+  for (const r of allMilestones) {
+    const arr = milestonesByProject.get(r.project_id)
+    if (arr) arr.push(r); else milestonesByProject.set(r.project_id, [r])
+  }
+  const internalSpans: ProjectSpan[] = []
+  for (const p of projects) {
+    const span = computeSpanISO(p, phasesByProject.get(p.id) ?? [], milestonesByProject.get(p.id) ?? [])
+    if (!span) continue
+    const lines = budgetLines.filter((bl) => bl.project_id === p.id)
+    const ems = changeOrders.filter((co) => co.project_id === p.id && co.status === 'approved')
+    internalSpans.push({
+      id: p.id,
+      name: p.name,
+      revenue: budgetSalesValue(lines) + emCustomerValue(ems),
+      startMonth: monthIndexFromISO(span.start),
+      endMonth: monthIndexFromISO(span.end),
+    })
+  }
+  const internalActuals: MonthlyActual[] = monthlyActuals.map((a) => ({
+    year: a.year,
+    month: a.month,
+    cost: a.total_hours * a.hourly_cost_snapshot,
+  }))
+  const { byProject: internalCostByProject, total: yearInternalCost } =
+    allocateActualInternalCost(internalActuals, internalSpans)
 
   const yearProfit = yearRevenue - yearCost - yearInternalCost
   const profitMargin = yearRevenue > 0 ? Math.round((yearProfit / yearRevenue) * 100) : 0
@@ -176,6 +221,15 @@ export default async function AdminDashboard() {
   const submittedThisWeek = weeklyReports.filter(
     (r) => r.year === thisYear && r.week_number === currentWeek && r.status !== 'draft'
   ).length
+
+  // Fakturert per prosjekt (hittil i år) — allInvoices er allerede avgrenset til
+  // inneværende år i SQL-en. Filtreres til prosjekter i scope.
+  const invoicedByProject = new Map<string, number>()
+  for (const inv of allInvoices) {
+    if (!activeProjectIds.has(inv.project_id)) continue
+    invoicedByProject.set(inv.project_id, (invoicedByProject.get(inv.project_id) ?? 0) + (inv.amount ?? 0))
+  }
+  const yearInvoiced = Array.from(invoicedByProject.values()).reduce((s, v) => s + v, 0)
 
   // Per-project YTD breakdowns for KPI cards
   const projectBreakdowns: ProjectBreakdown[] = projects.map((proj) => {
@@ -209,11 +263,9 @@ export default async function AdminDashboard() {
           s + l.reported_quantity * (blMap.get(l.project_budget_line_id)?.subcontractor_cost_price_snapshot ?? 0),
         0
       ) + projApprovedCOs.reduce((s, co) => s + co.total_cost, 0)
-    const internalCost = hourEntries
-      // Use the WORK date, same as the global YTD KPI on line ~96 — was
-      // mismatched (used created_at) so totals never agreed with per-project.
-      .filter((he) => he.project_id === proj.id && isInOsloYear(he.date, thisYear))
-      .reduce((s, he) => s + he.hours * he.cost_per_hour_snapshot, 0)
+    // Faktisk internkost fra avstemmingen, fordelt på prosjektet (samme map som
+    // global YTD-KPI, så total og per-prosjekt alltid stemmer overens).
+    const internalCost = internalCostByProject.get(proj.id) ?? 0
     // Planned vs actual — baseline is the ORIGINAL budget, NOT including
     // EMs. (EMs expand scope; if you want including-EM later, add
     // approvedCOs.total_customer_value to plannedRevenue.)
@@ -235,6 +287,7 @@ export default async function AdminDashboard() {
       profit: revenue - cost - internalCost,
       plannedRevenue,
       plannedCost,
+      invoiced: invoicedByProject.get(proj.id) ?? 0,
     }
   })
 
@@ -426,6 +479,7 @@ export default async function AdminDashboard() {
       pendingCORows={pendingCORows}
       pendingReportRows={pendingRows}
       yearRevenue={yearRevenue}
+      yearInvoiced={yearInvoiced}
       yearCost={yearCost}
       yearInternalCost={yearInternalCost}
       yearProfit={yearProfit}

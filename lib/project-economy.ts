@@ -1,4 +1,4 @@
-import type { ChangeOrder, ProjectBudgetLine, ProjectInternalCostEntry } from '@/types'
+import type { ChangeOrder, ProjectBudgetLine } from '@/types'
 import { wrNeedsAction } from '@/lib/attention'
 
 /**
@@ -75,12 +75,13 @@ export function computeProjectEconomy({
   budgetLines,
   weeklyReports,
   changeOrders,
-  internalCosts,
+  internalCostTotal,
 }: {
   budgetLines: ProjectBudgetLine[]
   weeklyReports: ReportWithLines[]
   changeOrders: ChangeOrder[]
-  internalCosts: ProjectInternalCostEntry[]
+  /** Ferdig utvidet internkost (engang + løpende månedlig) — se lib/internal-costs.ts. */
+  internalCostTotal: number
 }): ProjectEconomySummary {
   // Opprinnelig ordrebok (salgsverdi mot kunde — det er kontrakten).
   const originalBudget = budgetSalesValue(budgetLines)
@@ -133,7 +134,7 @@ export function computeProjectEconomy({
       }
     }
   }
-  const internCost = internalCosts.reduce((s, c) => s + c.amount, 0)
+  const internCost = internalCostTotal
   const expectedProfit = totalContract - ueBudgetCost - internCost
 
   // Bar-segmenter (klemt til en fornuftig stabling).

@@ -1,53 +1,30 @@
 import { redirect } from 'next/navigation'
 import Link from 'next/link'
-import { FileText, ClipboardList, Bell } from 'lucide-react'
+import { FileText, ClipboardList, ChevronRight } from 'lucide-react'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
 import { getProjectScope } from '@/lib/api-guard'
 import { ADMIN_ROLES, PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { EM_NEEDS_ACTION, WR_NEEDS_ACTION } from '@/lib/attention'
-import { formatWeekLabel } from '@/lib/utils/weeks'
 import { osloYearMonth } from '@/lib/utils/dates'
-import { fmtChangeOrderTitle } from '@/lib/format'
-import { changeOrderType, changeOrderPill, weeklyReportStatus } from '@/lib/statuses'
-import StatusPill from '@/components/ui/StatusPill'
 import type { MonthBucket } from '@/components/admin/MonthlyBarChart'
 import MonthlyChartWithPmFilter from '@/components/admin/MonthlyChartWithPmFilter'
-import type {
-  Project,
-  ProjectBudgetLine,
-  WeeklyReport,
-  WeeklyReportLine,
-  ChangeOrder,
-  Subcontractor,
-} from '@/types'
-
-function fmt(n: number) {
-  return new Intl.NumberFormat('nb-NO', { style: 'currency', currency: 'NOK', maximumFractionDigits: 0 }).format(n)
-}
+import type { WeeklyReportLine } from '@/types'
 
 /**
- * Admin landing — focused inbox of ALL items waiting for the current
- * admin/PM to take action on. Wider portfolio numbers + charts moved to
- * /admin/totalokonomi so the dashboard does one job well: triage queue.
+ * Admin landing — to ting:
+ *   1. To telle-bokser: antall ubehandlede endringsmeldinger + ukesrapporter
+ *      til godkjenning (ikke forhåndsvisning — klikk for å gå til køen).
+ *   2. Månedsøkonomi {år} (omsetning/kostnad/fakturert) for økonomiroller.
  *
- * Two columns:
- *   LEFT  — Endringsmeldinger som venter behandling (with project, sub,
- *           qty/value, submitted date). Click row → CO detail.
- *   RIGHT — Ukesrapporter som venter godkjenning (week label, project,
- *           sub, lines + total cost). Click row → weekly report detail.
- *
- * PM scope: project_manager users only see items from their assigned
- * projects (via getProjectScope). main / company / no-scope sees all.
+ * PM-scope: project_manager ser bare egne prosjekter (getProjectScope).
+ * Byggeleder ser telle-boksene (triage), men ikke kundeøkonomi-grafen —
+ * den rendres aldri inn i HTML-en for byggeleder.
  */
 export default async function AdminDashboard() {
   const me = await getSession()
   if (!me || !PROJECT_STAFF_ROLES.includes(me.role)) redirect('/login')
 
-  // Byggeleder gets the triage inbox (scoped, cost-only) but NO customer
-  // economics: the customer-value/profit stack on EM rows and the monthly
-  // revenue chart are reserved for main/company/PM. Enforced here server-side
-  // — the stripped data never reaches the client for byggeleder.
   const canSeeEconomy = ADMIN_ROLES.includes(me.role)
 
   const sb = getSupabaseAdmin()
@@ -57,8 +34,6 @@ export default async function AdminDashboard() {
   const yearEnd = `${thisYear}-12-31`
 
   const [
-    projectsRes,
-    subsRes,
     pendingReportsRes,
     pendingCORes,
     approvedReportsRes,
@@ -68,21 +43,14 @@ export default async function AdminDashboard() {
     pmLinksRes,
     pmUsersRes,
   ] = await Promise.all([
-    sb.from('projects').select('id, name, project_number').neq('deleted', true),
-    sb.from('subcontractors').select('id, company_name'),
-    sb.from('weekly_reports').select('id, project_id, subcontractor_id, year, week_number, status, submitted_at, submission_number')
-      // «Krever handling»-definisjonen bor i lib/attention.ts.
-      .in('status', [...WR_NEEDS_ACTION])
-      .order('submitted_at', { ascending: false }),
-    sb.from('change_orders').select('id, change_order_number, em_type, project_id, subcontractor_id, product_id, requested_quantity, unit, total_cost, total_customer_value, profit, reason, status, sent_to_customer_at, submitted_at, submitted_by')
-      .in('status', [...EM_NEEDS_ACTION])
-      .order('submitted_at', { ascending: false }),
-    // For the monthly bar chart — approved reports submitted in current year.
+    // Bare antall trengs — «krever handling»-definisjonen bor i lib/attention.ts.
+    sb.from('weekly_reports').select('id, project_id').in('status', [...WR_NEEDS_ACTION]),
+    sb.from('change_orders').select('id, project_id').in('status', [...EM_NEEDS_ACTION]),
+    // Månedsgraf — godkjente rapporter/EM-er + fakturaer i inneværende år.
     sb.from('weekly_reports')
       .select('id, project_id, status, submitted_at')
       .in('status', ['approved', 'partially_approved'])
       .eq('year', thisYear),
-    // Approved change orders reviewed in current year (or submitted as fallback).
     sb.from('change_orders')
       .select('id, project_id, status, total_cost, total_customer_value, reviewed_at, submitted_at')
       .eq('status', 'approved')
@@ -93,101 +61,22 @@ export default async function AdminDashboard() {
       .select('project_id, amount, invoice_date')
       .gte('invoice_date', yearStart)
       .lte('invoice_date', yearEnd),
-    // PM filter on the bar chart needs project → PM linkage and PM names.
     sb.from('project_managers').select('project_id, user_id'),
     sb.from('users').select('id, full_name, role').eq('role', 'project_manager').eq('active', true),
   ])
 
-  let pendingReports = ((pendingReportsRes.data ?? []) as WeeklyReport[])
-  let pendingCOs = ((pendingCORes.data ?? []) as ChangeOrder[])
+  // ── Telle-bokser ────────────────────────────────────────────────────────
+  let pendingReports = (pendingReportsRes.data ?? []) as Array<{ id: string; project_id: string }>
+  let pendingCOs = (pendingCORes.data ?? []) as Array<{ id: string; project_id: string }>
   if (scope) {
     pendingReports = pendingReports.filter((r) => scope.has(r.project_id))
     pendingCOs = pendingCOs.filter((co) => scope.has(co.project_id))
   }
+  const wrCount = pendingReports.length
+  const coCount = pendingCOs.length
+  const totalPending = wrCount + coCount
 
-  // Only fetch report lines + budget lines for the reports we kept — the
-  // alternative (whole-table scan) blows up at growth.
-  const reportIds = pendingReports.map((r) => r.id)
-  const projectIds = Array.from(new Set([
-    ...pendingReports.map((r) => r.project_id),
-    ...pendingCOs.map((co) => co.project_id),
-  ]))
-  const [linesRes, blRes] = await Promise.all([
-    reportIds.length > 0
-      ? sb.from('weekly_report_lines').select('id, weekly_report_id, project_budget_line_id, reported_quantity').in('weekly_report_id', reportIds)
-      : Promise.resolve({ data: [] as WeeklyReportLine[] }),
-    projectIds.length > 0
-      ? sb.from('project_budget_lines').select('id, project_id, subcontractor_cost_price_snapshot').in('project_id', projectIds)
-      : Promise.resolve({ data: [] as Pick<ProjectBudgetLine, 'id' | 'project_id' | 'subcontractor_cost_price_snapshot'>[] }),
-  ])
-  const reportLines = (linesRes.data ?? []) as WeeklyReportLine[]
-  const budgetLines = (blRes.data ?? []) as Pick<ProjectBudgetLine, 'id' | 'project_id' | 'subcontractor_cost_price_snapshot'>[]
-
-  const projects = ((projectsRes.data ?? []) as Pick<Project, 'id' | 'name' | 'project_number'>[])
-  const subs = ((subsRes.data ?? []) as Pick<Subcontractor, 'id' | 'company_name'>[])
-  const projectMap = new Map(projects.map((p) => [p.id, p]))
-  const subMap = new Map(subs.map((s) => [s.id, s.company_name]))
-  const blMap = new Map(budgetLines.map((bl) => [bl.id, bl]))
-
-  // Group report lines for cost computation
-  const linesByReport = new Map<string, WeeklyReportLine[]>()
-  for (const l of reportLines) {
-    const arr = linesByReport.get(l.weekly_report_id) ?? []
-    arr.push(l)
-    linesByReport.set(l.weekly_report_id, arr)
-  }
-
-  const reportRows = pendingReports.map((wr) => {
-    const lines = linesByReport.get(wr.id) ?? []
-    const totalCost = lines.reduce((s, l) => {
-      const bl = blMap.get(l.project_budget_line_id)
-      return s + l.reported_quantity * (bl?.subcontractor_cost_price_snapshot ?? 0)
-    }, 0)
-    return {
-      id: wr.id,
-      project_name: projectMap.get(wr.project_id)?.name ?? '–',
-      project_number: projectMap.get(wr.project_id)?.project_number ?? '',
-      sub_name: subMap.get(wr.subcontractor_id) ?? '–',
-      week_label: formatWeekLabel(wr.year, wr.week_number),
-      submission_number: wr.submission_number ?? 1,
-      line_count: lines.length,
-      total_cost: totalCost,
-      submitted_at: wr.submitted_at ? wr.submitted_at.split('T')[0] : '–',
-      status: wr.status,
-    }
-  })
-
-  const coRows = pendingCOs.map((co) => ({
-    id: co.id,
-    em_title: fmtChangeOrderTitle(co.change_order_number, projectMap.get(co.project_id)?.name),
-    project_name: projectMap.get(co.project_id)?.name ?? '–',
-    project_number: projectMap.get(co.project_id)?.project_number ?? '',
-    sub_name: subMap.get(co.subcontractor_id) ?? '–',
-    em_type: co.em_type,
-    total_cost: co.total_cost,
-    total_customer_value: co.total_customer_value,
-    profit: co.profit,
-    submitted_by: co.submitted_by ?? null,
-    // Vis både dato og klokkeslett (Oslo) — admin trenger ofte å se
-    // 'kom dette inn rett før møtet eller etterpå?'. Eksempel:
-    // "28.05.2026 14:32".
-    submitted_at: co.submitted_at
-      ? new Date(co.submitted_at).toLocaleString('nb-NO', {
-          dateStyle: 'short',
-          timeStyle: 'short',
-          timeZone: 'Europe/Oslo',
-        })
-      : '–',
-    status: co.status,
-    sent_to_customer: !!co.sent_to_customer_at,
-  }))
-
-  const totalPending = reportRows.length + coRows.length
-
-  // ── Monthly bar chart bucketing ──────────────────────────────────────
-  // Apply PM scope to all three time-series sources, then bucket by Oslo
-  // month. Mirrors the same logic on /admin/totalokonomi so the two pages
-  // agree on whatever single month you compare.
+  // ── Månedsgraf-bøtting (uendret logikk; speiler /admin/totalokonomi) ──────
   const approvedReports = ((approvedReportsRes.data ?? []) as Array<{
     id: string; project_id: string; status: string; submitted_at: string | null
   }>).filter((r) => !scope || scope.has(r.project_id))
@@ -202,7 +91,6 @@ export default async function AdminDashboard() {
     project_id: string; amount: number; invoice_date: string
   }>).filter((inv) => !scope || scope.has(inv.project_id))
 
-  // Need the report LINES for approved reports to compute revenue/cost.
   const approvedReportIds = approvedReports.map((r) => r.id)
   const approvedLinesRes = approvedReportIds.length > 0
     ? await sb.from('weekly_report_lines')
@@ -253,9 +141,6 @@ export default async function AdminDashboard() {
   const pmUsers = (pmUsersRes.data ?? []) as Array<{ id: string; full_name: string }>
   const pmInfo = pmUsers.map((u) => ({ id: u.id, name: u.full_name })).sort((a, b) => a.name.localeCompare(b.name, 'nb'))
 
-  // Project → set of assigned PM-ids. A project can have multiple PMs;
-  // when filtering by PM A, ALL of A's projects' numbers attribute to A.
-  // Different PMs can therefore each see "their" view of a shared project.
   const projectPms = new Map<string, Set<string>>()
   for (const link of pmLinks) {
     const set = projectPms.get(link.project_id) ?? new Set<string>()
@@ -263,7 +148,6 @@ export default async function AdminDashboard() {
     projectPms.set(link.project_id, set)
   }
 
-  // Per-PM clones of monthlyBuckets, all starting at zero.
   function emptyYearBuckets(): MonthBucket[] {
     return Array.from({ length: 12 }, (_, i) => ({
       month: i + 1,
@@ -277,7 +161,6 @@ export default async function AdminDashboard() {
     pmInfo.map((pm) => [pm.id, emptyYearBuckets()]),
   )
 
-  // Replay the same bucketing into the matching PM buckets.
   for (const line of approvedLines) {
     const report = reportMap.get(line.weekly_report_id)
     if (!report) continue
@@ -320,7 +203,6 @@ export default async function AdminDashboard() {
     const slot = monthlyBuckets[m - 1]
     if (!slot) continue
     slot.fakturert += inv.amount
-    // Same multi-PM attribution for invoiced amount.
     const pmSet = projectPms.get(inv.project_id)
     if (!pmSet) continue
     for (const pmId of Array.from(pmSet)) {
@@ -330,8 +212,6 @@ export default async function AdminDashboard() {
     }
   }
 
-  // Materialize the byPm map as a plain object for serialization to the
-  // client component.
   const byPm: Record<string, MonthBucket[]> = {}
   for (const [k, v] of Array.from(byPmBuckets)) byPm[k] = v
 
@@ -346,161 +226,48 @@ export default async function AdminDashboard() {
         </p>
       </div>
 
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-        {/* Pending change orders */}
-        <section className="bg-card border border-border rounded-2xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
-              <FileText size={16} className="text-amber-600" />
+      {/* To telle-bokser — klikk for å gå til køen. */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-6">
+        <Link
+          href="/admin/change-orders"
+          className="group bg-card border border-border rounded-2xl p-6 hover:border-[var(--color-border-strong)] hover:shadow-sm transition-all"
+        >
+          <div className="flex items-center justify-between">
+            <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center">
+              <FileText size={20} className="text-amber-600" />
             </div>
-            <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex-1">
-              Endringsmeldinger til behandling
-            </h2>
-            {coRows.length > 0 && (
-              <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-0.5 rounded-full">
-                {coRows.length}
-              </span>
-            )}
+            <ChevronRight size={18} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-text-secondary)]" />
           </div>
-          {coRows.length === 0 ? (
-            <div className="py-10 text-center text-sm text-[var(--color-text-muted)] flex flex-col items-center gap-2">
-              <Bell size={18} className="text-[var(--color-text-muted)]" />
-              Ingen endringsmeldinger venter
-            </div>
-          ) : (
-            <ul className="divide-y divide-border">
-              {coRows.map((co) => {
-                const t = changeOrderType(co.em_type)
-                return (
-                <li key={co.id}>
-                  <Link
-                    href={`/admin/change-orders/${co.id}`}
-                    className="block px-5 py-2 hover:bg-muted transition-colors"
-                  >
-                    <div className="flex items-center justify-between gap-4">
-                      <div className="min-w-0 flex-1">
-                        <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                          {co.em_title}
-                        </p>
-                        {/* Type + status på samme rad, kompakt. Badge kun når
-                            den skiller seg fra køens default (ubehandlet). */}
-                        <div className="flex items-center gap-1.5 mt-0.5">
-                          <span className={`text-[10px] font-medium px-1.5 py-0.5 rounded ${t.cls}`}>{t.label}</span>
-                          {co.sent_to_customer && (
-                            <StatusPill meta={changeOrderPill('pending', true)} />
-                          )}
-                          <span className="text-[10px] text-[var(--color-text-muted)] truncate">
-                            {co.submitted_by ? `${co.submitted_by}, ${co.sub_name}` : co.sub_name} · {co.submitted_at}
-                          </span>
-                        </div>
-                      </div>
-                      {/* Salg → Kost → Fortjeneste for økonomiroller; byggeleder
-                          ser kun UE-kostnaden (server-side betinget — kunde-
-                          verdiene rendres aldri inn i HTML-en for byggeleder). */}
-                      {canSeeEconomy ? (
-                        <div className="text-right flex-none text-xs leading-tight tabular-nums">
-                          <p className="font-semibold text-[var(--color-text-primary)]">{fmt(co.total_customer_value)}</p>
-                          <p className="text-[var(--color-text-secondary)]">{fmt(co.total_cost)}</p>
-                          <p className={`font-semibold ${co.profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(co.profit)}</p>
-                        </div>
-                      ) : (
-                        <div className="text-right flex-none text-xs leading-tight tabular-nums">
-                          <p className="font-semibold text-[var(--color-text-primary)]">{fmt(co.total_cost)}</p>
-                          <p className="text-[10px] text-[var(--color-text-muted)]">Kostnad</p>
-                        </div>
-                      )}
-                    </div>
-                  </Link>
-                </li>
-                )
-              })}
-            </ul>
-          )}
-        </section>
+          <p className="text-3xl font-bold text-[var(--color-text-primary)] mt-4 tabular-nums">{coCount}</p>
+          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">Endringsmeldinger til behandling</p>
+        </Link>
 
-        {/* Pending weekly reports */}
-        <section className="bg-card border border-border rounded-2xl overflow-hidden">
-          <div className="px-5 py-4 border-b border-border flex items-center gap-2">
-            <div className="w-8 h-8 rounded-lg bg-amber-50 flex items-center justify-center">
-              <ClipboardList size={16} className="text-amber-600" />
+        <Link
+          href="/admin/weekly-reports"
+          className="group bg-card border border-border rounded-2xl p-6 hover:border-[var(--color-border-strong)] hover:shadow-sm transition-all"
+        >
+          <div className="flex items-center justify-between">
+            <div className="w-11 h-11 rounded-xl bg-amber-50 flex items-center justify-center">
+              <ClipboardList size={20} className="text-amber-600" />
             </div>
-            <h2 className="text-sm font-semibold text-[var(--color-text-primary)] flex-1">
-              Ukesrapporter til godkjenning
-            </h2>
-            {reportRows.length > 0 && (
-              <span className="bg-amber-100 text-amber-700 text-xs font-semibold px-2 py-0.5 rounded-full">
-                {reportRows.length}
-              </span>
-            )}
+            <ChevronRight size={18} className="text-[var(--color-text-muted)] group-hover:text-[var(--color-text-secondary)]" />
           </div>
-          {reportRows.length === 0 ? (
-            <div className="py-10 text-center text-sm text-[var(--color-text-muted)] flex flex-col items-center gap-2">
-              <Bell size={18} className="text-[var(--color-text-muted)]" />
-              Ingen ukesrapporter venter
-            </div>
-          ) : (
-            <ul className="divide-y divide-border">
-              {reportRows.map((wr) => {
-                const isPartial = wr.status === 'partially_approved'
-                return (
-                  <li key={wr.id}>
-                    <Link
-                      href={`/admin/weekly-reports/${wr.id}`}
-                      className="block px-5 py-3 hover:bg-muted transition-colors"
-                    >
-                      <div className="flex items-start justify-between gap-3">
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium text-[var(--color-text-primary)] truncate">
-                            {wr.week_label}
-                            {wr.submission_number > 1 && <span className="text-[var(--color-text-muted)] font-normal"> · innsending #{wr.submission_number}</span>}
-                          </p>
-                          <p className="text-xs text-[var(--color-text-muted)] truncate mt-0.5">
-                            {wr.project_name} · {wr.sub_name} · {wr.line_count} {wr.line_count === 1 ? 'linje' : 'linjer'}
-                          </p>
-                          {isPartial && (
-                            <span className="inline-flex mt-1.5">
-                              <StatusPill meta={weeklyReportStatus('partially_approved')} />
-                            </span>
-                          )}
-                        </div>
-                        <div className="text-right flex-none">
-                          <p className="text-sm font-semibold text-[var(--color-text-primary)]">{fmt(wr.total_cost)}</p>
-                          <p className="text-xs text-[var(--color-text-muted)]">Kostnad</p>
-                          <p className="text-[10px] text-[var(--color-text-muted)] mt-1">{wr.submitted_at}</p>
-                        </div>
-                      </div>
-                    </Link>
-                  </li>
-                )
-              })}
-            </ul>
-          )}
-        </section>
+          <p className="text-3xl font-bold text-[var(--color-text-primary)] mt-4 tabular-nums">{wrCount}</p>
+          <p className="text-sm text-[var(--color-text-secondary)] mt-0.5">Ukesrapporter til godkjenning</p>
+        </Link>
       </div>
 
-      {/* Per-month bars: same data + bucketing as /admin/totalokonomi,
-          mounted here so admins triaging the inbox can also see the
-          year's economic shape at a glance. PM dropdown filters into
-          per-PM views computed server-side. Hidden for byggeleder —
-          omsetning/fakturert is customer economics, and skipping the render
-          means the bucket data is never serialized to the client.
-          Lukket <details> som standard: dashboardet skal åpne som ren
-          triage-kø; grafen er analyse og finnes også på totaløkonomi. */}
+      {/* Månedsøkonomi — vises direkte (kundeøkonomi → kun main/company/PM). */}
       {canSeeEconomy && (
-        <details className="group">
-          <summary className="cursor-pointer list-none inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-secondary)] hover:text-[var(--color-text-primary)] select-none">
-            <span className="inline-block transition-transform group-open:rotate-90 text-[var(--color-text-muted)]">›</span>
-            Månedsøkonomi {thisYear}
-          </summary>
-          <div className="mt-3">
-            <MonthlyChartWithPmFilter
-              year={thisYear}
-              all={monthlyBuckets}
-              byPm={byPm}
-              pmList={pmInfo}
-            />
-          </div>
-        </details>
+        <section className="space-y-3">
+          <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Månedsøkonomi {thisYear}</h2>
+          <MonthlyChartWithPmFilter
+            year={thisYear}
+            all={monthlyBuckets}
+            byPm={byPm}
+            pmList={pmInfo}
+          />
+        </section>
       )}
     </div>
   )

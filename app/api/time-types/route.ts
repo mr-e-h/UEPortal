@@ -1,11 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, requireAuth } from '@/lib/api-guard'
+import { requireAdmin } from '@/lib/api-guard'
 import type { TimeType } from '@/types'
 
 export async function GET() {
-  const auth = await requireAuth()
+  // time_types inneholder cost_per_hour (intern timekost) — kun admin-roller.
+  // Eneste forbruker er admin-prognosesiden; UE/byggeleder skal aldri se ratene.
+  const auth = await requireAdmin()
   if (!auth.ok) return auth.response
   const { data, error } = await getSupabaseAdmin().from('time_types').select('*')
   if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })

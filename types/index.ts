@@ -96,6 +96,12 @@ export interface Project {
   deleted: boolean
   deleted_at: string | null
   project_type_id: string | null
+  /**
+   * Manuell overstyring av tiltenkte interne timer. null = bruk det beregnede
+   * tallet (ordreverdi-vektet andel av poolen over varigheten, se
+   * /api/projects/[id]/allocated-hours). Satt = admin har dratt det opp/ned.
+   */
+  planned_hours: number | null
 }
 
 /**
@@ -435,11 +441,18 @@ export interface ProjectForecastMonth {
 export interface ProjectInternalCostEntry {
   id: string
   project_id: string
+  /** one_time: måneden kosten treffer. monthly: startmåned. */
   year: number
   month: number
+  /** Beløp. For monthly: per måned. */
   amount: number
   comment: string
   created_at: string
+  /** 'one_time' (engang) eller 'monthly' (løper fast hver måned). */
+  recurrence: 'one_time' | 'monthly'
+  /** monthly: valgfri sluttmåned (null = ut prosjektet). Ubrukt for one_time. */
+  end_year: number | null
+  end_month: number | null
 }
 
 export interface ActivityEntry {
@@ -495,6 +508,40 @@ export interface ProjectPhase {
   status: 'planned' | 'in_progress' | 'done'
   progress_percent: number
   sort_order: number
+}
+
+/**
+ * A named internal resource (person/role) in the company-wide pool: monthly
+ * hour capacity and an hourly cost. The pool's monthly capacity is spread
+ * across the projects active each month (span from the fremdriftsplan),
+ * weighted by revenue — see lib/resource-allocation.ts.
+ */
+export interface InternalResource {
+  id: string
+  name: string
+  hours_per_month: number
+  hourly_cost: number
+  created_at: string
+}
+
+/**
+ * Månedlig avstemming av FAKTISK internkost. Ressurspoolen er bare et estimat;
+ * én gang i måneden legges totalt antall interntimer brukt inn her. Kosten
+ * (total_hours × hourly_cost_snapshot) fordeles på prosjektene som var aktive
+ * den måneden, vektet på omsetning — se lib/resource-allocation.ts.
+ *
+ * hourly_cost_snapshot = teamets snittkost (Σ kost ÷ Σ timer) på
+ * avstemmingstidspunktet, låst selv om ressursene endres senere.
+ */
+export interface InternalHoursMonthly {
+  id: string
+  year: number
+  /** 1–12. */
+  month: number
+  total_hours: number
+  hourly_cost_snapshot: number
+  created_at: string
+  updated_at: string
 }
 
 export interface GanttMilestone {

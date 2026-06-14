@@ -12,6 +12,8 @@ import type {
   AccessRequest,
   AccessRequestStatus,
   GanttMilestone,
+  InternalResource,
+  InternalHoursMonthly,
   Invitation,
   PhaseType,
   Product,
@@ -189,5 +191,23 @@ export const api = {
       patch<{ ok: true; status: 'approved' | 'rejected' }>(`/api/access-requests/${id}`, body),
     remove: (id: string) =>
       del<{ ok: true }>(`/api/access-requests/${id}`),
+  },
+  // ── Intern ressurspool (main/company) ─────────────────────────────────────
+  internalResources: {
+    list: () => get<InternalResource[]>('/api/internal-resources'),
+    create: (body: { name: string; hours_per_month: number; hourly_cost: number }) =>
+      post<InternalResource>('/api/internal-resources', body),
+    update: (body: { id: string; name?: string; hours_per_month?: number; hourly_cost?: number }) =>
+      patch<InternalResource>('/api/internal-resources', body),
+    remove: (id: string) =>
+      del<{ ok: true }>(`/api/internal-resources?id=${encodeURIComponent(id)}`),
+  },
+  // ── Avstemming: faktiske interntimer per måned (main/company) ──────────────
+  internalHoursMonthly: {
+    list: () => get<InternalHoursMonthly[]>('/api/internal-hours-monthly'),
+    save: (body: { year: number; month: number; total_hours: number }) =>
+      put<InternalHoursMonthly>('/api/internal-hours-monthly', body),
+    remove: (year: number, month: number) =>
+      del<{ ok: true }>(`/api/internal-hours-monthly?year=${year}&month=${month}`),
   },
 }

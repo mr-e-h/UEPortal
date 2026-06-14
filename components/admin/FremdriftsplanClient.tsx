@@ -1,6 +1,6 @@
 'use client'
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
 import { ChevronDown, ChevronRight, ChevronLeft, Info, FileDown, Pencil, Check, X, Plus, Trash2, Undo2 } from 'lucide-react'
@@ -75,6 +75,10 @@ export default function FremdriftsplanClient({
 
   const thisYear = new Date().getFullYear()
   const [year, setYear] = useState(thisYear)
+  // «Nå»-streken settes klient-side (etter mount) så SSR og klient gir samme
+  // markup — ellers ville Date.now() i render gi hydrerings-avvik.
+  const [nowMs, setNowMs] = useState<number | null>(null)
+  useEffect(() => { setNowMs(Date.now()) }, [])
   const [fullSpan, setFullSpan] = useState(false)
   const [selectedTypes, setSelectedTypes] = useState<Set<string>>(new Set())
   const [projectFilter, setProjectFilter] = useState('all')
@@ -482,6 +486,11 @@ export default function FremdriftsplanClient({
   // Ved mange måneder vises ikke hver etikett (gitterlinjene beholdes).
   const monthGridStyle = { gridTemplateColumns: `repeat(${span.months.length}, minmax(0, 1fr))` }
   const labelEvery = Math.max(1, Math.ceil(span.months.length / 12))
+  // «Nå»-posisjonen i % av tidsspennet (samme lineære matte som barene), eller
+  // null når i dag faller utenfor det viste spennet.
+  const nowPct = nowMs !== null && nowMs >= span.startMs && nowMs <= span.endMs
+    ? pct(nowMs, span.startMs, span.endMs)
+    : null
 
   const btnSecondary ='inline-flex items-center gap-1.5 px-3 py-1.5 text-xs font-medium rounded-lg border border-border bg-card text-[var(--color-text-secondary)] hover:bg-muted disabled:opacity-50'
 
@@ -704,12 +713,15 @@ export default function FremdriftsplanClient({
           <div className="w-56 flex-none px-4 py-2 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest">
             Prosjekt
           </div>
-          <div className="flex-1 grid" style={monthGridStyle}>
+          <div className="flex-1 grid relative" style={monthGridStyle}>
             {span.months.map((m, i) => (
               <div key={`${m.label}-${i}`} className="px-1 py-2 text-[10px] font-medium text-[var(--color-text-muted)] uppercase text-center border-l border-border/60 whitespace-nowrap overflow-hidden">
                 {i % labelEvery === 0 ? m.label : ''}
               </div>
             ))}
+            {nowPct !== null && (
+              <span className="absolute bottom-0.5 -translate-x-1/2 text-[9px] font-semibold text-red-500 leading-none pointer-events-none" style={{ left: `${nowPct}%` }}>nå</span>
+            )}
           </div>
           <div className="w-72 flex-none px-3 py-2 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest border-l border-border/60">
             Faser og milepæler
@@ -783,6 +795,11 @@ export default function FremdriftsplanClient({
                       <div key={`${m.label}-${i}`} className="border-l border-border/40" />
                     ))}
                   </div>
+                  {/* «Nå»-strek — samme posisjon i hver rad → sammenhengende
+                      vertikal linje ned gjennom planen. */}
+                  {nowPct !== null && (
+                    <div className="absolute top-0 bottom-0 w-px bg-red-400/70 z-10 pointer-events-none" style={{ left: `${nowPct}%` }} title="I dag" />
+                  )}
                   {!isOpen ? (
                     right > left && (
                       <div

@@ -28,7 +28,21 @@ export async function GET() {
     const allowedIds = new Set(
       ((psData ?? []) as Pick<ProjectSubcontractor, 'project_id'>[]).map((ps) => ps.project_id),
     )
-    return NextResponse.json(projects.filter((p) => allowedIds.has(p.id)))
+    // Minimalt feltsett til UE — ALDRI select('*') (ordrenr, planlagte timer og
+    // ev. framtidige økonomikolonner skal aldri følge med til en UE).
+    const own = projects
+      .filter((p) => allowedIds.has(p.id))
+      .map((p) => ({
+        id: p.id,
+        name: p.name,
+        project_number: p.project_number,
+        customer: p.customer,
+        county: p.county,
+        status: p.status,
+        start_date: p.start_date,
+        end_date: p.end_date,
+      }))
+    return NextResponse.json(own)
   }
 
   // project_manager → only their assigned projects (Q1).

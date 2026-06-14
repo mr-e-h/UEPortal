@@ -13,10 +13,11 @@ export const dynamic = 'force-dynamic'
 /**
  * Prosjektoversikt — kortvisning (default) med tabell som alternativ.
  *
- * Alt kort-innhold er bevisst økonomifritt (navn, status, PL, UE-er, datoer,
- * volumfremdrift, antall ventende behandlinger) slik at siden er trygg for
- * hele PROJECT_STAFF_ROLES inkl. byggeleder. Scope-filteret avgrenser PM/
- * byggeleder til tildelte prosjekter; tom scope gir tom liste.
+ * Kort-innholdet er økonomifritt for byggeleder (navn, status, PL, UE-er,
+ * datoer, volumfremdrift, ventende behandlinger). Omsetning vises kun for
+ * økonomiroller (main/company/PM) — den beregnes og serialiseres ALDRI for
+ * byggeleder. Scope-filteret avgrenser PM/byggeleder til tildelte prosjekter;
+ * tom scope gir tom liste.
  */
 export default async function ProjectsPage() {
   const me = await getSession()
@@ -24,13 +25,16 @@ export default async function ProjectsPage() {
   // Creating projects stays an admin action (POST /api/projects is
   // requireAdmin) — hide the button for byggeleder.
   const canCreate = ADMIN_ROLES.includes(me.role)
+  // Kundeøkonomi (omsetning) på kortene: kun admin-rollene (main/company/PM).
+  // Byggeleder skal aldri se kundeøkonomi.
+  const canSeeEconomy = ADMIN_ROLES.includes(me.role)
 
   const sb = getSupabaseAdmin()
   const scope = await getProjectScope(me)
 
   const [projRes, blRes, psRes, subsRes, pmLinksRes, pendingCORes, pendingWRRes, checklistRes] = await Promise.all([
     sb.from('projects').select('*').neq('deleted', true),
-    sb.from('project_budget_lines').select('id, project_id, budget_quantity'),
+    sb.from('project_budget_lines').select('id, project_id, budget_quantity, customer_price_snapshot'),
     sb.from('project_subcontractors').select('project_id, subcontractor_id'),
     sb.from('subcontractors').select('id, company_name'),
     sb.from('project_managers').select('project_id, user_id'),
@@ -42,7 +46,7 @@ export default async function ProjectsPage() {
   let projects = (projRes.data ?? []) as Project[]
   if (scope) projects = projects.filter((p) => scope.has(p.id))
 
-  const budgetLines = (blRes.data ?? []) as Pick<ProjectBudgetLine, 'id' | 'project_id' | 'budget_quantity'>[]
+  const budgetLines = (blRes.data ?? []) as Pick<ProjectBudgetLine, 'id' | 'project_id' | 'budget_quantity' | 'customer_price_snapshot'>[]
   const projectSubs = (psRes.data ?? []) as Pick<ProjectSubcontractor, 'project_id' | 'subcontractor_id'>[]
   const subs = (subsRes.data ?? []) as Array<{ id: string; company_name: string }>
   const pmLinks = (pmLinksRes.data ?? []) as Array<{ project_id: string; user_id: string }>
@@ -119,6 +123,24 @@ export default async function ProjectsPage() {
   const pendingWRByProject = countBy((pendingWRRes.data ?? []) as Array<{ project_id: string }>)
   const openChecklistByProject = countBy((checklistRes.data ?? []) as Array<{ project_id: string }>)
 
+  // Omsetning per prosjekt = total kontraktsverdi (budsjettets salgsverdi +
+  // godkjente EM-er). KUN for økonomiroller — for byggeleder beregnes/serialiseres
+  // dette aldri, så kundeøkonomi når aldri deres nettleser.
+  const revenueByProject = new Map<string, number>()
+  if (canSeeEconomy) {
+    for (const bl of budgetLines) {
+      const v = (bl.budget_quantity ?? 0) * (bl.customer_price_snapshot ?? 0)
+      revenueByProject.set(bl.project_id, (revenueByProject.get(bl.project_id) ?? 0) + v)
+    }
+    const { data: emData } = await sb
+      .from('change_orders')
+      .select('project_id, total_customer_value')
+      .eq('status', 'approved')
+    for (const co of (emData ?? []) as Array<{ project_id: string; total_customer_value: number | null }>) {
+      revenueByProject.set(co.project_id, (revenueByProject.get(co.project_id) ?? 0) + (co.total_customer_value ?? 0))
+    }
+  }
+
   // ── Kortdata (økonomifritt) ─────────────────────────────────────────────
   const today = new Date().toISOString().split('T')[0]
   const cards: ProjectCardData[] = projects.map((p) => {
@@ -159,6 +181,8 @@ export default async function ProjectsPage() {
       sub_names: subNamesByProject.get(p.id) ?? [],
       progress,
       progress_source: progressSource,
+      // null for byggeleder (ikke beregnet) → aldri i serialisert kortdata.
+      revenue: canSeeEconomy ? (revenueByProject.get(p.id) ?? 0) : null,
       attention: attentionCounts({
         changeOrders: pendingCO,
         weeklyReports: pendingWR,

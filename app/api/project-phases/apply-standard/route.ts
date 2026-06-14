@@ -74,13 +74,23 @@ export async function POST(request: NextRequest) {
   }
 
   const now = new Date().toISOString()
+  // Legg fasene SEKVENSIELT i prosjektperioden (like store biter, i standard-
+  // rekkefølgen) så rekkefølgen vises med en gang — varigheten justeres per
+  // fase etterpå. Mangler prosjektet datoer, faller vi tilbake til hele
+  // perioden (datoer settes manuelt).
+  const startMs = project.start_date ? Date.parse(project.start_date) : NaN
+  const endMs = project.end_date ? Date.parse(project.end_date) : NaN
+  const sliceMs = Number.isFinite(startMs) && Number.isFinite(endMs) && endMs > startMs
+    ? (endMs - startMs) / toCreate.length
+    : null
+  const toISO = (ms: number) => new Date(ms).toISOString().slice(0, 10)
   const rows = toCreate.map((t, i) => ({
     id: randomUUID(),
     project_id: body.project_id,
     phase_type_id: t.id,
     name: null,
-    start_date: project.start_date,
-    end_date: project.end_date,
+    start_date: sliceMs !== null ? toISO(startMs + i * sliceMs) : project.start_date,
+    end_date: sliceMs !== null ? toISO(startMs + (i + 1) * sliceMs) : project.end_date,
     status: 'planned' as const,
     progress_percent: 0,
     sort_order: i * 10,

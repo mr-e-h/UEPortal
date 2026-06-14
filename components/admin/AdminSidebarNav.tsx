@@ -11,15 +11,15 @@ import {
   Package,
   CheckSquare,
   FileText,
-  Clock,
   Trash2,
   Settings,
+  SlidersHorizontal,
   TrendingUp,
   Receipt,
   UserPlus,
   PieChart,
-  ClipboardList,
   Gavel,
+  HardHat,
   Menu,
   X,
 } from 'lucide-react'
@@ -50,6 +50,8 @@ const sections = [
       // P1–P4 velges via faner inne på prognosesiden — ett menypunkt holder.
       { href: '/admin/forecasts', label: 'Prognoser', icon: TrendingUp },
       { href: '/admin/invoice-basis', label: 'Fakturagrunnlag', icon: Receipt },
+      // Porteføljevid intern ressurspool — kun main/company (som Brukere o.l.).
+      { href: '/admin/ressurser', label: 'Ressurser', icon: HardHat, userAdminOnly: true as const },
     ],
   },
   {
@@ -70,8 +72,7 @@ const sections = [
     links: [
       { href: '/admin/users', label: 'Brukere', icon: Users, userAdminOnly: true as const },
       { href: '/admin/access-requests', label: 'Tilgangsforespørsler', icon: UserPlus, badgeKey: 'access-requests' as const, userAdminOnly: true as const },
-      { href: '/admin/project-types', label: 'Type prosjekt', icon: ClipboardList, userAdminOnly: true as const },
-      { href: '/admin/time-types', label: 'Timetyper', icon: Clock, userAdminOnly: true as const },
+      { href: '/admin/innstillinger', label: 'Innstillinger', icon: SlidersHorizontal, userAdminOnly: true as const },
       { href: '/admin/trash', label: 'Papirkurv', icon: Trash2, userAdminOnly: true as const },
       { href: '/admin/account', label: 'Min konto', icon: Settings, siteVisible: true as const },
     ],
