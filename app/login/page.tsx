@@ -3,6 +3,7 @@
 import { Suspense, useState } from 'react'
 import { useRouter, useSearchParams } from 'next/navigation'
 import Link from 'next/link'
+import Image from 'next/image'
 import Field from '@/components/ui/Field'
 import ErrorBox from '@/components/ui/ErrorBox'
 import Button from '@/components/ui/Button'
@@ -88,8 +89,20 @@ function LoginForm() {
       <div className="absolute inset-0 bg-white/25" aria-hidden="true" />
       <div className="max-w-md w-full space-y-8 p-8 bg-white/95 backdrop-blur-sm rounded-lg shadow-xl relative z-10">
         <div>
+          {/* Full logo-lockup (brukerens egen Logo.png). object-cover beskjærer
+              den rikelige vertikale luften i kvadrat-bildet ned til selve merket. */}
+          <div className="relative mb-6 h-14 w-52">
+            <Image
+              src="/Logo.png"
+              alt="MinUE"
+              fill
+              priority
+              sizes="208px"
+              className="object-cover object-center"
+            />
+          </div>
           <h1 className="text-3xl font-bold text-[var(--color-text-primary)]">Logg inn</h1>
-          <p className="mt-2 text-sm text-[var(--color-text-secondary)]">MinUE — underentreprenør-rapportering</p>
+          <p className="mt-2 text-sm text-[var(--color-text-secondary)]">Underentreprenør-rapportering</p>
         </div>
 
         <form onSubmit={handleLogin} className="space-y-4">

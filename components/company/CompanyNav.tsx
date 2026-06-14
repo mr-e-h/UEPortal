@@ -6,6 +6,7 @@ import Link from 'next/link'
 import { LayoutDashboard, Users, Mail, Settings, Menu, X } from 'lucide-react'
 import type { LucideIcon } from 'lucide-react'
 import LogoutButton from '@/components/LogoutButton'
+import Logo from '@/components/ui/Logo'
 
 type NavLink = { href: string; label: string; icon: LucideIcon; exact?: boolean }
 type NavSection = { label: string; links: NavLink[] }
@@ -54,10 +55,7 @@ export default function CompanyNav({ userName }: { userName: string }) {
   const navContent = (
     <>
       <div className="h-16 flex items-center px-6 border-b border-border flex-none justify-between">
-        <div>
-          <span className="text-lg font-bold text-primary tracking-tight">MinUE</span>
-          <span className="text-lg font-light text-[var(--color-text-secondary)] ml-1">Portal</span>
-        </div>
+        <Logo size={26} showPortal />
         <button
           type="button"
           onClick={() => setMobileNavOpen(false)}
