@@ -93,6 +93,10 @@ export function buildMonthGrid(
   pool: MonthlyPool,
   startMonth: number,
   endMonth: number,
+  /** Manuelle overstyringer (planned_hours) per prosjekt — låses (fordelt jevnt
+   *  over prosjektets aktive måneder) og trekkes fra poolen; residualen deles på
+   *  de ikke-overstyrte etter omsetning. Tom = ren omsetnings-vekt (som før). */
+  overrides?: Map<string, number>,
 ): MonthGrid {
   const months: MonthCol[] = []
   for (let m = startMonth; m <= endMonth; m++) {
@@ -111,20 +115,45 @@ export function buildMonthGrid(
     totalCost: 0,
   }))
   const rowIndexById = new Map(projects.map((p, i) => [p.id, i]))
+  const avgCost = pool.hoursPerMonth > 0 ? pool.costPerMonth / pool.hoursPerMonth : 0
 
   months.forEach((col, ci) => {
     const active = projects.filter((p) => p.startMonth <= col.index && col.index <= p.endMonth)
-    const totalRevenue = active.reduce((s, p) => s + (p.revenue ?? 0), 0)
+
+    // Overstyrte prosjekter: fast andel (override / antall aktive måneder),
+    // trekkes fra månedens pool. Residualen deles på de ikke-overstyrte.
+    let usedHours = 0
+    const free: ProjectSpan[] = []
+    let freeRevenue = 0
     for (const p of active) {
-      const weight = totalRevenue > 0 ? (p.revenue ?? 0) / totalRevenue : 0
+      const override = overrides?.get(p.id)
+      if (override != null) {
+        const span = Math.max(1, p.endMonth - p.startMonth + 1)
+        const h = override / span
+        const ri = rowIndexById.get(p.id)
+        if (ri !== undefined) {
+          rows[ri].cellsHours[ci] = h
+          rows[ri].cellsCost[ci] = h * avgCost
+          rows[ri].totalHours += h
+          rows[ri].totalCost += h * avgCost
+        }
+        usedHours += h
+      } else {
+        free.push(p)
+        freeRevenue += (p.revenue ?? 0)
+      }
+    }
+
+    const residual = Math.max(0, pool.hoursPerMonth - usedHours)
+    for (const p of free) {
+      const weight = freeRevenue > 0 ? (p.revenue ?? 0) / freeRevenue : 0
       const ri = rowIndexById.get(p.id)
       if (ri === undefined) continue
-      const h = pool.hoursPerMonth * weight
-      const c = pool.costPerMonth * weight
+      const h = residual * weight
       rows[ri].cellsHours[ci] = h
-      rows[ri].cellsCost[ci] = c
+      rows[ri].cellsCost[ci] = h * avgCost
       rows[ri].totalHours += h
-      rows[ri].totalCost += c
+      rows[ri].totalCost += h * avgCost
     }
   })
 
@@ -184,26 +213,61 @@ export function allocatePoolByMonthlyRevenue(
   pool: MonthlyPool,
   startMonth: number,
   endMonth: number,
+  /**
+   * Manuelle overstyringer (planned_hours) per prosjekt — KUN prosjekter som er
+   * satt. Et overstyrt prosjekt LÅSES til sin verdi: timene fordeles på dets egne
+   * aktive måneder etter omsetning (summen = overstyringen), og trekkes fra
+   * månedens pool. RESIDUALEN (pool − Σ overstyrt denne måneden) deles på de
+   * IKKE-overstyrte etter månedlig omsetning. Måneder uten overstyrte prosjekter
+   * gir hele poolen til de andre. Tom map = dagens oppførsel (rein omsetnings-vekt).
+   */
+  overridesByProject?: Map<string, number>,
 ): Map<string, Map<number, { hours: number; cost: number }>> {
   const result = new Map<string, Map<number, { hours: number; cost: number }>>()
+  const avgCost = pool.hoursPerMonth > 0 ? pool.costPerMonth / pool.hoursPerMonth : 0
+
+  // Total omsetning per prosjekt — for å fordele en TOTAL overstyring per måned.
+  const totalRevByProject = new Map<string, number>()
+  for (const [pid, byMonth] of Array.from(monthlyRevenueByProject.entries())) {
+    let t = 0
+    for (const v of Array.from(byMonth.values())) t += v
+    totalRevByProject.set(pid, t)
+  }
+
+  const setCell = (pid: string, mi: number, hours: number) => {
+    if (hours <= 0) return
+    let inner = result.get(pid)
+    if (!inner) { inner = new Map(); result.set(pid, inner) }
+    inner.set(mi, { hours, cost: hours * avgCost })
+  }
 
   for (let mi = startMonth; mi <= endMonth; mi++) {
-    // Sum total revenue across all projects this month
-    let totalRev = 0
-    for (const revByMonth of Array.from(monthlyRevenueByProject.values())) {
-      totalRev += revByMonth.get(mi) ?? 0
+    // 1. Overstyrte prosjekter: fast andel av egen overstyring (fordelt per måned
+    //    etter omsetning), trekkes fra månedens pool.
+    let usedHours = 0
+    const free: string[] = []
+    let freeRevDenom = 0
+    for (const [pid, revByMonth] of Array.from(monthlyRevenueByProject.entries())) {
+      const revM = revByMonth.get(mi) ?? 0
+      if (revM <= 0) continue
+      const override = overridesByProject?.get(pid)
+      if (override != null) {
+        const totalRev = totalRevByProject.get(pid) ?? 0
+        const oHours = totalRev > 0 ? override * (revM / totalRev) : 0
+        setCell(pid, mi, oHours)
+        usedHours += oHours
+      } else {
+        free.push(pid)
+        freeRevDenom += revM
+      }
     }
-    if (totalRev <= 0) continue
-
-    for (const [projectId, revByMonth] of Array.from(monthlyRevenueByProject.entries())) {
-      const rev = revByMonth.get(mi) ?? 0
-      if (rev <= 0) continue
-      const weight = rev / totalRev
-      const hours = pool.hoursPerMonth * weight
-      const cost = pool.costPerMonth * weight
-      let inner = result.get(projectId)
-      if (!inner) { inner = new Map(); result.set(projectId, inner) }
-      inner.set(mi, { hours, cost })
+    // 2. Residual til de ikke-overstyrte, vektet på månedlig omsetning.
+    const residual = Math.max(0, pool.hoursPerMonth - usedHours)
+    if (residual > 0 && freeRevDenom > 0) {
+      for (const pid of free) {
+        const revM = monthlyRevenueByProject.get(pid)?.get(mi) ?? 0
+        setCell(pid, mi, residual * (revM / freeRevDenom))
+      }
     }
   }
 

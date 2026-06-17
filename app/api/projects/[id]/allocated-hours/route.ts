@@ -37,7 +37,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   const [projRes, blRes, coRes, phRes, resRes] = await Promise.all([
     sb
       .from('projects')
-      .select('id, name, start_date, end_date')
+      .select('id, name, start_date, end_date, planned_hours')
       .eq('status', 'active')
       .neq('deleted', true),
     // Budget lines: trenger phase_id for avledet fasevekt (ØKONOMIMODELL.md 1b)
@@ -56,7 +56,7 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     sb.from('internal_resources').select('*'),
   ])
 
-  type ProjectRow = { id: string; name: string; start_date: string | null; end_date: string | null }
+  type ProjectRow = { id: string; name: string; start_date: string | null; end_date: string | null; planned_hours: number | null }
   type BudgetLineRow = {
     id: string
     project_id: string
@@ -166,12 +166,20 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
     return NextResponse.json({ hours: null, monthly: [] })
   }
 
+  // Manuelle overstyringer (planned_hours): låses og trekkes fra poolen, residual
+  // til de ikke-overstyrte (ØKONOMIMODELL.md punkt 3 / brukerønske).
+  const overridesByProject = new Map<string, number>()
+  for (const p of projects) {
+    if (p.planned_hours != null) overridesByProject.set(p.id, p.planned_hours)
+  }
+
   // Fordel pool over hele horisonten
   const allocation = allocatePoolByMonthlyRevenue(
     monthlyRevenueByProject,
     pool,
     globalStartMonth,
     globalEndMonth,
+    overridesByProject,
   )
 
   const targetAllocation = allocation.get(params.id) ?? new Map<number, { hours: number; cost: number }>()

@@ -35,7 +35,17 @@ over fasens måneder, summeres ved overlapp.
   **omsetning DEN måneden** (fra punkt 1):
   `prosjektets timer = pool-timer × (prosjektets omsetning denne mnd / Σ aktive prosjekters omsetning denne mnd)`.
   - Eksempel: 100 t til disp; A omsetter 500k, B 250k, C 250k den mnd ⇒ A 50 t, B 25 t, C 25 t.
-- **Internkost per prosjekt-måned = tildelte timer × timeskost.**
+- **Internkost per prosjekt-måned = tildelte timer × timeskost** (snittkost =
+  pool-kost/pool-timer).
+- **Manuell overstyring (`planned_hours`, VEDTATT):** redigerer du et prosjekts
+  timeantall, **LÅSES** det prosjektet til den verdien. Overstyringen fordeles på
+  prosjektets egne aktive måneder (etter månedlig omsetning, summen = overstyringen)
+  og **trekkes fra månedens pool**. **Residualen** (pool − Σ overstyrt den måneden)
+  deles på **bare de IKKE-overstyrte** prosjektene, vektet på månedlig omsetning.
+  - Eksempel: 100 t; A overstyres til 40, B og C fri med lik omsetning ⇒ A 40
+    (låst), B 30, C 30 (de 10 frigjorte timene går kun til B og C, ikke tilbake
+    til A). Gjelder både `allocatePoolByMonthlyRevenue` (prognose/`allocated-hours`)
+    og `buildMonthGrid` (Ressurser-rutenettet, jevn fordeling over span).
 - **Rolle-timer (PL/BL/dok) og manuell `internal_hours` utgår** — ressurspoolen er
   eneste kilde til interne timer/kost.
 
@@ -86,6 +96,27 @@ administrasjonsnivå (main/company).
   (read-only) fra månedsradene, og `POST /api/project-forecast-months` setter
   header = Σ måneder ved lagring (fjernet intern dobbeltlagring). Send-inn →
   godkjenn → returner → lås er urørt. Verifisert i nettleser.
+
+- **Pakke 4 — UE-andeler (del ett produkt mellom flere UE) + redigerbart budsjett: PÅBEGYNT.**
+  Modell (ADDITIV, ingen datamigrasjon): en budsjettlinje beholder produkt + total
+  mengde + kundepris (kunde faktureres ÉN gang). Deles produktet, får hver UE en
+  ANDEL i `project_budget_line_subcontractors` (mengde + kostpris-snapshot). UE-kost
+  for en linje = `andeler.length ? Σ(andel.mengde × andel.kostpris) : (assigned_subcontractor_id && ≠ '__intern__' ? mengde × subcontractor_cost_price_snapshot : 0)`.
+  - FERDIG: migrasjon 0015, type `ProjectBudgetLineSubcontractor`, API
+    `/api/budget-line-subcontractors` (GET ?project_id / POST / PUT / DELETE),
+    mengde-redigering på `PUT /api/budget-lines`.
+  - GJENSTÅR:
+    1. **Økonomi-ripple** — `lib/budget-shares.ts`-helper (lineUeCost, lineUes,
+       groupSharesByLine) + bruk den i `lib/project-economy.ts` (ueBudgetCost),
+       `forecast/page.tsx` (budgetCost) og `SubcontractorsSection`
+       (per-UE-budsjett). Kallere må hente andeler (useProjectData + RSC).
+    2. **UE-PORTAL** (`app/api/budget-lines` GET, sub-grenen): en UE ser linjer
+       der den har en ANDEL (i tillegg til assigned_subcontractor_id), og kun
+       SIN mengde + SIN kostpris — aldri andre UE-ers andeler. ⚠️ UE-pris-isolasjon
+       er absolutt — denne MÅ verifiseres via «Vis som» UE i nettleser.
+    3. **Budsjett-UI** (`BudgetLinesSection`): inline mengde-redigering + UE-velger
+       per linje + utvid linje → liste UE-andeler (legg til UE + mengde, rediger,
+       slett) + **lagreknapp** (#1). Advarsel hvis Σ andeler ≠ linjas mengde.
 
 ## Vedlikehold
 Når en regel/formel endres eller en ny økonomimekanisme legges inn: oppdater riktig

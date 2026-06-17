@@ -42,7 +42,7 @@ export default async function RessurserPage() {
 
   const sb = getSupabaseAdmin()
   const [projRes, blRes, coRes, resRes, phRes, msRes, ihmRes] = await Promise.all([
-    sb.from('projects').select('id, name, project_number, status, start_date, end_date').eq('status', 'active').neq('deleted', true),
+    sb.from('projects').select('id, name, project_number, status, start_date, end_date, planned_hours').eq('status', 'active').neq('deleted', true),
     sb.from('project_budget_lines').select('project_id, budget_quantity, customer_price_snapshot, subcontractor_cost_price_snapshot'),
     sb.from('change_orders').select('project_id, status, total_customer_value, total_cost').eq('status', 'approved'),
     sb.from('internal_resources').select('*').order('created_at', { ascending: true }),
@@ -51,7 +51,7 @@ export default async function RessurserPage() {
     sb.from('internal_hours_monthly').select('*').eq('year', currentYear),
   ])
 
-  const projects = (projRes.data ?? []) as Array<Pick<Project, 'id' | 'name' | 'start_date' | 'end_date'>>
+  const projects = (projRes.data ?? []) as Array<Pick<Project, 'id' | 'name' | 'start_date' | 'end_date' | 'planned_hours'>>
   const budgetLines = (blRes.data ?? []) as ProjectBudgetLine[]
   const approvedEMs = (coRes.data ?? []) as ChangeOrder[]
   const resources = (resRes.data ?? []) as InternalResource[]
@@ -82,7 +82,11 @@ export default async function RessurserPage() {
   const endHorizon = spans.length > 0
     ? Math.min(Math.max(currentMonth, ...spans.map((s) => s.endMonth)), currentMonth + 23)
     : currentMonth
-  const grid = buildMonthGrid(spans, pool, currentMonth, endHorizon)
+  // Manuelle timer-overstyringer (planned_hours): låses + trekkes fra poolen,
+  // residual til de ikke-overstyrte prosjektene.
+  const overrides = new Map<string, number>()
+  for (const p of projects) if (p.planned_hours != null) overrides.set(p.id, p.planned_hours)
+  const grid = buildMonthGrid(spans, pool, currentMonth, endHorizon, overrides)
 
   return (
     <ResourcesClient
