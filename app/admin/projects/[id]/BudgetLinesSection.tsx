@@ -7,7 +7,7 @@ import SortableTable from '@/components/SortableTable'
 import NumberInput from '@/components/NumberInput'
 import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 import { lineTypeLabel } from '@/lib/line-types'
-import type { ProjectBudgetLine, Product, Subcontractor, ChangeOrder, Project, BudgetVersion } from '@/types'
+import type { ProjectBudgetLine, Product, Subcontractor, ChangeOrder, Project, BudgetVersion, ProjectPhase, PhaseType } from '@/types'
 
 // BudgetLineChart is lazy-loaded — only mounts when a row is expanded.
 const BudgetLineChart = dynamic(() => import('@/components/BudgetLineChart'), { ssr: false })
@@ -27,6 +27,7 @@ type BLRow = {
   cost_value: number
   profit: number
   line_type: string
+  phase_id: string | null
 }
 
 interface Props {
@@ -36,6 +37,11 @@ interface Props {
   allSubs: Subcontractor[]
   projectSubDetails: Subcontractor[]
   changeOrders: ChangeOrder[]
+  // Faser + tagging: tagger man en budsjettlinje til en fase, avledes fasevekten
+  // i prognosen fra linjene (ØKONOMIMODELL.md 1b).
+  phases: ProjectPhase[]
+  phaseTypes: PhaseType[]
+  onAssignPhase: (lineId: string, phaseId: string | null) => void
 
   // form state — owned by parent so it survives tab switches
   showAddLine: boolean
@@ -92,6 +98,7 @@ export default function BudgetLinesSection({
   allSubs,
   projectSubDetails,
   changeOrders,
+  phases, phaseTypes, onAssignPhase,
   showAddLine, setShowAddLine,
   newLine, setNewLine,
   savingLine, onAddBudgetLine,
@@ -128,8 +135,14 @@ export default function BudgetLinesSection({
       cost_value: costValue,
       profit: salesValue - costValue,
       line_type: bl.line_type ?? 'subcontractor_work',
+      phase_id: bl.phase_id ?? null,
     }
   })
+
+  // Fase-etiketter for tagge-nedtrekket + sortering.
+  const phaseTypeName = new Map(phaseTypes.map((t) => [t.id, t.name]))
+  const phaseLabel = (p: ProjectPhase) => p.name || phaseTypeName.get(p.phase_type_id) || 'Fase'
+  const phaseLabelById = new Map(phases.map((p) => [p.id, phaseLabel(p)]))
 
   const expandedRowRenderFn = (row: BLRow) => {
     const bl = budgetLines.find((b) => b.id === row.id)
@@ -209,6 +222,23 @@ export default function BudgetLinesSection({
       render: (row: BLRow) => row.assigned_subcontractor_id
         ? <span className="text-sm text-[var(--color-text-primary)]">{row.assigned_name}</span>
         : <span className="text-xs text-orange-400">Ikke tildelt</span>,
+    },
+    {
+      key: 'phase_id',
+      label: 'Fase',
+      sortable: true,
+      getValue: (row: BLRow) => (row.phase_id ? phaseLabelById.get(row.phase_id) ?? '' : ''),
+      render: (row: BLRow) => (
+        <select
+          value={row.phase_id ?? ''}
+          onClick={(e) => e.stopPropagation()}
+          onChange={(e) => onAssignPhase(row.id, e.target.value || null)}
+          className="text-xs text-[var(--color-text-primary)] border border-border rounded px-1.5 py-1 bg-card max-w-[150px] focus:outline-none focus:border-primary"
+        >
+          <option value="">— Ingen —</option>
+          {phases.map((p) => <option key={p.id} value={p.id}>{phaseLabel(p)}</option>)}
+        </select>
+      ),
     },
     {
       key: 'cost_value',
@@ -468,7 +498,7 @@ export default function BudgetLinesSection({
           data={filteredRows}
           emptyText="Ingen budsjettlinjer ennå"
           tableClassName="table-fixed"
-          colWidths={['w-8', 'w-24', undefined, 'w-16', 'w-24', 'w-20', 'w-24', 'w-28', 'w-36', 'w-28', 'w-28']}
+          colWidths={['w-8', 'w-24', undefined, 'w-16', 'w-24', 'w-20', 'w-24', 'w-28', 'w-36', 'w-40', 'w-28', 'w-28']}
           rowClassName={(row: BLRow) => row.assigned_subcontractor_id
             ? 'border-b border-border hover:bg-blue-50'
             : 'border-b border-orange-100 bg-orange-50 hover:bg-orange-100'}

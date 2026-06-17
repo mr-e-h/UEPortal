@@ -51,6 +51,10 @@ export interface ProjectEconomySummary {
   pendingEMValue: number
   approvedEMCount: number
   pendingEMCount: number
+  /** Opptjent (rå): godkjente rapportlinjer × kundepris, UKLAMPET — den faktiske
+   *  omsetningsverdien hittil. `delivered` er den samme verdien klampet til
+   *  totalContract for fremdriftsbaren; bruk `opptjent` til resultat-regnskap. */
+  opptjent: number
   delivered: number
   pendingDelivery: number
   remaining: number
@@ -152,6 +156,7 @@ export function computeProjectEconomy({
     pendingEMValue,
     approvedEMCount: approvedEMs.length,
     pendingEMCount: pendingEMs.length,
+    opptjent: deliveredValue,
     delivered,
     pendingDelivery,
     remaining,

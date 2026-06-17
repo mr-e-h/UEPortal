@@ -38,11 +38,81 @@ export function internalCostTotal(entries: ProjectInternalCostEntry[], fallbackE
   return entries.reduce((s, e) => s + expandedInternalCost(e, fallbackEndMi), 0)
 }
 
+/** Måned-indeksen for "nå" — samme konvensjon som mi() (år×12 + måned−1, 0-basert). */
+export const currentMonthIndex = (now: Date): number => now.getFullYear() * 12 + now.getMonth()
+
 /**
  * Sluttmåned-indeksen åpne månedlige poster løper til: prosjektets sluttdato,
  * ellers inneværende måned (så et prosjekt uten sluttdato ikke gir uendelig sum).
  */
 export function fallbackEndMonthIndex(projectEnd: string | null, now: Date): number {
   if (projectEnd) return mi(Number(projectEnd.slice(0, 4)), Number(projectEnd.slice(5, 7)))
-  return now.getFullYear() * 12 + now.getMonth()
+  return currentMonthIndex(now)
+}
+
+/**
+ * Antall måneder en post HAR påløpt per `nowMi` (faktisk forbruk hittil, ikke
+ * hele planen):
+ *   - one_time: 1 hvis posten har startet (måned ≤ nå), ellers 0.
+ *   - monthly:  fra startmåned t.o.m. min(sluttmåned, nå). En åpen post regnes
+ *     bare til og med inneværende måned; en post som ikke har startet ennå → 0.
+ */
+export function internalCostMonthsToDate(entry: CostShape, nowMi: number): number {
+  if (entry.recurrence !== 'monthly') {
+    return mi(entry.year, entry.month) <= nowMi ? 1 : 0
+  }
+  const startMi = mi(entry.year, entry.month)
+  if (startMi > nowMi) return 0
+  const endMi = entry.end_year != null && entry.end_month != null
+    ? mi(entry.end_year, entry.end_month)
+    : nowMi
+  return Math.max(0, Math.min(endMi, nowMi) - startMi + 1)
+}
+
+/** Påløpt internkost per i dag = Σ beløp × antall påløpte måneder. */
+export function internalCostToDate(entries: ProjectInternalCostEntry[], nowMi: number): number {
+  return entries.reduce((s, e) => s + (e.amount ?? 0) * internalCostMonthsToDate(e, nowMi), 0)
+}
+
+/**
+ * Beløpet ÉN intern-post bidrar med i måned `monthIdx` (0 hvis den ikke er
+ * aktiv den måneden). Brukes til å plassere interne kostnader i sine FAKTISKE
+ * måneder når prognosen genereres fra fremdriftsplanen.
+ *   - one_time: hele beløpet i startmåneden, ellers 0.
+ *   - monthly:  beløpet hver måned fra start t.o.m. slutt (åpen post = fra start
+ *     og utover — kalleren begrenser horisonten).
+ */
+export function internalCostForMonth(entry: ProjectInternalCostEntry, monthIdx: number): number {
+  const startMi = mi(entry.year, entry.month)
+  if (entry.recurrence !== 'monthly') return startMi === monthIdx ? (entry.amount ?? 0) : 0
+  if (monthIdx < startMi) return 0
+  if (entry.end_year != null && entry.end_month != null) {
+    return monthIdx <= mi(entry.end_year, entry.end_month) ? (entry.amount ?? 0) : 0
+  }
+  return entry.amount ?? 0
+}
+
+/**
+ * Prosjektets FAKTISKE sluttdato slik FREMDRIFTSPLANEN sier det: seneste slutt
+ * blant faser + milepæler (slutt mangler → bruk start). Brukes som "ut
+ * prosjektet" for åpne løpende interne kostnader, så f.eks. riggplass regnes
+ * over perioden man faktisk bruker — og oppdateres automatisk når man redigerer
+ * varigheten i fremdriftsplanen. Faller tilbake til prosjektets egen sluttdato
+ * når planen er tom (ingen faser/milepæler).
+ */
+export function planEndDate(
+  phases: Array<{ start_date: string; end_date: string | null }>,
+  milestones: Array<{ start_date: string; end_date: string | null }>,
+  projectEnd: string | null,
+): string | null {
+  let max: string | null = null
+  for (const p of phases) {
+    const e = p.end_date ?? p.start_date
+    if (e && (!max || e > max)) max = e
+  }
+  for (const m of milestones) {
+    const e = m.end_date ?? m.start_date
+    if (e && (!max || e > max)) max = e
+  }
+  return max ?? projectEnd
 }

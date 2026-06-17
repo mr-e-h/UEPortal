@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAdmin, getProjectScope } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 
 type LegacyReport = {
   id: string
@@ -41,6 +41,10 @@ export async function POST(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const body = await request.json() as Omit<LegacyReport, 'id' | 'status' | 'created_at' | 'updated_at'>
+  // Skrive-port: PL/byggeleder kun på tildelte prosjekter (deltakere/innsyn
+  // blokkeres). main/company passerer. Hindrer skriving mot vilkårlig prosjekt-id.
+  const denied = await ensureProjectWritable(auth.user, body.project_id)
+  if (denied) return denied
   const now = new Date().toISOString()
   const newReport: LegacyReport = {
     id: randomUUID(),

@@ -4,9 +4,10 @@ import { getSupabaseAdmin } from '@/lib/supabase'
 import { uploadBudgetFile } from '@/lib/storage'
 import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import { parseExcelBuffer } from '@/lib/excel'
+import { DEFAULT_IMPORT_MAP } from '@/lib/excel-map'
 import { importExcelLines } from '@/lib/excel-import'
 import { budgetSalesValue, budgetCostValue, emCustomerValue, emCost } from '@/lib/project-economy'
-import type { Project, ProjectBudgetLine, BudgetVersion, ChangeOrder } from '@/types'
+import type { Project, ProjectBudgetLine, BudgetVersion, ChangeOrder, ImportColumnMap } from '@/types'
 
 const EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet'
 
@@ -36,10 +37,21 @@ export async function POST(
   if (projErr) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
   if (!project) return NextResponse.json({ error: 'Prosjekt ikke funnet' }, { status: 404 })
 
+  // Kundens kolonneoppsett fra prosjekttypen (faller tilbake til standard).
+  let importMap = DEFAULT_IMPORT_MAP
+  if (project.project_type_id) {
+    const { data: pt } = await sb
+      .from('project_types')
+      .select('import_config')
+      .eq('id', project.project_type_id)
+      .maybeSingle<{ import_config: ImportColumnMap | null }>()
+    if (pt?.import_config) importMap = pt.import_config
+  }
+
   const buffer = Buffer.from(await file.arrayBuffer())
   let parsed
   try {
-    parsed = parseExcelBuffer(buffer)
+    parsed = parseExcelBuffer(buffer, importMap)
   } catch {
     return NextResponse.json({ error: 'Kunne ikke lese Excel-fil' }, { status: 422 })
   }
@@ -117,5 +129,5 @@ export async function POST(
   const { error: insErr } = await sb.from('budget_versions').insert(versionRow)
   if (insErr) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
 
-  return NextResponse.json({ ...result, ok: true, updated_fields: updatedFields })
+  return NextResponse.json({ ...result, skipped: parsed.skipped, ok: true, updated_fields: updatedFields })
 }

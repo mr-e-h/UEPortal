@@ -6,14 +6,21 @@ import type { ProjectInvoice } from '@/types'
 import NumberInput from '@/components/NumberInput'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { fmtNOK as fmt } from '@/lib/format'
+import { useMe } from '@/lib/useMe'
 
 export default function InvoicesSection({ projectId }: { projectId: string }) {
+  const { me } = useMe()
+  // Angre fakturering = kun administrasjonsnivå (main/company). PL kan registrere
+  // fakturering, men ikke reversere den — så undo-knappen vises ikke for dem.
+  const canUndo = me?.role === 'main' || me?.role === 'company'
+
   const [invoices, setInvoices] = useState<ProjectInvoice[]>([])
   const [loading, setLoading] = useState(true)
   const [showForm, setShowForm] = useState(false)
   const [saving, setSaving] = useState(false)
   const [deleting, setDeleting] = useState<string | null>(null)
   const [confirmDeleteId, setConfirmDeleteId] = useState<string | null>(null)
+  const [error, setError] = useState<string | null>(null)
   const [form, setForm] = useState({ amount: '', invoice_date: '', comment: '' })
 
   const load = useCallback(async () => {
@@ -41,8 +48,14 @@ export default function InvoicesSection({ projectId }: { projectId: string }) {
   async function handleDelete(id: string) {
     setDeleting(id)
     setConfirmDeleteId(null)
-    await fetch(`/api/invoices/${id}`, { method: 'DELETE' })
-    setInvoices((p) => p.filter((i) => i.id !== id))
+    setError(null)
+    const res = await fetch(`/api/invoices/${id}`, { method: 'DELETE' })
+    if (res.ok) {
+      setInvoices((p) => p.filter((i) => i.id !== id))
+    } else {
+      const d = await res.json().catch(() => ({} as { error?: string }))
+      setError(d.error ?? 'Kunne ikke angre faktureringen')
+    }
     setDeleting(null)
   }
 
@@ -104,6 +117,10 @@ export default function InvoicesSection({ projectId }: { projectId: string }) {
         </form>
       )}
 
+      {error && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{error}</p>
+      )}
+
       {loading ? (
         <p className="text-sm text-[var(--color-text-muted)]">Laster...</p>
       ) : invoices.length === 0 ? (
@@ -128,13 +145,17 @@ export default function InvoicesSection({ projectId }: { projectId: string }) {
                   <td className="py-2 px-3 text-[var(--color-text-muted)]">{inv.comment || '–'}</td>
                   <td className="py-2 px-3 text-[var(--color-text-muted)] text-xs">{inv.created_by}</td>
                   <td className="py-2 px-3 text-right">
-                    <button
-                      onClick={() => setConfirmDeleteId(inv.id)}
-                      disabled={deleting === inv.id}
-                      className="text-[var(--color-text-muted)] hover:text-red-500 transition-colors disabled:opacity-40"
-                    >
-                      <Trash2 size={14} />
-                    </button>
+                    {canUndo && (
+                      <button
+                        onClick={() => setConfirmDeleteId(inv.id)}
+                        disabled={deleting === inv.id}
+                        title="Angre fakturering"
+                        aria-label="Angre fakturering"
+                        className="text-[var(--color-text-muted)] hover:text-red-500 transition-colors disabled:opacity-40"
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </td>
                 </tr>
               ))}
@@ -148,8 +169,8 @@ export default function InvoicesSection({ projectId }: { projectId: string }) {
       )}
       {confirmDeleteId && (
         <ConfirmDialog
-          title="Slett faktura?"
-          message="Fakturaen slettes permanent. Dette kan ikke angres."
+          title="Angre fakturering?"
+          message="Den registrerte faktureringen fjernes, og «Fakturert»-summen reduseres tilsvarende. Dette kan ikke gjenopprettes."
           onConfirm={() => handleDelete(confirmDeleteId)}
           onCancel={() => setConfirmDeleteId(null)}
         />

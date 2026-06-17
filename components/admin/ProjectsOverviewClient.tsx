@@ -3,10 +3,11 @@
 import { useEffect, useState } from 'react'
 import Link from 'next/link'
 import { LayoutGrid, List, Bell, CalendarRange, HardHat, Wallet, User as UserIcon } from 'lucide-react'
-import Card from '@/components/ui/Card'
 import Badge from '@/components/ui/Badge'
 import type { BadgeStatus } from '@/components/ui/Badge'
-import ProjectsListTable from '@/components/admin/ProjectsListTable'
+import ProjectsOverviewTable from '@/components/admin/ProjectsOverviewTable'
+import { HEALTH_LABEL, type Health } from '@/lib/project-health'
+import { fmtDateShort as fmtDate, fmtNOK } from '@/lib/format'
 import type { Project } from '@/types'
 
 export type ProjectCardData = {
@@ -23,8 +24,14 @@ export type ProjectCardData = {
   /** 0–100, eller null når verken volum- eller tidsgrunnlag finnes. */
   progress: number | null
   progress_source: 'volum' | 'tid' | null
+  /** Tidsandel 0–100 (hvor langt i perioden), null uten datoer. */
+  time_progress: number | null
+  /** Prosjekthelse — grønn/gul/rød, beregnet server-side (lib/project-health). */
+  health: Health
   /** Ordreverdi (total kontraktsverdi). null for byggeleder — aldri serialisert. */
   revenue: number | null
+  /** Fakturert hittil. null for byggeleder. */
+  invoiced: number | null
   attention: {
     change_orders: number
     weekly_reports: number
@@ -33,35 +40,39 @@ export type ProjectCardData = {
   }
 }
 
-const VIEW_KEY = 'projects_view_mode'
+const HEALTH_DOT: Record<Health, string> = { green: 'bg-green-500', amber: 'bg-amber-400', red: 'bg-red-500' }
+
+// Bumpet fra v1 så den nye tabellvisningen blir standard for alle (gamle lagrede
+// «cards»-valg fra forrige versjon overstyrer ikke det nye utgangspunktet).
+const VIEW_KEY = 'projects_view_mode_v2'
 
 /**
- * Kort/tabell-toggle for prosjektoversikten. Kort er default; valget huskes i
- * localStorage. Tabellmodusen gjenbruker den eksisterende ProjectsListTable
- * uendret. Alt innhold er økonomifritt (trygt for byggeleder).
+ * Prosjektoversikt: porteføljestripe (nøkkeltall) øverst, så tabell (standard)
+ * eller kort. Tabellen har helse-ampel, fremdrift-vs-tid, filtre og sortering.
+ * Alt økonomi-innhold er null for byggeleder (aldri serialisert), så stripa +
+ * kolonnene skjuler seg automatisk for dem.
  */
 export default function ProjectsOverviewClient({
   cards,
   activeProjects,
   restProjects,
-  blCounts,
-  subCounts,
+  meName,
 }: {
   cards: ProjectCardData[]
   activeProjects: Project[]
   restProjects: Project[]
   blCounts: Record<string, number>
   subCounts: Record<string, number>
+  meName: string
 }) {
-  const [view, setView] = useState<'cards' | 'table'>('cards')
+  const [view, setView] = useState<'table' | 'cards'>('table')
 
-  // Hydrer lagret visningsvalg etter mount (unngår SSR/klient-mismatch).
   useEffect(() => {
     const saved = localStorage.getItem(VIEW_KEY)
-    if (saved === 'table') setView('table')
+    if (saved === 'cards') setView('cards')
   }, [])
 
-  function switchView(next: 'cards' | 'table') {
+  function switchView(next: 'table' | 'cards') {
     setView(next)
     try { localStorage.setItem(VIEW_KEY, next) } catch { /* ignore */ }
   }
@@ -70,39 +81,64 @@ export default function ProjectsOverviewClient({
   const activeCards = activeProjects.map((p) => cardById.get(p.id)).filter((c): c is ProjectCardData => !!c)
   const restCards = restProjects.map((p) => cardById.get(p.id)).filter((c): c is ProjectCardData => !!c)
 
+  // ── Porteføljenøkkeltall (fra aktive prosjekter) ──────────────────────────
+  const showEconomy = activeCards.some((c) => c.revenue !== null)
+  const totalRevenue = activeCards.reduce((s, c) => s + (c.revenue ?? 0), 0)
+  const totalInvoiced = activeCards.reduce((s, c) => s + (c.invoiced ?? 0), 0)
+  const faktPct = totalRevenue > 0 ? Math.round((totalInvoiced / totalRevenue) * 100) : 0
+  const attentionCount = activeCards.filter((c) => c.attention.change_orders + c.attention.weekly_reports > 0).length
+  const lateCount = activeCards.filter((c) => c.health === 'red').length
+
   return (
-    <div className="space-y-6">
+    <div className="space-y-5">
+      {/* Porteføljestripe */}
+      <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
+        {showEconomy && (
+          <>
+            <Kpi label="Samlet ordreverdi" value={fmtNOK(totalRevenue)} />
+            <Kpi label="Fakturert" value={`${faktPct} %`} />
+          </>
+        )}
+        <Kpi label="Krever oppmerksomhet" value={String(attentionCount)} tone={attentionCount > 0 ? 'amber' : 'default'} />
+        <Kpi label="Forsinket" value={String(lateCount)} tone={lateCount > 0 ? 'red' : 'default'} />
+      </div>
+
       {/* Visnings-toggle */}
       <div className="flex items-center justify-end">
         <div className="inline-flex items-center gap-0.5 bg-card border border-border rounded-lg p-0.5">
           <button
             type="button"
-            onClick={() => switchView('cards')}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-              view === 'cards'
-                ? 'bg-primary-soft text-primary'
-                : 'text-[var(--color-text-secondary)] hover:bg-muted'
-            }`}
-            aria-pressed={view === 'cards'}
-          >
-            <LayoutGrid size={13} /> Kort
-          </button>
-          <button
-            type="button"
             onClick={() => switchView('table')}
-            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${
-              view === 'table'
-                ? 'bg-primary-soft text-primary'
-                : 'text-[var(--color-text-secondary)] hover:bg-muted'
-            }`}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${view === 'table' ? 'bg-primary-soft text-primary' : 'text-[var(--color-text-secondary)] hover:bg-muted'}`}
             aria-pressed={view === 'table'}
           >
             <List size={13} /> Tabell
           </button>
+          <button
+            type="button"
+            onClick={() => switchView('cards')}
+            className={`inline-flex items-center gap-1.5 px-2.5 py-1 text-xs font-medium rounded-md transition-colors ${view === 'cards' ? 'bg-primary-soft text-primary' : 'text-[var(--color-text-secondary)] hover:bg-muted'}`}
+            aria-pressed={view === 'cards'}
+          >
+            <LayoutGrid size={13} /> Kort
+          </button>
         </div>
       </div>
 
-      {view === 'cards' ? (
+      {view === 'table' ? (
+        <>
+          <section>
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3">Aktive prosjekter</h2>
+            <ProjectsOverviewTable cards={activeCards} meName={meName} controls />
+          </section>
+          {restCards.length > 0 && (
+            <section>
+              <h2 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3">Avsluttede / arkiverte</h2>
+              <ProjectsOverviewTable cards={restCards} meName={meName} />
+            </section>
+          )}
+        </>
+      ) : (
         <>
           <section>
             <h2 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3">Aktive prosjekter</h2>
@@ -114,7 +150,6 @@ export default function ProjectsOverviewClient({
               </div>
             )}
           </section>
-
           {restCards.length > 0 && (
             <section>
               <h2 className="text-sm font-semibold text-[var(--color-text-primary)] mb-3">Avsluttede / arkiverte</h2>
@@ -124,29 +159,22 @@ export default function ProjectsOverviewClient({
             </section>
           )}
         </>
-      ) : (
-        <>
-          <Card>
-            <div className="px-6 py-4 border-b border-border">
-              <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Aktive prosjekter</h2>
-            </div>
-            <ProjectsListTable projects={activeProjects} blCounts={blCounts} subCounts={subCounts} />
-          </Card>
-          {restProjects.length > 0 && (
-            <Card>
-              <div className="px-6 py-4 border-b border-border">
-                <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Avsluttede / arkiverte</h2>
-              </div>
-              <ProjectsListTable projects={restProjects} blCounts={blCounts} subCounts={subCounts} />
-            </Card>
-          )}
-        </>
       )}
     </div>
   )
 }
 
-import { fmtDateShort as fmtDate, fmtNOK } from '@/lib/format'
+function Kpi({ label, value, tone = 'default' }: { label: string; value: string; tone?: 'default' | 'amber' | 'red' }) {
+  const wrap = tone === 'amber' ? 'bg-warning-soft' : tone === 'red' ? 'bg-danger-soft' : 'bg-muted'
+  const text = tone === 'amber' ? 'text-warning' : tone === 'red' ? 'text-danger' : 'text-[var(--color-text-primary)]'
+  const lbl = tone === 'amber' ? 'text-warning' : tone === 'red' ? 'text-danger' : 'text-[var(--color-text-muted)]'
+  return (
+    <div className={`rounded-lg p-3 ${wrap}`}>
+      <p className={`text-[11px] font-medium uppercase tracking-wide ${lbl}`}>{label}</p>
+      <p className={`text-xl font-bold tabular-nums mt-0.5 leading-tight ${text}`}>{value}</p>
+    </div>
+  )
+}
 
 function ProjectCard({ card }: { card: ProjectCardData }) {
   const maxChips = 3
@@ -164,7 +192,7 @@ function ProjectCard({ card }: { card: ProjectCardData }) {
       href={`/admin/projects/${card.id}`}
       className="relative block bg-card border border-border rounded-2xl p-4 pb-5 hover:border-[var(--color-border-strong)] hover:shadow-sm transition-all"
     >
-      {/* Topp: navn + status */}
+      {/* Topp: navn + helse + status */}
       <div className="flex items-start justify-between gap-2">
         <div className="min-w-0">
           <p className="text-sm font-semibold text-[var(--color-text-primary)] truncate">{card.name}</p>
@@ -172,7 +200,12 @@ function ProjectCard({ card }: { card: ProjectCardData }) {
             {card.project_number}{card.customer ? ` · ${card.customer}` : ''}
           </p>
         </div>
-        <Badge status={(card.status === 'active' ? 'active' : card.status === 'completed' ? 'completed' : 'archived') as BadgeStatus} />
+        <div className="flex items-center gap-1.5 flex-none">
+          {card.status === 'active' && (
+            <span className={`w-2 h-2 rounded-full ${HEALTH_DOT[card.health]}`} title={`Helse: ${HEALTH_LABEL[card.health]}`} />
+          )}
+          <Badge status={(card.status === 'active' ? 'active' : card.status === 'completed' ? 'completed' : 'archived') as BadgeStatus} />
+        </div>
       </div>
 
       {/* PL + periode */}
@@ -206,10 +239,7 @@ function ProjectCard({ card }: { card: ProjectCardData }) {
               </span>
             ))}
             {moreChips > 0 && (
-              <span
-                title={card.sub_names.slice(maxChips).join(', ')}
-                className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-[var(--color-text-muted)]"
-              >
+              <span title={card.sub_names.slice(maxChips).join(', ')} className="text-[10px] font-medium px-1.5 py-0.5 rounded bg-muted text-[var(--color-text-muted)]">
                 +{moreChips}
               </span>
             )}
@@ -217,31 +247,21 @@ function ProjectCard({ card }: { card: ProjectCardData }) {
         )}
       </div>
 
-      {/* Fremdrift — bar kun når det finnes et tall; «(tid)»-forklaringen
-          ligger som tooltip i stedet for synlig tekst. */}
+      {/* Fremdrift */}
       <div className="mt-3">
         <div className="flex items-center justify-between text-[10px] text-[var(--color-text-muted)] mb-1">
-          <span title={card.progress_source === 'tid' ? 'Beregnet fra prosjektperiode, ikke rapporterte mengder' : undefined}>
-            Fremdrift
-          </span>
+          <span title={card.progress_source === 'tid' ? 'Beregnet fra prosjektperiode, ikke rapporterte mengder' : undefined}>Fremdrift</span>
           <span>{card.progress !== null ? `${card.progress}%` : '–'}</span>
         </div>
         {card.progress !== null && (
           <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-            <div
-              className="h-full rounded-full bg-primary transition-all"
-              style={{ width: `${card.progress}%` }}
-            />
+            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${card.progress}%` }} />
           </div>
         )}
       </div>
 
-      {/* Oppmerksomhetsbadge nede til høyre */}
       {card.attention.total > 0 && (
-        <span
-          title={attentionTitle}
-          className="absolute bottom-3 right-3 inline-flex items-center gap-1 bg-warning-soft text-warning text-[11px] font-semibold px-2 py-0.5 rounded-full"
-        >
+        <span title={attentionTitle} className="absolute bottom-3 right-3 inline-flex items-center gap-1 bg-warning-soft text-warning text-[11px] font-semibold px-2 py-0.5 rounded-full">
           <Bell size={11} />
           {card.attention.total}
         </span>

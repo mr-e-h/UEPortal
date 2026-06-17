@@ -1,18 +1,14 @@
 import * as XLSX from 'xlsx'
-import { isLumpSumCode } from '@/lib/lump-sum-codes'
+import { parseRows, DEFAULT_IMPORT_MAP, type ImportColumnMap, type ParsedLine, type SkippedRow } from '@/lib/excel-map'
 
-export type ParsedExcelLine = {
-  product_code: string
-  product_name: string
-  unit_price: number
-  budget_quantity: number
-}
+export type ParsedExcelLine = ParsedLine
 
 export type ParsedExcelResult = {
   project_number: string
   project_name: string
   order_number: string
   lines: ParsedExcelLine[]
+  skipped: SkippedRow[]
 }
 
 function extractAfterColon(raw: string): string {
@@ -20,50 +16,24 @@ function extractAfterColon(raw: string): string {
   return idx >= 0 ? raw.slice(idx + 1).trim() : raw.trim()
 }
 
-export function parseExcelBuffer(buffer: Buffer): ParsedExcelResult {
+/** Rårutenett (alle celler som strenger) fra første ark — for forhåndsvisningen
+ *  i import-oppsettet, der brukeren ser kolonnene og hva som leses/hoppes. */
+export function readSheetRows(buffer: Buffer): unknown[][] {
   const workbook = XLSX.read(buffer, { type: 'buffer' })
   const ws = workbook.Sheets[workbook.SheetNames[0]]
-  const rows = XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' })
+  return XLSX.utils.sheet_to_json<unknown[]>(ws, { header: 1, defval: '' })
+}
 
+/**
+ * Parse Excel-bufferen etter et kolonneoppsett (default = den gamle layouten,
+ * så eksisterende prosjekttyper uten egen config oppfører seg som før).
+ */
+export function parseExcelBuffer(buffer: Buffer, map: ImportColumnMap = DEFAULT_IMPORT_MAP): ParsedExcelResult {
+  const rows = readSheetRows(buffer)
   const project_number = extractAfterColon(String((rows[0] as unknown[])?.[0] ?? ''))
   const project_name = extractAfterColon(String((rows[1] as unknown[])?.[0] ?? ''))
   const order_number = extractAfterColon(String((rows[2] as unknown[])?.[0] ?? ''))
 
-  const lines: ParsedExcelLine[] = []
-  for (let i = 5; i < rows.length; i++) {
-    const row = rows[i] as unknown[]
-    const product_code = String(row[1] ?? '').trim()
-    if (!product_code) continue
-
-    const product_name = String(row[2] ?? '').trim()
-    const pris2 = Number(row[5]) || 0
-    const antall2 = Number(row[6]) || 0
-    const fastpris = Number(row[7]) || 0
-
-    let unit_price: number
-    let budget_quantity: number
-
-    if (fastpris > 0) {
-      unit_price = fastpris
-      budget_quantity = 1
-    } else if (pris2 === 1 && antall2 > 1) {
-      unit_price = antall2
-      budget_quantity = 1
-    } else {
-      unit_price = pris2
-      budget_quantity = antall2
-    }
-
-    // Lump-sum product codes: qty = largest of (fastpris, antall2, pris2), price = 1 kr always.
-    if (isLumpSumCode(product_code)) {
-      budget_quantity = Math.max(fastpris, antall2, pris2)
-      unit_price = 1
-    }
-
-    if (unit_price <= 0) continue
-
-    lines.push({ product_code, product_name, unit_price, budget_quantity })
-  }
-
-  return { project_number, project_name, order_number, lines }
+  const { lines, skipped } = parseRows(rows, map)
+  return { project_number, project_name, order_number, lines, skipped }
 }

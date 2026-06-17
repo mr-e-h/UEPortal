@@ -2,6 +2,7 @@
 
 import { FileDown } from 'lucide-react'
 import PhasesMiniStrip from './PhasesMiniStrip'
+import PhasesHistory from './PhasesHistory'
 import type { GanttMilestone, ProjectMonthPlan } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
 import { printArea } from '@/lib/utils/print'
@@ -104,6 +105,11 @@ export default function FremdriftsplanSection({
           </div>
         </section>
       )}
+
+      {/* Endringshistorikk / arkiv — utenfor PDF-en (egen visning, ikke planen). */}
+      <div className="print:hidden">
+        <PhasesHistory projectId={projectId} />
+      </div>
     </div>
   )
 }

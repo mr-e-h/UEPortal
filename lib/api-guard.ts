@@ -110,25 +110,18 @@ export function canSeeCustomerEconomics(user: User): boolean {
 }
 
 /**
- * Project-scope resolver. Returns:
- *   - `null` when the user sees everything (main / company; sub is handled
- *     separately via project_subcontractors in its own routes)
- *   - `Set<string>` of allowed project_ids when the user is scoped:
- *       · project_manager → scoped via the project_managers table
- *       · byggeleder      → scoped via the project_site_managers table
+ * WRITE / ansvarlig-scope: prosjektene brukeren er TILDELT som den ene
+ * prosjektlederen (project_managers) eller den ene byggelederen
+ * (project_site_managers). Dette er skrive-/redigerings-scopet — interne
+ * DELTAKERE (kun innsyn) er IKKE med her, så de aldri kan mutere et prosjekt.
  *
- * Both scoped roles return a Set EVEN WHEN EMPTY. An empty Set means "assigned
- * to no projects → sees nothing" — it must NOT collapse to `null` (which would
- * mean "see everything"). This is the key safety property for byggeleder.
+ *   - `null` for main/company (full tilgang) og sub (scopes via egne tabeller)
+ *   - `Set<string>` (også tom!) for project_manager/byggeleder. Tom = tildelt
+ *     ingen prosjekter → kan ikke skrive noe. Må ALDRI kollapse til null.
  *
- * Callers should treat `null` as "no filter" and the set as a whitelist:
- *
- *   const scope = await getProjectScope(user)
- *   if (scope) query.in('project_id', Array.from(scope))
- *   // note: an empty Array.from(scope) must be handled by the caller as
- *   // "return nothing" (see isEmptyScope) — an empty .in([]) is a no-op filter.
+ * Brukes av ensureProjectWritable og andre skrive-porter.
  */
-export const getProjectScope = cache(async (user: User): Promise<Set<string> | null> => {
+export const getProjectWriteScope = cache(async (user: User): Promise<Set<string> | null> => {
   if (user.role === 'project_manager') {
     const { data } = await getSupabaseAdmin()
       .from('project_managers')
@@ -144,6 +137,33 @@ export const getProjectScope = cache(async (user: User): Promise<Set<string> | n
     return new Set((data ?? []).map((r: { project_id: string }) => r.project_id))
   }
   return null
+})
+
+/**
+ * READ / synlighets-scope: ansvarlig-scopet PLUSS prosjekter brukeren er intern
+ * DELTAKER på (project_participants). Deltakere har innsyn (lese) men ikke
+ * skrivetilgang — derfor er dette scopet bredere enn write-scopet. Brukes til
+ * lister, sider og GET-filtrering.
+ *
+ *   - `null` for main/company (alt) og sub (egne tabeller)
+ *   - `Set<string>` (også tom!) for project_manager/byggeleder. Tom = ser
+ *     ingenting — må ALDRI kollapse til null.
+ *
+ *   const scope = await getProjectScope(user)
+ *   if (scope) query.in('project_id', Array.from(scope))
+ *   // tom Array.from(scope) håndteres som "ingenting" (isEmptyScope) — en tom
+ *   // .in([]) er et no-op-filter.
+ */
+export const getProjectScope = cache(async (user: User): Promise<Set<string> | null> => {
+  const write = await getProjectWriteScope(user)
+  if (write === null) return null // main/company/sub
+  const { data } = await getSupabaseAdmin()
+    .from('project_participants')
+    .select('project_id')
+    .eq('user_id', user.id)
+  const set = new Set(write)
+  for (const r of (data ?? []) as { project_id: string }[]) set.add(r.project_id)
+  return set
 })
 
 /**
@@ -176,7 +196,8 @@ export async function ensureProjectWritable(
   user: User,
   projectId: string,
 ): Promise<NextResponse | null> {
-  const scope = await getProjectScope(user)
+  // Skrive-scope: kun PL/byggeleder (ansvarlig) — deltakere (innsyn) blokkeres.
+  const scope = await getProjectWriteScope(user)
   if (!scope) return null
   if (scope.has(projectId)) return null
   return NextResponse.json(
@@ -210,5 +231,27 @@ export async function userCanAccessProject(user: User, projectId: string): Promi
     return !!count
   }
   const scope = await getProjectScope(user)
+  return scope === null || scope.has(projectId)
+}
+
+/**
+ * WRITE-side "may this user MUTATE this project?" — som userCanAccessProject,
+ * men bruker WRITE-scopet for staff (PL/byggeleder), så rene innsyns-DELTAKERE
+ * blokkeres fra mutasjoner. Subs scopes via project_subcontractors som før.
+ * Brukes på delte mutasjoner som BÅDE subs og ansvarlig staff kan gjøre
+ * (f.eks. avhuking i sjekklisten) — der ensureProjectWritable ville sluppet
+ * gjennom subs (write-scope = null for subs) feilaktig.
+ */
+export async function userCanWriteProject(user: User, projectId: string): Promise<boolean> {
+  if (isSub(user)) {
+    if (!user.subcontractor_id) return false
+    const { count } = await getSupabaseAdmin()
+      .from('project_subcontractors')
+      .select('project_id', { count: 'exact', head: true })
+      .eq('project_id', projectId)
+      .eq('subcontractor_id', user.subcontractor_id)
+    return !!count
+  }
+  const scope = await getProjectWriteScope(user)
   return scope === null || scope.has(projectId)
 }

@@ -57,7 +57,7 @@ export default async function FremdriftsplanPage() {
   if (phasesAvailable && projects.length > 0) {
     const { data: phData, error: phErr } = await sb
       .from('project_phases')
-      .select('id, project_id, phase_type_id, name, start_date, end_date, status, progress_percent, sort_order')
+      .select('id, project_id, phase_type_id, name, start_date, end_date, status, progress_percent, sort_order, subcontractor_id')
       .in('project_id', projects.map((p) => p.id))
       .order('sort_order')
     if (phErr) {

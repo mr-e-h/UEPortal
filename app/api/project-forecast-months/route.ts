@@ -91,5 +91,26 @@ export async function POST(request: NextRequest) {
     if (insErr) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
   }
 
+  // Normaliser header-totalene: lagret header (project_forecasts) skal ALLTID
+  // være = Σ av månedene. Header er nå avledet — vi lagrer ikke lenger separate
+  // header-tall fra klienten (Pakke 3).
+  const revenue = newMonths.reduce((s, m) => s + m.expected_revenue, 0)
+  const ueCost = newMonths.reduce((s, m) => s + m.expected_ue_cost, 0)
+  const internalCost = newMonths.reduce((s, m) => s + m.expected_internal_cost, 0)
+  const otherCost = newMonths.reduce((s, m) => s + m.expected_other_cost, 0)
+  const riskAmount = newMonths.reduce((s, m) => s + m.risk_amount, 0)
+  await sb
+    .from('project_forecasts')
+    .update({
+      expected_revenue: revenue,
+      expected_ue_cost: ueCost,
+      expected_internal_cost: internalCost,
+      expected_other_cost: otherCost,
+      risk_amount: riskAmount,
+      expected_profit: revenue - ueCost - internalCost - otherCost - riskAmount,
+      updated_at: new Date().toISOString(),
+    })
+    .eq('id', body.forecast_id)
+
   return NextResponse.json(newMonths, { status: 201 })
 }

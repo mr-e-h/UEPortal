@@ -58,18 +58,9 @@ export async function POST(request: NextRequest) {
   }
 
   const sb = getSupabaseAdmin()
-  // Idempotent: return existing assignment if already there.
-  const { data: existing } = await sb
-    .from('project_site_managers')
-    .select('*')
-    .eq('project_id', body.project_id)
-    .eq('user_id', body.user_id)
-    .maybeSingle<SiteManagerAssignment>()
-  if (existing) return NextResponse.json(existing)
-
   // Only byggeleder users can be assigned — assigning admins is meaningless
   // (they see everything) and assigning UE/PM here would silently widen the
-  // wrong role's scope.
+  // wrong role's scope. Valideres FØR vi muterer.
   const { data: user } = await sb
     .from('users')
     .select('role')
@@ -82,6 +73,9 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     )
   }
+
+  // Nøyaktig ÉN byggeleder per prosjekt: erstatt en evt. eksisterende.
+  await sb.from('project_site_managers').delete().eq('project_id', body.project_id)
 
   const { data, error } = await sb
     .from('project_site_managers')

@@ -3,7 +3,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { ChevronDown, ChevronRight, ChevronLeft, Info, FileDown, Pencil, Check, X, Plus, Trash2, Undo2 } from 'lucide-react'
+import { ChevronDown, ChevronRight, ChevronLeft, Info, FileDown, Pencil, Check, X, Plus, Trash2, Undo2, AlertTriangle } from 'lucide-react'
 import { printArea } from '@/lib/utils/print'
 import { useMe } from '@/lib/useMe'
 import { fmtDateShort as fmtD } from '@/lib/format'
@@ -39,8 +39,8 @@ export type TimelineMilestone = {
   color: string | null
 }
 
-/** Porteføljens element = kjernens element + detaljtekst. */
-type TimelineItem = CoreItem & { detail: string }
+/** Porteføljens element = kjernens element + detaljtekst + (for faser) ansvarlig UE. */
+type TimelineItem = CoreItem & { detail: string; subcontractor_id?: string | null }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des']
 
@@ -93,6 +93,10 @@ export default function FremdriftsplanClient({
   const [expanded, setExpanded] = useState<Set<string>>(new Set())
   const [checked, setChecked] = useState<Set<string>>(new Set())
   const [onlyChecked, setOnlyChecked] = useState(false)
+  // Ansvarlig UE per fase: optimistisk overstyring (phases er en prop) + hvilken
+  // fase som lagrer akkurat nå.
+  const [ueOverride, setUeOverride] = useState<Record<string, string | null>>({})
+  const [assigningUe, setAssigningUe] = useState<string | null>(null)
 
   // ── Redigeringsmodus + utkast ───────────────────────────────────────
   const [editMode, setEditMode] = useState(false)
@@ -130,6 +134,7 @@ export default function FremdriftsplanClient({
   const yearEndMs = Date.parse(`${year}-12-31`)
 
   const typeById = useMemo(() => new Map(phaseTypes.map((t) => [t.id, t])), [phaseTypes])
+  const subNameById = useMemo(() => new Map(subcontractors.map((s) => [s.id, s.name])), [subcontractors])
   const phasesByProject = useMemo(() => {
     const m = new Map<string, ProjectPhase[]>()
     for (const ph of [...phases, ...addedPhases]) {
@@ -335,6 +340,23 @@ export default function FremdriftsplanClient({
     printArea()
   }
 
+  // Ansvarlig-kolonnen: tildel UE til en fase direkte (lagrer straks).
+  async function assignUe(rawPhaseId: string, subId: string) {
+    const value = subId || null
+    setAssigningUe(rawPhaseId)
+    setError('')
+    setUeOverride((prev) => ({ ...prev, [rawPhaseId]: value }))
+    try {
+      await api.projectPhases.update(rawPhaseId, { subcontractor_id: value })
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Kunne ikke lagre ansvarlig'))
+      // Tilbakestill overstyringen ved feil → faller tilbake til prop-verdien.
+      setUeOverride((prev) => { const n = { ...prev }; delete n[rawPhaseId]; return n })
+    } finally {
+      setAssigningUe(null)
+    }
+  }
+
   /**
    * Prosjektets varighet SLIK PLANEN SIER DET: fra første fase-/milepælstart
    * til siste slutt. Prosjektets egne datoer brukes kun som fallback når
@@ -390,6 +412,7 @@ export default function FremdriftsplanClient({
           detail: `${STATUS_LABEL[ph.status]}${ph.progress_percent > 0 ? ` · ${ph.progress_percent}%` : ''}`,
           status: ph.status,
           progress: ph.progress_percent,
+          subcontractor_id: ueOverride[ph.id] !== undefined ? ueOverride[ph.id] : ph.subcontractor_id,
         }
       })
     const msItems: TimelineItem[] = selectedTypes.size > 0 ? [] : (milestonesByProject.get(projectId) ?? [])
@@ -757,6 +780,9 @@ export default function FremdriftsplanClient({
           <div className="w-72 flex-none px-3 py-2 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest border-l border-border/60">
             Faser og milepæler
           </div>
+          <div className="w-44 flex-none px-3 py-2 text-[10px] font-semibold text-[var(--color-text-muted)] uppercase tracking-widest border-l border-border/60">
+            Ansvarlig
+          </div>
         </div>
 
         {rows.length === 0 ? (
@@ -779,13 +805,16 @@ export default function FremdriftsplanClient({
             const left = pct(projStart, span.startMs, span.endMs)
             const right = pct(projEnd, span.startMs, span.endMs)
             const items = visibleItems(p.id)
+            // Faser uten tildelt ansvarlig (UE) — varsles på den sammenklappede
+            // raden så man ser hull i totaloversikten uten å åpne prosjektet.
+            const unassignedCount = items.filter((it) => it.kind === 'phase' && !it.subcontractor_id).length
             const projDates = durEnd
               ? (durEnd === durStart ? fmtD(durStart) : `${fmtD(durStart)} – ${fmtD(durEnd)}`)
               : `${fmtD(durStart)} – pågående`
 
             // Ett spor per element i ekspandert visning — barer og detalj-
             // tabellen til høyre deler rekkefølge, så linje N = bar N.
-            const LANE_H = 18
+            const LANE_H = 24
             const PAD = 12
             const cellH = isOpen ? Math.max(items.length, 1) * LANE_H + PAD : 44
 
@@ -896,7 +925,7 @@ export default function FremdriftsplanClient({
                     <div className="flex items-center gap-1.5 text-[10px] h-full">
                       <span className="text-[var(--color-text-muted)] whitespace-nowrap tabular-nums">{projDates}</span>
                       {items.length > 0 && (
-                        <span className="text-[var(--color-text-muted)]">
+                        <span className="text-[var(--color-text-muted)] whitespace-nowrap">
                           · {items.length} element{items.length !== 1 ? 'er' : ''}
                         </span>
                       )}
@@ -1070,6 +1099,63 @@ export default function FremdriftsplanClient({
                         )
                       )}
                     </>
+                  )}
+                </div>
+
+                {/* Ansvarlig — egen kolonne. Sammenklappet: varsel om utildelte
+                    faser. Åpen: ett UE-nedtrekk per fase (alltid redigerbart,
+                    lagrer straks). Milepæler har ingen UE → tom celle for å holde
+                    samme rad-høyde som tidslinjen og fase-kolonnen. */}
+                <div
+                  className="w-44 flex-none border-l border-border/60 px-2"
+                  style={{ paddingTop: `${PAD / 2}px`, paddingBottom: `${PAD / 2}px` }}
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  {!isOpen ? (
+                    <div className="flex items-center h-full text-[10px]">
+                      {unassignedCount > 0 ? (
+                        <span
+                          className="inline-flex items-center gap-0.5 px-1.5 py-px rounded-full bg-amber-100 text-amber-700 font-medium whitespace-nowrap leading-none"
+                          title={`${unassignedCount} fase${unassignedCount !== 1 ? 'r' : ''} mangler tildelt ansvarlig (UE)`}
+                        >
+                          <AlertTriangle size={9} className="flex-none" /> {unassignedCount} uten ansvarlig
+                        </span>
+                      ) : (
+                        items.some((it) => it.kind === 'phase') && (
+                          <span className="text-[var(--color-text-muted)]">Alle tildelt</span>
+                        )
+                      )}
+                    </div>
+                  ) : (
+                    items.map((it) => {
+                      if (it.kind !== 'phase') return <div key={it.id} style={{ height: `${LANE_H}px` }} />
+                      const projOptions = (projectSubs[p.id] ?? []).map((id) => ({ id, name: subNameById.get(id) ?? id }))
+                      const cur = it.subcontractor_id ?? ''
+                      if (cur && !projOptions.some((o) => o.id === cur)) projOptions.unshift({ id: cur, name: subNameById.get(cur) ?? cur })
+                      const unassigned = !it.subcontractor_id
+                      return (
+                        <div key={it.id} className="flex items-center" style={{ height: `${LANE_H}px` }}>
+                          {canManage ? (
+                            <select
+                              value={cur}
+                              onChange={(e) => assignUe(it.rawId, e.target.value)}
+                              disabled={assigningUe === it.rawId}
+                              aria-label={`Ansvarlig for ${it.label}`}
+                              className={`w-full px-1 py-0.5 text-[10px] border rounded focus:outline-none focus:border-primary disabled:opacity-50 ${
+                                unassigned ? 'border-amber-300 bg-amber-50 text-amber-800' : 'border-border bg-card text-[var(--color-text-primary)]'
+                              }`}
+                            >
+                              <option value="">Ingen</option>
+                              {projOptions.map((o) => <option key={o.id} value={o.id}>{o.name}</option>)}
+                            </select>
+                          ) : (
+                            <span className="text-[10px] text-[var(--color-text-muted)] truncate" title={cur ? (subNameById.get(cur) ?? '') : ''}>
+                              {cur ? (subNameById.get(cur) ?? '—') : '—'}
+                            </span>
+                          )}
+                        </div>
+                      )
+                    })
                   )}
                 </div>
               </div>

@@ -65,15 +65,14 @@ export async function POST(request: NextRequest) {
     forecast_period_id: body.forecast_period_id,
     project_id: body.project_id,
     project_manager_id: body.project_manager_id ?? null,
-    total_sales_value_snapshot: body.total_sales_value_snapshot ?? 0,
-    already_invoiced_snapshot: body.already_invoiced_snapshot ?? 0,
-    remaining_invoice_value_snapshot: body.remaining_invoice_value_snapshot ?? 0,
     expected_revenue: body.expected_revenue ?? 0,
     expected_ue_cost: body.expected_ue_cost ?? 0,
     expected_internal_cost: body.expected_internal_cost ?? 0,
     expected_other_cost: body.expected_other_cost ?? 0,
     risk_amount: body.risk_amount ?? 0,
-    expected_profit: body.expected_profit ?? 0,
+    // Avledet, aldri klient-styrt: inntekt − UE-kost − internkost − annen kost − risiko.
+    expected_profit:
+      (body.expected_revenue ?? 0) - (body.expected_ue_cost ?? 0) - (body.expected_internal_cost ?? 0) - (body.expected_other_cost ?? 0) - (body.risk_amount ?? 0),
     comment: body.comment ?? '',
     status: body.status ?? 'draft',
     submitted_at: body.submitted_at ?? null,

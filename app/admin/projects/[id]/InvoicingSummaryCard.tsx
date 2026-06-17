@@ -1,6 +1,6 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useState } from 'react'
 import { ChevronRight, Plus } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import NumberInput from '@/components/NumberInput'
@@ -11,32 +11,26 @@ interface Props {
   projectId: string
   /** Ordreverdi (salgsverdi + godkjente EM) — referanse for «av ordreverdi». */
   orderValue: number
+  /** Fakturaer fra useProjectData — samme delte kilde som heroen bruker. */
+  invoices: ProjectInvoice[]
+  /** Re-hent delt data etter at et fakturert beløp er lagt til (→ fetchAll). */
+  onAdded: () => void
   /** Bytt til den fulle «Fakturagrunnlag»-fanen. */
   onOpenInvoices: () => void
 }
 
 /**
  * Kompakt fakturerings-halvboks på Oversikt: totalt fakturert mot ordreverdi,
- * hvor mye som gjenstår å fakturere, og en lenke til full fane. Henter
- * fakturaene selv (samme API som Fakturagrunnlag-fanen).
+ * hvor mye som gjenstår å fakturere, og en lenke til full fane. Fakturaene
+ * kommer fra useProjectData (delt med heroen), så «Fakturert» i heroen og her
+ * alltid er samme tall — innlegging trigger onAdded() (fetchAll) som oppdaterer
+ * begge.
  */
-export default function InvoicingSummaryCard({ projectId, orderValue, onOpenInvoices }: Props) {
-  const [invoices, setInvoices] = useState<ProjectInvoice[]>([])
-  const [loading, setLoading] = useState(true)
+export default function InvoicingSummaryCard({ projectId, orderValue, invoices, onAdded, onOpenInvoices }: Props) {
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
   const [draft, setDraft] = useState(() => ({ amount: '', comment: '', date: new Date().toISOString().slice(0, 10) }))
-
-  const load = useCallback(async () => {
-    try {
-      const data = await fetch(`/api/invoices?project_id=${projectId}`).then((r) => r.ok ? r.json() : [])
-      setInvoices(Array.isArray(data) ? data : [])
-    } finally {
-      setLoading(false)
-    }
-  }, [projectId])
-  useEffect(() => { load() }, [load])
 
   async function add(e: React.FormEvent) {
     e.preventDefault()
@@ -53,7 +47,7 @@ export default function InvoicingSummaryCard({ projectId, orderValue, onOpenInvo
     }
     setDraft({ amount: '', comment: '', date: new Date().toISOString().slice(0, 10) })
     setOpen(false)
-    load()
+    onAdded()
   }
 
   const invoiced = invoices.reduce((s, i) => s + (i.amount ?? 0), 0)
@@ -71,32 +65,26 @@ export default function InvoicingSummaryCard({ projectId, orderValue, onOpenInvo
         </button>
       </div>
 
-      {loading ? (
-        <p className="text-sm text-[var(--color-text-muted)]">Laster…</p>
-      ) : (
-        <>
-          <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Fakturert</p>
-          <p className="text-2xl font-bold text-[var(--color-text-primary)] tabular-nums leading-tight mt-0.5">{fmt(invoiced)}</p>
-          <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
-            {invoices.length} {invoices.length === 1 ? 'faktura' : 'fakturaer'}{orderValue > 0 && <> · {pct}% av ordreverdi</>}
-          </p>
+      <p className="text-[11px] font-semibold text-[var(--color-text-muted)] uppercase tracking-wide">Fakturert</p>
+      <p className="text-2xl font-bold text-[var(--color-text-primary)] tabular-nums leading-tight mt-0.5">{fmt(invoiced)}</p>
+      <p className="text-[11px] text-[var(--color-text-muted)] mt-0.5">
+        {invoices.length} {invoices.length === 1 ? 'faktura' : 'fakturaer'}{orderValue > 0 && <> · {pct}% av ordreverdi</>}
+      </p>
 
-          <div className="h-2 rounded-full bg-muted overflow-hidden mt-3">
-            <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
-          </div>
+      <div className="h-2 rounded-full bg-muted overflow-hidden mt-3">
+        <div className="h-full rounded-full bg-primary transition-all" style={{ width: `${Math.min(pct, 100)}%` }} />
+      </div>
 
-          <div className="mt-3 space-y-1.5 text-sm">
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-[var(--color-text-secondary)]">Ordreverdi</span>
-              <span className="tabular-nums text-[var(--color-text-primary)]">{fmt(orderValue)}</span>
-            </div>
-            <div className="flex items-baseline justify-between gap-3">
-              <span className="text-[var(--color-text-secondary)]">Gjenstår å fakturere</span>
-              <span className="tabular-nums font-medium text-[var(--color-text-primary)]">{fmt(remaining)}</span>
-            </div>
-          </div>
-        </>
-      )}
+      <div className="mt-3 space-y-1.5 text-sm">
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-[var(--color-text-secondary)]">Ordreverdi</span>
+          <span className="tabular-nums text-[var(--color-text-primary)]">{fmt(orderValue)}</span>
+        </div>
+        <div className="flex items-baseline justify-between gap-3">
+          <span className="text-[var(--color-text-secondary)]">Gjenstår å fakturere</span>
+          <span className="tabular-nums font-medium text-[var(--color-text-primary)]">{fmt(remaining)}</span>
+        </div>
+      </div>
 
       {/* Hurtig-innlegging av fakturert beløp (dato defaulter til i dag). */}
       {open ? (

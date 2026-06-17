@@ -15,6 +15,7 @@ import type {
   Product,
   WeeklyReport,
   WeeklyReportLine,
+  ProjectInvoice,
 } from '@/types'
 
 type WRWithLines = WeeklyReport & { lines: WeeklyReportLine[] }
@@ -30,6 +31,8 @@ interface Props {
   onOpenFremdriftsplan: () => void
   onOpenInternalCosts: () => void
   onOpenInvoices: () => void
+  /** Fakturaer fra useProjectData (delt kilde med heroen). */
+  invoices: ProjectInvoice[]
   /** Fra useProjectData — samme objekt Gantt-en på Fremdriftsplan-fanen får. */
   milestones: GanttMilestone[]
   budgetLines: ProjectBudgetLine[]
@@ -62,6 +65,7 @@ export default function OverviewSection({
   onOpenFremdriftsplan,
   onOpenInternalCosts,
   onOpenInvoices,
+  invoices,
   milestones,
   budgetLines,
   internalCosts,
@@ -154,6 +158,8 @@ export default function OverviewSection({
         <InvoicingSummaryCard
           projectId={projectId}
           orderValue={orderValue}
+          invoices={invoices}
+          onAdded={onProjectUpdated}
           onOpenInvoices={onOpenInvoices}
         />
       </div>

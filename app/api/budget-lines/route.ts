@@ -67,6 +67,7 @@ export async function POST(request: NextRequest) {
     product_id: string
     budget_quantity: number
     line_type?: string
+    phase_id?: string | null
   }
   const qty = Number(body.budget_quantity)
   if (!Number.isFinite(qty) || qty < 0) {
@@ -94,6 +95,7 @@ export async function POST(request: NextRequest) {
     assigned_subcontractor_id: null,
     subcontractor_cost_price_snapshot: 0,
     line_type: (body.line_type as ProjectBudgetLine['line_type']) ?? 'subcontractor_work',
+    phase_id: body.phase_id ?? null,
   }
   const { error } = await sb.from('project_budget_lines').insert(newLine)
   if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
@@ -108,6 +110,7 @@ export async function PUT(request: NextRequest) {
     id: string
     assigned_subcontractor_id?: string | null
     line_type?: string
+    phase_id?: string | null
   }
   if (!body.id) return NextResponse.json({ error: 'id mangler' }, { status: 400 })
 
@@ -128,6 +131,10 @@ export async function PUT(request: NextRequest) {
 
   if (body.line_type !== undefined) {
     updates.line_type = body.line_type as ProjectBudgetLine['line_type']
+  }
+
+  if (body.phase_id !== undefined) {
+    updates.phase_id = body.phase_id
   }
 
   if (body.assigned_subcontractor_id !== undefined) {

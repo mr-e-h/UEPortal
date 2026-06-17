@@ -18,6 +18,7 @@ import type {
   PhaseType,
   Product,
   ProjectPhase,
+  ProjectPhaseVersion,
   Subcontractor,
   SubcontractorProductPrice,
   User,
@@ -151,14 +152,22 @@ export const api = {
       status?: ProjectPhase['status']
       progress_percent?: number
       subcontractor_id?: string | null
+      weight?: number | null
     }) => post<ProjectPhase>('/api/project-phases', body),
     update: (id: string, body: Partial<Pick<ProjectPhase,
-      'phase_type_id' | 'name' | 'start_date' | 'end_date' | 'status' | 'progress_percent' | 'subcontractor_id'>>) =>
+      'phase_type_id' | 'name' | 'start_date' | 'end_date' | 'status' | 'progress_percent' | 'subcontractor_id' | 'weight'>>) =>
       patch<ProjectPhase>(`/api/project-phases/${id}`, body as unknown as Json),
     remove: (id: string) =>
       del<{ ok: true }>(`/api/project-phases/${id}`),
     applyStandard: (projectId: string) =>
       post<{ ok: true }>('/api/project-phases/apply-standard', { project_id: projectId }),
+  },
+  // ── Fremdriftsplan: versjonshistorikk (snapshot per lagring) ───────────────
+  projectPhaseVersions: {
+    list: (projectId: string) =>
+      get<ProjectPhaseVersion[]>(`/api/project-phases/versions?project_id=${encodeURIComponent(projectId)}`),
+    snapshot: (projectId: string) =>
+      post<{ skipped?: boolean }>('/api/project-phases/versions', { project_id: projectId }),
   },
   // ── Fremdriftsplan: milepæler (legacy Gantt) ──────────────────────────────
   milestones: {

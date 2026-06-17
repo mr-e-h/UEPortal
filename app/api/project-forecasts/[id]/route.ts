@@ -3,17 +3,16 @@ import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import type { ProjectForecast, ForecastStatus } from '@/types'
 
+// expected_profit + *_snapshot er bevisst utelatt: profit beregnes server-side
+// fra de fem økonomi-feltene (se PATCH), og snapshot-feltene er fjernet (ble
+// aldri lest). Klienten kan ikke sette noen av dem direkte lenger.
 const EDITABLE_FIELDS: (keyof ProjectForecast)[] = [
   'project_manager_id',
-  'total_sales_value_snapshot',
-  'already_invoiced_snapshot',
-  'remaining_invoice_value_snapshot',
   'expected_revenue',
   'expected_ue_cost',
   'expected_internal_cost',
   'expected_other_cost',
   'risk_amount',
-  'expected_profit',
   'comment',
   'status',
   'submitted_at',
@@ -54,12 +53,13 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   const body = await request.json() as Partial<ProjectForecast>
 
   const sb = getSupabaseAdmin()
-  // PM gate via the forecast's project.
+  // PM gate via the forecast's project. Henter også de fem økonomi-feltene så
+  // expected_profit kan beregnes på nytt fra den sammenslåtte tilstanden.
   const { data: existing } = await sb
     .from('project_forecasts')
-    .select('project_id')
+    .select('project_id, expected_revenue, expected_ue_cost, expected_internal_cost, expected_other_cost, risk_amount')
     .eq('id', params.id)
-    .maybeSingle<{ project_id: string }>()
+    .maybeSingle<Pick<ProjectForecast, 'project_id' | 'expected_revenue' | 'expected_ue_cost' | 'expected_internal_cost' | 'expected_other_cost' | 'risk_amount'>>()
   if (existing) {
     const denied = await ensureProjectWritable(auth.user, existing.project_id)
     if (denied) return denied
@@ -72,6 +72,11 @@ export async function PATCH(request: NextRequest, { params }: { params: { id: st
   if (updates.status && !VALID_STATUSES.includes(updates.status)) {
     return NextResponse.json({ error: 'Ugyldig status' }, { status: 400 })
   }
+  // expected_profit er alltid avledet (aldri klient-styrt): inntekt − UE-kost −
+  // internkost − annen kost − risiko, fra eksisterende verdier flettet med endringene.
+  const m: Partial<ProjectForecast> = { ...(existing ?? {}), ...updates }
+  updates.expected_profit =
+    (m.expected_revenue ?? 0) - (m.expected_ue_cost ?? 0) - (m.expected_internal_cost ?? 0) - (m.expected_other_cost ?? 0) - (m.risk_amount ?? 0)
 
   const { data, error } = await sb
     .from('project_forecasts')

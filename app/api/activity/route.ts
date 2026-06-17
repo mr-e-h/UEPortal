@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSession } from '@/lib/auth'
-import { isAdmin, isSub, canSeeCustomerEconomics, getProjectScope, requireStaff } from '@/lib/api-guard'
+import { isAdmin, isSub, canSeeCustomerEconomics, getProjectScope, getProjectWriteScope, requireStaff } from '@/lib/api-guard'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import type { ActivityEntry } from '@/types'
 
@@ -127,9 +127,10 @@ export async function POST(request: NextRequest) {
   }
 
   // Scope gate: PM and byggeleder are project-scoped — verify the entity they
-  // comment on lives on one of their assigned projects (the GET handler does
-  // the same). main/company (scope === null) may comment on anything.
-  const scope = await getProjectScope(auth.user)
+  // comment on lives on one of their assigned projects. Bruker WRITE-scope:
+  // å skrive en kommentar er en mutasjon, så rene innsyns-deltakere skal ikke
+  // kunne kommentere. main/company (scope === null) may comment on anything.
+  const scope = await getProjectWriteScope(auth.user)
   if (scope) {
     const table = body.entity_type === 'change_order' ? 'change_orders' : 'weekly_reports'
     const { data: entity } = await getSupabaseAdmin()

@@ -77,6 +77,7 @@ export async function POST(_req: NextRequest, { params }: { params: { id: string
   const rows = template.map((t, idx) => ({
     project_id: params.id,
     label: t.label,
+    is_section: t.is_section,
     sort_order: idx * 10,
     completed_at: null,
     completed_by: null,

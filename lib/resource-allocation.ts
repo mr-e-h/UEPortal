@@ -165,6 +165,51 @@ export function computeSpanISO(
   }
 }
 
+/**
+ * Fordel den månedlige ressurspoolen på prosjekter, vektet på hvert prosjekts
+ * MÅNEDLIGE omsetning (ikke total), over horisonten [startMonth, endMonth].
+ *
+ * monthlyRevenueByProject: projectId → (monthIndex → revenue)
+ *   Må inneholde alle aktive prosjekter for at vektingen skal bli riktig.
+ *
+ * Returnerer: projectId → (monthIndex → { hours, cost })
+ *   Kun måneder der prosjektet faktisk får tildelt > 0 er inkludert i den
+ *   indre mapen — men kallere kan trygt slå opp med ?? { hours: 0, cost: 0 }.
+ *
+ * Ingen deling på 0: måneder der totalRevenue for alle prosjekter = 0 gir
+ * alle prosjekter hours = 0 og cost = 0 (ikke inkludert i resultatet).
+ */
+export function allocatePoolByMonthlyRevenue(
+  monthlyRevenueByProject: Map<string, Map<number, number>>,
+  pool: MonthlyPool,
+  startMonth: number,
+  endMonth: number,
+): Map<string, Map<number, { hours: number; cost: number }>> {
+  const result = new Map<string, Map<number, { hours: number; cost: number }>>()
+
+  for (let mi = startMonth; mi <= endMonth; mi++) {
+    // Sum total revenue across all projects this month
+    let totalRev = 0
+    for (const revByMonth of Array.from(monthlyRevenueByProject.values())) {
+      totalRev += revByMonth.get(mi) ?? 0
+    }
+    if (totalRev <= 0) continue
+
+    for (const [projectId, revByMonth] of Array.from(monthlyRevenueByProject.entries())) {
+      const rev = revByMonth.get(mi) ?? 0
+      if (rev <= 0) continue
+      const weight = rev / totalRev
+      const hours = pool.hoursPerMonth * weight
+      const cost = pool.costPerMonth * weight
+      let inner = result.get(projectId)
+      if (!inner) { inner = new Map(); result.set(projectId, inner) }
+      inner.set(mi, { hours, cost })
+    }
+  }
+
+  return result
+}
+
 /** Én avstemt måned: faktisk internkost (timer × snittkost) for måneden. */
 export interface MonthlyActual {
   year: number

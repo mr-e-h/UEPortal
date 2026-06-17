@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getDeletedProjectIds } from '@/lib/data'
-import { requireAdmin, getProjectScope } from '@/lib/api-guard'
+import { requireAdmin, getProjectScope, ensureProjectWritable } from '@/lib/api-guard'
 import type { ReportLine } from '@/types'
 
 export async function GET(request: NextRequest) {
@@ -44,6 +44,9 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     )
   }
+  // Skrive-port: PL/byggeleder kun på tildelte prosjekter (deltakere blokkeres).
+  const denied = await ensureProjectWritable(auth.user, body.project_id)
+  if (denied) return denied
   const newLine: ReportLine = {
     id: randomUUID(),
     ...body,

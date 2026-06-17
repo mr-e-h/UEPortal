@@ -14,10 +14,13 @@ import type {
   ProjectInternalCostEntry,
   SubcontractorProductPrice,
   GanttMilestone,
+  ProjectPhase,
+  PhaseType,
   BudgetVersion,
   ProjectMonthPlan,
   WeeklyReport,
   WeeklyReportLine,
+  ProjectInvoice,
 } from '@/types'
 
 export type WRWithLines = WeeklyReport & { lines: WeeklyReportLine[] }
@@ -60,9 +63,12 @@ export function useProjectData(id: string) {
   const [weeklyReportsWL, setWeeklyReportsWL] = useState<WRWithLines[]>([])
   const [subPrices, setSubPrices] = useState<SubcontractorProductPrice[]>([])
   const [milestones, setMilestones] = useState<GanttMilestone[]>([])
+  const [phases, setPhases] = useState<ProjectPhase[]>([])
+  const [phaseTypes, setPhaseTypes] = useState<PhaseType[]>([])
   const [budgetVersions, setBudgetVersions] = useState<BudgetVersion[]>([])
   const [monthPlans, setMonthPlans] = useState<ProjectMonthPlan[]>([])
   const [projectManagers, setProjectManagers] = useState<ProjectManagerRow[]>([])
+  const [invoices, setInvoices] = useState<ProjectInvoice[]>([])
   const [loading, setLoading] = useState(true)
 
   const fetchAll = useCallback(async () => {
@@ -84,6 +90,9 @@ export function useProjectData(id: string) {
       fetch(`/api/budget-versions?project_id=${id}`),
       fetch(`/api/project-month-plans?project_id=${id}`),
       fetch(`/api/project-managers?project_id=${id}`),
+      fetch(`/api/project-phases?project_id=${id}`),
+      fetch('/api/phase-types'),
+      fetch(`/api/invoices?project_id=${id}`),
     ])
 
     if (responses.some((r) => r.status === 401)) {
@@ -91,7 +100,7 @@ export function useProjectData(id: string) {
       return
     }
 
-    const [proj, prods, bls, rls, pSubs, subs, cos, ics, wrls, sps, ms, bv, mp, pms] = await Promise.all(
+    const [proj, prods, bls, rls, pSubs, subs, cos, ics, wrls, sps, ms, bv, mp, pms, ph, pt, inv] = await Promise.all(
       responses.map((r) => r.json())
     )
 
@@ -108,9 +117,12 @@ export function useProjectData(id: string) {
     setWeeklyReportsWL(safeArr(wrls))
     setSubPrices(safeArr(sps))
     setMilestones(safeArr(ms))
+    setPhases(safeArr(ph))
+    setPhaseTypes(safeArr(pt))
     setBudgetVersions(safeArr(bv))
     setMonthPlans(safeArr(mp))
     setProjectManagers(safeArr(pms))
+    setInvoices(safeArr(inv))
     setLoading(false)
   }, [id, router])
 
@@ -185,9 +197,12 @@ export function useProjectData(id: string) {
     weeklyReportsWL,
     subPrices,
     milestones,
+    phases,
+    phaseTypes,
     budgetVersions,
     monthPlans,
     projectManagers,
+    invoices,
     // state
     loading,
     adminName,

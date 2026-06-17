@@ -30,7 +30,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const body = await request.json() as { label?: string }
+  const body = await request.json() as { label?: string; is_section?: boolean }
   const label = body.label?.trim()
   if (!label) return NextResponse.json({ error: 'Tekst er påkrevd' }, { status: 400 })
 
@@ -45,6 +45,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     .insert({
       project_type_id: params.id,
       label,
+      is_section: !!body.is_section,
       sort_order: (count ?? 0) * 10, // *10 leaves gaps for drag-to-insert later
     })
     .select()
@@ -57,11 +58,13 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  const body = await request.json() as { items?: Array<{ label: string }> }
+  const body = await request.json() as { items?: Array<{ label?: string; is_section?: boolean }> }
   if (!Array.isArray(body.items)) {
     return NextResponse.json({ error: 'items[] mangler' }, { status: 400 })
   }
-  const cleaned = body.items.map((i) => (i.label ?? '').trim()).filter((s) => s.length > 0)
+  const cleaned = body.items
+    .map((i) => ({ label: (i.label ?? '').trim(), is_section: !!i.is_section }))
+    .filter((i) => i.label.length > 0)
 
   const sb = getSupabaseAdmin()
   // Wipe + re-insert is simpler than diffing and acceptable here — the
@@ -76,9 +79,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
 
   if (cleaned.length === 0) return NextResponse.json([])
 
-  const rows = cleaned.map((label, idx) => ({
+  const rows = cleaned.map((it, idx) => ({
     project_type_id: params.id,
-    label,
+    label: it.label,
+    is_section: it.is_section,
     sort_order: idx * 10,
   }))
   const { data, error } = await sb

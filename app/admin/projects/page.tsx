@@ -5,6 +5,7 @@ import { getEffectiveUser } from '@/lib/view-as'
 import { ADMIN_ROLES, PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { getProjectScope } from '@/lib/api-guard'
 import { EM_NEEDS_ACTION, WR_NEEDS_ACTION, attentionCounts } from '@/lib/attention'
+import { projectHealth } from '@/lib/project-health'
 import type { Project, ProjectBudgetLine, ProjectSubcontractor } from '@/types'
 import Button from '@/components/ui/Button'
 import ProjectsOverviewClient, { type ProjectCardData } from '@/components/admin/ProjectsOverviewClient'
@@ -147,6 +148,16 @@ export default async function ProjectsPage() {
     }
   }
 
+  // Fakturert per prosjekt (sum av invoices.amount) — KUN økonomiroller, samme
+  // maskering som omsetning. Brukes til «fakturert %» og kolonnen i tabellen.
+  const invoicedByProject = new Map<string, number>()
+  if (canSeeEconomy) {
+    const { data: invData } = await sb.from('invoices').select('project_id, amount')
+    for (const inv of (invData ?? []) as Array<{ project_id: string; amount: number | null }>) {
+      invoicedByProject.set(inv.project_id, (invoicedByProject.get(inv.project_id) ?? 0) + (inv.amount ?? 0))
+    }
+  }
+
   // ── Kortdata (økonomifritt) ─────────────────────────────────────────────
   const today = new Date().toISOString().split('T')[0]
   const cards: ProjectCardData[] = projects.map((p) => {
@@ -173,6 +184,20 @@ export default async function ProjectsPage() {
     const pendingCO = pendingCOByProject.get(p.id) ?? 0
     const pendingWR = pendingWRByProject.get(p.id) ?? 0
     const openTasks = openChecklistByProject.get(p.id) ?? 0
+    const attention = attentionCounts({ changeOrders: pendingCO, weeklyReports: pendingWR, openTasks })
+
+    // Tidsandel: hvor langt i prosjektperioden vi er (alltid når datoer finnes),
+    // uavhengig av om fremdriften måles på volum eller tid. Brukes til
+    // helse-amplen og fremdrift-vs-tid-baren.
+    const timeProgress = p.start_date && p.end_date && p.end_date > p.start_date
+      ? Math.max(0, Math.min(100, Math.round(((Date.parse(today) - Date.parse(p.start_date)) / (Date.parse(p.end_date) - Date.parse(p.start_date))) * 100)))
+      : null
+    const workProgress = progressSource === 'volum' ? progress : null
+    // Helse styres av handlingskrevende saker (EM + ukesrapporter) — IKKE åpne
+    // sjekklistepunkter, som er normalt løpende arbeid og ville gjort alt gult.
+    const health = projectHealth({
+      status: p.status, workProgress, timeProgress, endDate: p.end_date, attentionTotal: pendingCO + pendingWR, today,
+    })
 
     return {
       id: p.id,
@@ -187,13 +212,12 @@ export default async function ProjectsPage() {
       sub_names: subNamesByProject.get(p.id) ?? [],
       progress,
       progress_source: progressSource,
+      time_progress: timeProgress,
+      health,
       // null for byggeleder (ikke beregnet) → aldri i serialisert kortdata.
       revenue: canSeeEconomy ? (revenueByProject.get(p.id) ?? 0) : null,
-      attention: attentionCounts({
-        changeOrders: pendingCO,
-        weeklyReports: pendingWR,
-        openTasks,
-      }),
+      invoiced: canSeeEconomy ? (invoicedByProject.get(p.id) ?? 0) : null,
+      attention,
     }
   })
 
@@ -220,6 +244,7 @@ export default async function ProjectsPage() {
         restProjects={rest}
         blCounts={blCounts}
         subCounts={subCounts}
+        meName={me.full_name}
       />
     </div>
   )

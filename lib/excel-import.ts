@@ -1,4 +1,5 @@
 import { readJson, writeJson } from '@/lib/data'
+import { isLumpSumCode } from '@/lib/lump-sum-codes'
 import type { Product, ProjectBudgetLine } from '@/types'
 import type { ParsedExcelLine } from '@/lib/excel'
 
@@ -10,12 +11,21 @@ export async function importExcelLines(projectId: string, county: string, rawLin
   const products = await readJson<Product>('products.json')
   const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
 
-  // Phase 1: merge duplicate rows only when name AND price match exactly
-  // Rows with same name but different prices are kept as separate line items
+  // Phase 1: merge duplicate rows only when name AND price match exactly.
+  // Rows with same name but different prices are kept as separate line items.
+  //
+  // FASTPRIS-FELLE: rundsum-/fastpris-koder (lump-sum) får ALLE pris = 1 kr av
+  // parseren (beløpet ligger i antall). Flere fastpris-linjer med samme navn —
+  // f.eks. tre «Estimert pris for tilleggsarbeid» à 25000/19000/10324 — ville da
+  // fått identisk navn+pris-nøkkel og kollapset til ÉN linje (antall summert).
+  // Totalen blir riktig, men linjene forsvinner. Derfor tar vi med beløpet
+  // (budget_quantity) i nøkkelen for lump-sum-linjer, så distinkte fastpriser
+  // beholdes som egne linjer.
   const mergedMap = new Map<string, ParsedExcelLine>()
   for (const line of rawLines) {
     if (!line.product_name || line.unit_price <= 0) continue
-    const key = `${norm(line.product_name)}__${line.unit_price}`
+    const lumpSumDiscriminator = isLumpSumCode(line.product_code) ? `__ls${line.budget_quantity}` : ''
+    const key = `${norm(line.product_name)}__${line.unit_price}${lumpSumDiscriminator}`
     const existing = mergedMap.get(key)
     if (existing) {
       mergedMap.set(key, { ...existing, budget_quantity: existing.budget_quantity + line.budget_quantity })

@@ -134,6 +134,10 @@ export default function PhasesMiniStrip({
   const [loaded, setLoaded] = useState(false)
   const [error, setError] = useState('')
   const [saving, setSaving] = useState(false)
+  // Ansvar-tabellen: hvilken fase lagrer akkurat nå (deaktiverer dens nedtrekk).
+  const [assigningId, setAssigningId] = useState<string | null>(null)
+  // Vekt-kolonnen: hvilken fase lagrer vekt akkurat nå.
+  const [weightSavingId, setWeightSavingId] = useState<string | null>(null)
 
   // UE-er tildelt dette prosjektet: id → company_name
   const [projectUes, setProjectUes] = useState<{ id: string; company_name: string }[]>([])
@@ -177,6 +181,13 @@ export default function PhasesMiniStrip({
     ])
     setPhases(Array.isArray(p) ? p : [])
     setTypes(Array.isArray(t) ? t : [])
+  }
+
+  // Auto-arkiver et øyeblikksbilde av planen etter en lagring. Fire-and-forget
+  // (feiler stille — historikken er sekundær til selve lagringen). Server-siden
+  // hopper over hvis planen er uendret, så ingen tomme logglinjer.
+  function snapshotVersion() {
+    api.projectPhaseVersions.snapshot(projectId).catch(() => {})
   }
 
   useEffect(() => {
@@ -340,7 +351,6 @@ export default function PhasesMiniStrip({
               end: editDraft.end || null,
               status: editDraft.status,
               progress: Number(editDraft.progress) || 0,
-              subcontractor_id: editDraft.subcontractor_id || null,
             }
           : { ...prev[row.id], status: editDraft.status, progress: Number(editDraft.progress) || 0 })
         : { ...prev[row.id], name: editDraft.name, start: editDraft.start, end: editDraft.end || editDraft.start },
@@ -393,7 +403,6 @@ export default function PhasesMiniStrip({
                 ...(d.end !== undefined ? { end_date: d.end } : {}),
                 ...(d.status !== undefined ? { status: d.status } : {}),
                 ...(d.progress !== undefined ? { progress_percent: d.progress } : {}),
-                ...('subcontractor_id' in d ? { subcontractor_id: d.subcontractor_id ?? null } : {}),
               }
             : {
                 ...(d.status !== undefined ? { status: d.status } : {}),
@@ -415,6 +424,7 @@ export default function PhasesMiniStrip({
     }
 
     await fetchPhases()
+    snapshotVersion()
     if (touchedMilestones) await onMilestonesChanged?.()
     setSaving(false)
 
@@ -457,6 +467,7 @@ export default function PhasesMiniStrip({
     setShowAdd(false)
     setAddDraft(emptyDraft(types[0]?.id))
     await fetchPhases()
+    snapshotVersion()
   }
 
   async function applyStandard() {
@@ -470,6 +481,42 @@ export default function PhasesMiniStrip({
     }
     setSaving(false)
     await fetchPhases()
+    snapshotVersion()
+  }
+
+  // ── Ansvar-tabell: tildel ansvarlig UE per fase (lagrer med en gang) ──
+  async function assignUe(phaseId: string, subId: string) {
+    const value = subId || null
+    setAssigningId(phaseId)
+    setError('')
+    // Optimistisk: oppdater lokalt med en gang så nedtrekket føles direkte.
+    setPhases((prev) => prev.map((p) => (p.id === phaseId ? { ...p, subcontractor_id: value } : p)))
+    try {
+      await api.projectPhases.update(phaseId, { subcontractor_id: value })
+      snapshotVersion()
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Kunne ikke lagre ansvarlig'))
+      await fetchPhases() // tilbakestill til server-sannhet ved feil
+    } finally {
+      setAssigningId(null)
+    }
+  }
+
+  // ── Vekt-kolonne: prognose-vekt per fase (lagrer med en gang) ────────
+  async function assignWeight(phaseId: string, weight: number | null) {
+    setWeightSavingId(phaseId)
+    setError('')
+    // Optimistisk: oppdater lokalt med en gang.
+    setPhases((prev) => prev.map((p) => (p.id === phaseId ? { ...p, weight } : p)))
+    try {
+      await api.projectPhases.update(phaseId, { weight })
+      snapshotVersion()
+    } catch (err) {
+      setError(apiErrorMessage(err, 'Kunne ikke lagre vekt'))
+      await fetchPhases() // tilbakestill til server-sannhet ved feil
+    } finally {
+      setWeightSavingId(null)
+    }
   }
 
   const inputCls = 'px-2 py-1 text-xs border border-border rounded bg-card text-[var(--color-text-primary)]'
@@ -595,6 +642,8 @@ export default function PhasesMiniStrip({
             </div>
             <span className="w-[8.5rem] flex-none" />
             <span className="w-9 flex-none" />
+            <span className="w-40 flex-none text-[9px] text-[var(--color-text-muted)] uppercase tracking-wide">Ansvarlig</span>
+            <span className="w-16 flex-none text-[9px] text-[var(--color-text-muted)] uppercase tracking-wide text-right" title="Prognose-vekt: andel av inntekt/UE-kost fasen står for (tom = auto/varighet)">Vekt</span>
             {editMode && <span className="w-12 flex-none" />}
           </div>
           <div className={`relative space-y-1.5 ${dragging ? 'select-none cursor-ew-resize' : ''}`}>
@@ -610,13 +659,8 @@ export default function PhasesMiniStrip({
             return (
               <div key={r.id}>
                 <div className={`flex items-center gap-2 ${isDeleted ? 'opacity-40' : ''}`}>
-                  <span className={`w-28 flex-none flex flex-col min-w-0 ${isDeleted ? 'line-through' : ''}`}>
-                    <span className="text-xs text-[var(--color-text-secondary)] truncate" title={r.label}>{r.label}</span>
-                    {r.kind === 'phase' && r.phase?.subcontractor_id && (
-                      <span className="text-[10px] text-[var(--color-text-muted)] truncate leading-tight" title={ueMap.get(r.phase.subcontractor_id) ?? r.phase.subcontractor_id}>
-                        {ueMap.get(r.phase.subcontractor_id) ?? r.phase.subcontractor_id}
-                      </span>
-                    )}
+                  <span className={`w-28 flex-none min-w-0 ${isDeleted ? 'line-through' : ''}`}>
+                    <span className="block text-xs text-[var(--color-text-secondary)] truncate" title={r.label}>{r.label}</span>
                   </span>
                   <div data-track className="flex-1 relative h-3 rounded bg-muted overflow-hidden">
                     {/* Svakt måneds-rutenett bortover + «nå»-strek, aligna med
@@ -642,6 +686,61 @@ export default function PhasesMiniStrip({
                   </span>
                   <span className="w-9 flex-none text-right text-[10px] text-[var(--color-text-muted)] tabular-nums">
                     {r.pctLabel}
+                  </span>
+                  {/* Ansvarlig UE — egen kolonne, alltid redigerbar (lagrer straks).
+                      Milepæler har ingen UE. Byggeleder ser navn (kan ikke tildele). */}
+                  <span className="w-40 flex-none">
+                    {r.kind === 'phase' && r.phase && (
+                      canManage ? (
+                        <select
+                          value={r.phase.subcontractor_id ?? ''}
+                          onChange={(e) => assignUe(r.phase!.id, e.target.value)}
+                          disabled={assigningId === r.phase.id}
+                          aria-label={`Ansvarlig for ${r.label}`}
+                          className={`w-full px-1.5 py-1 text-[11px] border rounded focus:outline-none focus:border-primary disabled:opacity-50 ${
+                            r.phase.subcontractor_id
+                              ? 'border-border bg-card text-[var(--color-text-primary)]'
+                              : 'border-amber-300 bg-amber-50 text-amber-800'
+                          }`}
+                        >
+                          <option value="">Ingen ansvarlig</option>
+                          {projectUes.map((u) => <option key={u.id} value={u.id}>{u.company_name}</option>)}
+                        </select>
+                      ) : (
+                        <span className="block text-[10px] text-[var(--color-text-muted)] truncate" title={r.phase.subcontractor_id ? (ueMap.get(r.phase.subcontractor_id) ?? '') : ''}>
+                          {r.phase.subcontractor_id ? (ueMap.get(r.phase.subcontractor_id) ?? '—') : '—'}
+                        </span>
+                      )
+                    )}
+                  </span>
+                  {/* Vekt — prognose-vekt per fase, alltid redigerbar (lagrer straks).
+                      Tom = auto (fasens varighet). Milepæler har ingen vekt. */}
+                  <span className="w-16 flex-none">
+                    {r.kind === 'phase' && r.phase && (
+                      canManage ? (
+                        <input
+                          type="number"
+                          min={0}
+                          step={1}
+                          defaultValue={r.phase.weight ?? ''}
+                          onBlur={(e) => {
+                            const raw = e.target.value.trim()
+                            const val = raw === '' ? null : Number(raw)
+                            if (val !== null && (!Number.isFinite(val) || val < 0)) return
+                            if (val !== (r.phase!.weight ?? null)) assignWeight(r.phase!.id, val)
+                          }}
+                          disabled={weightSavingId === r.phase.id}
+                          placeholder="auto"
+                          aria-label={`Vekt for ${r.label}`}
+                          title="Prognose-vekt: andel av inntekt/UE-kost. Tom = auto (varighet)"
+                          className="w-full px-1.5 py-1 text-[11px] text-right border border-border rounded bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary disabled:opacity-50"
+                        />
+                      ) : (
+                        <span className="block text-[10px] text-[var(--color-text-muted)] text-right tabular-nums">
+                          {r.phase.weight ?? 'auto'}
+                        </span>
+                      )
+                    )}
                   </span>
                   {editMode && (
                     <span className="w-12 flex-none flex items-center justify-end gap-0.5 print:hidden">
@@ -697,12 +796,6 @@ export default function PhasesMiniStrip({
                         </label>
                         <label className="text-[10px] text-[var(--color-text-muted)] flex flex-col gap-0.5">Navn
                           <input type="text" value={editDraft.name} onChange={(e) => setEditDraft((d) => ({ ...d, name: e.target.value }))} placeholder="Valgfritt" className={`${inputCls} w-28`} />
-                        </label>
-                        <label className="text-[10px] text-[var(--color-text-muted)] flex flex-col gap-0.5">UE
-                          <select value={editDraft.subcontractor_id} onChange={(e) => setEditDraft((d) => ({ ...d, subcontractor_id: e.target.value }))} className={inputCls}>
-                            <option value="">Ingen</option>
-                            {projectUes.map((u) => <option key={u.id} value={u.id}>{u.company_name}</option>)}
-                          </select>
                         </label>
                       </>
                     )}

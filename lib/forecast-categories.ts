@@ -1,6 +1,6 @@
 import type { ProjectMonthPlan, TimeType } from '@/types'
 
-export type ForecastField = 'revenue' | 'ueCost' | 'ueHours' | 'internalCost' | 'internalHours' | 'otherCost' | 'risk'
+export type ForecastField = 'revenue' | 'ueCost' | 'internalCost' | 'internalHours' | 'otherCost' | 'risk'
 export type ForecastUnit = 'kr' | 'timer'
 
 export interface ForecastCategory {
@@ -14,7 +14,6 @@ export interface ForecastCategory {
 export const FORECAST_CATEGORIES: ForecastCategory[] = [
   { key: 'revenue',       label: 'Inntekt',         color: 'text-green-700',  unit: 'kr',    planKey: 'expected_revenue' },
   { key: 'ueCost',        label: 'UE-kostnad',      color: 'text-orange-600', unit: 'kr',    planKey: 'ue_cost' },
-  { key: 'ueHours',       label: 'UE-timer',        color: 'text-orange-400', unit: 'timer', planKey: 'ue_hours' },
   { key: 'internalCost',  label: 'Internkostnad',   color: 'text-purple-600', unit: 'kr',    planKey: 'internal_cost' },
   { key: 'internalHours', label: 'Interne timer',   color: 'text-purple-400', unit: 'timer', planKey: 'internal_hours' },
   { key: 'otherCost',     label: 'Annen kostnad',   color: 'text-gray-600',   unit: 'kr',    planKey: 'other_cost' },

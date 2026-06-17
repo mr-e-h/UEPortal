@@ -52,7 +52,6 @@ export async function POST(request: NextRequest) {
     expected_revenue: r.expected_revenue ?? 0,
     internal_hours: r.internal_hours ?? 0,
     internal_cost: r.internal_cost ?? 0,
-    ue_hours: r.ue_hours ?? 0,
     ue_cost: r.ue_cost ?? 0,
     other_cost: r.other_cost ?? 0,
     risk: r.risk ?? 0,

@@ -52,17 +52,9 @@ export async function POST(request: NextRequest) {
   }
 
   const sb = getSupabaseAdmin()
-  // Idempotent: return existing assignment if already there.
-  const { data: existing } = await sb
-    .from('project_managers')
-    .select('*')
-    .eq('project_id', body.project_id)
-    .eq('user_id', body.user_id)
-    .maybeSingle<ProjectManagerAssignment>()
-  if (existing) return NextResponse.json(existing)
-
   // Reject if user is not a project_manager role — assigning main/company
   // is meaningless (they already see all projects) and could confuse the UI.
+  // Valideres FØR vi muterer, så en ugyldig tildeling ikke fjerner dagens PL.
   const { data: user } = await sb
     .from('users')
     .select('role')
@@ -75,6 +67,9 @@ export async function POST(request: NextRequest) {
       { status: 400 },
     )
   }
+
+  // Nøyaktig ÉN prosjektleder per prosjekt: erstatt en evt. eksisterende.
+  await sb.from('project_managers').delete().eq('project_id', body.project_id)
 
   const { data, error } = await sb
     .from('project_managers')

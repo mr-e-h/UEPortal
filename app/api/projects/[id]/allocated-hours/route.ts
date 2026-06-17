@@ -1,33 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin, getProjectScope } from '@/lib/api-guard'
-import { budgetSalesValue, emCustomerValue } from '@/lib/project-economy'
 import {
-  monthlyPool, buildMonthGrid, monthIndexFromISO, computeSpanISO, type ProjectSpan,
+  monthlyPool,
+  allocatePoolByMonthlyRevenue,
+  type MonthlyPool,
 } from '@/lib/resource-allocation'
-import type { Project, ProjectBudgetLine, ChangeOrder, InternalResource } from '@/types'
-
-type DateRow = { project_id: string; start_date: string | null; end_date: string | null }
-
-function groupByProject(rows: DateRow[]): Map<string, DateRow[]> {
-  const m = new Map<string, DateRow[]>()
-  for (const r of rows) {
-    const arr = m.get(r.project_id)
-    if (arr) arr.push(r); else m.set(r.project_id, [r])
-  }
-  return m
-}
+import { distributeForecastFromPhases, type PhaseSpanWeight } from '@/lib/forecast-distribution'
+import type { InternalResource } from '@/types'
 
 /**
  * GET /api/projects/[id]/allocated-hours
  *
- * Prosjektets TILTENKTE interne timer — ikke et manuelt tall, men beregnet:
- * den interne timepoolen fordeles hver måned på de aktive prosjektene vektet på
- * omsetning (ordreverdi), nøyaktig som Ressurser-siden. Summen av prosjektets
- * andel over hele varigheten (start→slutt fra fremdriftsplanen) er tallet.
+ * Returnerer prosjektets tildelte interne timer fra ressurspoolen, fordelt per
+ * måned vektet på prosjektets månedlige omsetning (se ØKONOMIMODELL.md pkt 3).
  *
- * Returnerer { hours: number | null }. null når prosjektet ikke er aktivt eller
- * mangler datoer (da er det ikke noe å fordele på).
+ * Responsen er BAKOVERKOMPATIBEL: { hours, monthly }
+ *   hours:   number | null — total over hele varigheten (brukes av ProjectSetupCard)
+ *   monthly: Array<{ year, month, hours, cost }> — per-måned, sortert kronologisk
+ *
+ * null returneres (hours: null, monthly: []) når prosjektet ikke er aktivt
+ * eller mangler fremdriftsplan-faser.
  */
 export async function GET(_request: NextRequest, { params }: { params: { id: string } }) {
   const auth = await requireAdmin()
@@ -39,43 +32,163 @@ export async function GET(_request: NextRequest, { params }: { params: { id: str
   }
 
   const sb = getSupabaseAdmin()
-  const [projRes, blRes, coRes, resRes, phRes, msRes] = await Promise.all([
-    sb.from('projects').select('id, name, start_date, end_date').eq('status', 'active').neq('deleted', true),
-    sb.from('project_budget_lines').select('project_id, budget_quantity, customer_price_snapshot, subcontractor_cost_price_snapshot'),
-    sb.from('change_orders').select('project_id, status, total_customer_value, total_cost').eq('status', 'approved'),
+
+  // Hent alle aktive prosjekter + nødvendig data for vekting
+  const [projRes, blRes, coRes, phRes, resRes] = await Promise.all([
+    sb
+      .from('projects')
+      .select('id, name, start_date, end_date')
+      .eq('status', 'active')
+      .neq('deleted', true),
+    // Budget lines: trenger phase_id for avledet fasevekt (ØKONOMIMODELL.md 1b)
+    sb
+      .from('project_budget_lines')
+      .select('id, project_id, budget_quantity, customer_price_snapshot, subcontractor_cost_price_snapshot, phase_id, source'),
+    // Godkjente change orders: bidrar til budgetRevenue
+    sb
+      .from('change_orders')
+      .select('project_id, total_customer_value')
+      .eq('status', 'approved'),
+    // Faser: trenger weight, start_date, end_date, project_id, id
+    sb
+      .from('project_phases')
+      .select('id, project_id, start_date, end_date, weight'),
     sb.from('internal_resources').select('*'),
-    sb.from('project_phases').select('project_id, start_date, end_date'),
-    sb.from('milestones').select('project_id, start_date, end_date'),
   ])
 
-  const projects = (projRes.data ?? []) as Array<Pick<Project, 'id' | 'name' | 'start_date' | 'end_date'>>
-  const budgetLines = (blRes.data ?? []) as ProjectBudgetLine[]
-  const approvedEMs = (coRes.data ?? []) as ChangeOrder[]
-  const resources = (resRes.data ?? []) as InternalResource[]
-  const phasesByProject = groupByProject((phRes.data ?? []) as DateRow[])
-  const milestonesByProject = groupByProject((msRes.data ?? []) as DateRow[])
+  type ProjectRow = { id: string; name: string; start_date: string | null; end_date: string | null }
+  type BudgetLineRow = {
+    id: string
+    project_id: string
+    budget_quantity: number
+    customer_price_snapshot: number
+    subcontractor_cost_price_snapshot: number
+    phase_id?: string | null
+    source?: string | null
+  }
+  type ChangeOrderRow = { project_id: string; total_customer_value: number }
+  type PhaseRow = { id: string; project_id: string; start_date: string; end_date: string | null; weight: number | null }
 
-  // Bygg span + omsetning for alle aktive prosjekter (grunnlag for vektingen).
-  const spans: ProjectSpan[] = []
-  for (const p of projects) {
-    const span = computeSpanISO(p, phasesByProject.get(p.id) ?? [], milestonesByProject.get(p.id) ?? [])
-    if (!span) continue
-    const lines = budgetLines.filter((bl) => bl.project_id === p.id)
-    const ems = approvedEMs.filter((co) => co.project_id === p.id)
-    spans.push({
-      id: p.id,
-      name: p.name,
-      revenue: budgetSalesValue(lines) + emCustomerValue(ems),
-      startMonth: monthIndexFromISO(span.start),
-      endMonth: monthIndexFromISO(span.end),
-    })
+  const projects = (projRes.data ?? []) as ProjectRow[]
+  const budgetLines = (blRes.data ?? []) as BudgetLineRow[]
+  const approvedCOs = (coRes.data ?? []) as ChangeOrderRow[]
+  const phases = (phRes.data ?? []) as PhaseRow[]
+  const resources = (resRes.data ?? []) as InternalResource[]
+
+  const pool: MonthlyPool = monthlyPool(resources)
+
+  // Grupper faser og budsjettlinjer per prosjekt
+  const phasesByProject = new Map<string, PhaseRow[]>()
+  for (const ph of phases) {
+    const arr = phasesByProject.get(ph.project_id)
+    if (arr) arr.push(ph); else phasesByProject.set(ph.project_id, [ph])
   }
 
-  const self = spans.find((s) => s.id === params.id)
-  if (!self) return NextResponse.json({ hours: null })
+  const linesByProject = new Map<string, BudgetLineRow[]>()
+  for (const bl of budgetLines) {
+    const arr = linesByProject.get(bl.project_id)
+    if (arr) arr.push(bl); else linesByProject.set(bl.project_id, [bl])
+  }
 
-  // Fordel poolen over prosjektets egen varighet; summer prosjektets andel.
-  const grid = buildMonthGrid(spans, monthlyPool(resources), self.startMonth, self.endMonth)
-  const row = grid.rows.find((r) => r.id === params.id)
-  return NextResponse.json({ hours: Math.round(row?.totalHours ?? 0) })
+  const coByProject = new Map<string, ChangeOrderRow[]>()
+  for (const co of approvedCOs) {
+    const arr = coByProject.get(co.project_id)
+    if (arr) arr.push(co); else coByProject.set(co.project_id, [co])
+  }
+
+  // Beregn månedlig omsetning per prosjekt via distributeForecastFromPhases
+  // — nøyaktig samme avledning som generateFromPlan i forecast/page.tsx
+  const monthlyRevenueByProject = new Map<string, Map<number, number>>()
+
+  let globalStartMonth = Infinity
+  let globalEndMonth = -Infinity
+
+  for (const project of projects) {
+    const projPhases = phasesByProject.get(project.id) ?? []
+    if (projPhases.length === 0) continue
+
+    const projLines = linesByProject.get(project.id) ?? []
+    const projCOs = coByProject.get(project.id) ?? []
+
+    // Avledet fasevekt: nøyaktig som generateFromPlan (forecast/page.tsx linje 361–369)
+    const manualLines = projLines.filter((bl) => !bl.source || bl.source === 'manual')
+    const salesByPhase = new Map<string, number>()
+    for (const bl of manualLines) {
+      if (!bl.phase_id) continue
+      salesByPhase.set(
+        bl.phase_id,
+        (salesByPhase.get(bl.phase_id) ?? 0) + bl.budget_quantity * bl.customer_price_snapshot,
+      )
+    }
+    const anyTagged = salesByPhase.size > 0
+
+    const phasesForDist: PhaseSpanWeight[] = projPhases.map((p) => ({
+      start_date: p.start_date,
+      end_date: p.end_date,
+      weight: p.weight,
+      derivedWeight: anyTagged ? (salesByPhase.get(p.id) ?? 0) : null,
+    }))
+
+    // budgetRevenue = Σ manuelle linjer + Σ godkjente CO.total_customer_value
+    const budgetRevenue =
+      manualLines.reduce((s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot, 0) +
+      projCOs.reduce((s, co) => s + co.total_customer_value, 0)
+
+    const dist = distributeForecastFromPhases({
+      phases: phasesForDist,
+      budgetRevenue,
+      budgetCost: 0,
+      internalCosts: [],
+    })
+
+    if (dist.size === 0) continue
+
+    const revByMonth = new Map<number, number>()
+    for (const mf of Array.from(dist.values())) {
+      if (mf.revenue > 0) {
+        revByMonth.set(mf.mi, (revByMonth.get(mf.mi) ?? 0) + mf.revenue)
+      }
+    }
+
+    if (revByMonth.size === 0) continue
+
+    monthlyRevenueByProject.set(project.id, revByMonth)
+
+    // Oppdater global horisont
+    for (const mi of Array.from(revByMonth.keys())) {
+      if (mi < globalStartMonth) globalStartMonth = mi
+      if (mi > globalEndMonth) globalEndMonth = mi
+    }
+  }
+
+  // Finner ikke prosjektet (ikke aktivt / ingen faser med omsetning)
+  if (!monthlyRevenueByProject.has(params.id) || globalStartMonth === Infinity) {
+    return NextResponse.json({ hours: null, monthly: [] })
+  }
+
+  // Fordel pool over hele horisonten
+  const allocation = allocatePoolByMonthlyRevenue(
+    monthlyRevenueByProject,
+    pool,
+    globalStartMonth,
+    globalEndMonth,
+  )
+
+  const targetAllocation = allocation.get(params.id) ?? new Map<number, { hours: number; cost: number }>()
+
+  // Bygg måneds-array for target-prosjektet, sortert kronologisk
+  const entries = Array.from(targetAllocation.entries()).sort(([a], [b]) => a - b)
+  const monthly = entries.map(([mi, { hours, cost }]) => ({
+    year: Math.floor(mi / 12),
+    month: (mi % 12) + 1,   // 1–12
+    hours: Math.round(hours * 100) / 100,
+    cost: Math.round(cost * 100) / 100,
+  }))
+
+  const totalHours = monthly.reduce((s, r) => s + r.hours, 0)
+
+  return NextResponse.json({
+    hours: Math.round(totalHours),
+    monthly,
+  })
 }

@@ -111,11 +111,28 @@ export interface Project {
  * template is copied into project_checklist_items so per-project edits
  * don't affect the template.
  */
+/**
+ * Kolonneoppsett for Excel-import per prosjekttype. 0-baserte kolonneindekser
+ * (null = ikke i bruk); startRow er 1-basert raden der produkter begynner.
+ * Lar hver kunde/type ha sitt eget arkformat uten kodeendring — se
+ * lib/excel-map.ts.
+ */
+export interface ImportColumnMap {
+  startRow: number
+  code: number | null
+  name: number | null
+  price: number | null
+  qty: number | null
+  fixedPrice: number | null
+}
+
 export interface ProjectType {
   id: string
   name: string
   description: string | null
   created_at: string
+  /** Tilpasset Excel-kolonneoppsett. null = standardoppsettet brukes. */
+  import_config: ImportColumnMap | null
 }
 
 export interface ProjectTypeChecklistItem {
@@ -123,6 +140,8 @@ export interface ProjectTypeChecklistItem {
   project_type_id: string
   label: string
   sort_order: number
+  /** true = seksjon-overskrift (grupperer punktene under), false = avhukbart punkt. */
+  is_section: boolean
   created_at: string
 }
 
@@ -131,6 +150,8 @@ export interface ProjectChecklistItem {
   project_id: string
   label: string
   sort_order: number
+  /** true = seksjon-overskrift (grupperer punktene under), false = avhukbart punkt. */
+  is_section: boolean
   /** ISO string when ticked; null while open. */
   completed_at: string | null
   /** Display name of the user who ticked it. */
@@ -167,6 +188,8 @@ export interface ProjectBudgetLine {
   subcontractor_cost_price_snapshot: number
   source?: 'manual' | 'change_order'
   line_type?: 'subcontractor_work' | 'internal_cost' | 'material'
+  /** Fase i fremdriftsplanen linja hører til — gir avledet fasevekt (ØKONOMIMODELL.md 1b). */
+  phase_id?: string | null
 }
 
 /**
@@ -390,9 +413,6 @@ export interface ProjectForecast {
   forecast_period_id: string
   project_id: string
   project_manager_id: string | null
-  total_sales_value_snapshot: number
-  already_invoiced_snapshot: number
-  remaining_invoice_value_snapshot: number
   expected_revenue: number
   expected_ue_cost: number
   expected_internal_cost: number
@@ -417,7 +437,6 @@ export interface ProjectMonthPlan {
   expected_revenue: number
   internal_hours: number
   internal_cost: number
-  ue_hours: number
   ue_cost: number
   other_cost: number
   risk: number
@@ -510,6 +529,9 @@ export interface ProjectPhase {
   sort_order: number
   /** Tildelt UE (null = generell fase / alle). Brukes til filter + UE-portal. */
   subcontractor_id: string | null
+  /** Prognose-vekt: andel av inntekt/UE-kost fasen står for. null = auto
+   *  (fasens varighet i måneder brukes). Se lib/forecast-distribution.ts. */
+  weight: number | null
 }
 
 /**
@@ -556,6 +578,26 @@ export interface GanttMilestone {
   color: string
   created_at: string
   sort_order?: number
+}
+
+/** Øyeblikksbilde av hele fremdriftsplanen (faser + milepæler). */
+export interface ProjectPhaseSnapshot {
+  phases: ProjectPhase[]
+  milestones: GanttMilestone[]
+}
+
+/**
+ * Én arkivert versjon av fremdriftsplanen: et snapshot + hvem som lagret det og
+ * når. Endringsloggen (hvem/hva/fra→til) utledes ved å diffe to versjoner.
+ */
+export interface ProjectPhaseVersion {
+  id: string
+  project_id: string
+  taken_at: string
+  taken_by: string | null
+  taken_by_name: string | null
+  snapshot: ProjectPhaseSnapshot
+  created_at: string
 }
 
 // ─── Tender / bidding module ─────────────────────────────────────────────────

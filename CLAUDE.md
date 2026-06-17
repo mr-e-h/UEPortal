@@ -96,15 +96,26 @@ if (isSub(session)) {
 Når du legger til nye endepunkter som returnerer EM-, budget-line- eller
 report-line-data: bruk samme strip. **Ikke** stol på client-side filtrering.
 
-### PM-scope
-PM ser bare prosjekter de er tildelt via `project_managers`-tabellen.
-Bruk `getProjectScope(session)` fra `lib/api-guard.ts` på alle admin-
-endepunkter som henter prosjekt-data. Returverdi `Set<string> | null` —
-`null` betyr "ingen scoping" (main/company/super-admin).
+### Prosjekt-bemanning og scope
+Hvert prosjekt har nøyaktig ÉN prosjektleder (`project_managers`) og ÉN
+byggeleder (`project_site_managers`) — API-ene erstatter ved ny tildeling.
+I tillegg kan interne brukere (PL/byggeleder) være DELTAKERE
+(`project_participants`) med kun INNSYN (lese), ikke skrivetilgang.
+
+To scope-funksjoner i `lib/api-guard.ts` — VELG RIKTIG:
+- **Lese/synlighet:** `getProjectScope(user)` = PL + byggeleder + DELTAKER-
+  prosjekter. Bruk på GET/list/sider. `Set<string> | null` (`null` =
+  main/company/sub = ingen scoping).
+- **Skrive/mutasjon:** `getProjectWriteScope(user)` = KUN PL + byggeleder
+  (ikke deltakere). Bruk ALDRI `getProjectScope` til å gate en skriving —
+  da slipper rene innsyns-deltakere gjennom.
 
 ### Skrive-gate
-For PM som forsøker å skrive til et prosjekt: bruk `ensureProjectWritable(session, projectId)`
-før mutasjon. Returnerer `NextResponse` ved avslag.
+For mutasjoner mot et prosjekt: bruk `ensureProjectWritable(session, projectId)`
+(bygger på write-scope) før skriving. Returnerer `NextResponse` ved avslag.
+For delte mutasjoner som BÅDE subs og ansvarlig staff skal gjøre (f.eks.
+sjekkliste-avhuking): bruk `userCanWriteProject(user, projectId)` — dekker subs
+via `project_subcontractors` og blokkerer innsyns-deltakere.
 
 ### Super-admin er hardkodet
 `mhelsing94@gmail.com` har spesialprivilegier i `lib/view-as.ts` (kan

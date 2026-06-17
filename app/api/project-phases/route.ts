@@ -52,6 +52,7 @@ type CreateBody = {
   progress_percent?: number
   sort_order?: number
   subcontractor_id?: string | null
+  weight?: number | null
 }
 
 export async function POST(request: NextRequest) {
@@ -84,6 +85,9 @@ export async function POST(request: NextRequest) {
     progress_percent: progress,
     sort_order: Number(body.sort_order ?? 0) || 0,
     subcontractor_id: body.subcontractor_id ?? null,
+    weight: body.weight != null && Number.isFinite(Number(body.weight)) && Number(body.weight) >= 0
+      ? Number(body.weight)
+      : null,
     created_at: new Date().toISOString(),
     updated_at: new Date().toISOString(),
   }

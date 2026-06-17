@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import { requireAuth, ensureProjectWritable, userCanAccessProject } from '@/lib/api-guard'
+import { requireAuth, ensureProjectWritable, userCanWriteProject } from '@/lib/api-guard'
 import type { ProjectChecklistItem } from '@/types'
 
 /**
@@ -46,12 +46,11 @@ export async function PATCH(
   }
 
   if (body.completed !== undefined) {
-    // Project access applies to EVERY role, not just admins — a PM/byggeleder
-    // only on assigned projects, a sub only on linked projects. Without this a
-    // sub or byggeleder could tick items on a project they aren't on by
-    // guessing the item id (the .eq('project_id') below is a correctness
-    // filter, not an authorization check).
-    if (!(await userCanAccessProject(auth.user, params.id))) {
+    // Project WRITE-access applies to EVERY role: en sub kun på koblede
+    // prosjekter, en ansvarlig PL/byggeleder kun på tildelte. Interne DELTAKERE
+    // (kun innsyn) blokkeres — derfor write-scope, ikke lese-scope. (.eq below
+    // er et korrekthetsfilter, ikke en autorisasjonssjekk.)
+    if (!(await userCanWriteProject(auth.user, params.id))) {
       return NextResponse.json({ error: 'Ingen tilgang til prosjektet' }, { status: 403 })
     }
     const updates = body.completed

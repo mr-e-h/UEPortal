@@ -3,18 +3,16 @@
 import { useEffect, useState, useCallback } from 'react'
 import { useParams } from 'next/navigation'
 import Link from 'next/link'
-import { Save, CalendarDays, Plus, Trash2 } from 'lucide-react'
-import type { Project, ProjectBudgetLine, WeeklyReport, WeeklyReportLine, ChangeOrder, HourEntry, ProjectMonthPlan, ProjectInvoice, TimeType } from '@/types'
+import { Save, CalendarDays, Plus, Trash2, Wand2 } from 'lucide-react'
+import type { Project, ProjectBudgetLine, WeeklyReport, WeeklyReportLine, ChangeOrder, HourEntry, ProjectMonthPlan, ProjectInvoice, ProjectPhase, ProjectInternalCostEntry } from '@/types'
 import NumberInput from '@/components/NumberInput'
 import { MONTHS_SHORT as MND, fmtNOK as fmt, fmtShort } from '@/lib/format'
+import { distributeForecastFromPhases } from '@/lib/forecast-distribution'
+import { internalCostForMonth } from '@/lib/internal-costs'
 import {
   FORECAST_CATEGORIES,
   FORECAST_PLAN_KEY as PLAN_KEY,
-  FORECAST_TIME_ROLES,
-  FORECAST_ROLE_LABEL as ROLE_LABELS,
-  getRoleCostPerHour,
   type ForecastField as Field,
-  type ForecastRoleKey as Role,
 } from '@/lib/forecast-categories'
 function buildGrid(start: string, end: string) {
   const result: { year: number; month: number }[] = []
@@ -28,13 +26,15 @@ function buildGrid(start: string, end: string) {
 }
 
 const ROWS = FORECAST_CATEGORIES
-const ROLES: Role[] = FORECAST_TIME_ROLES.map((r) => r.key)
+
+// Read-only fields — derived from resource pool, not manually entered
+const DERIVED_FIELDS = new Set<Field>(['internalHours', 'internalCost'])
 
 type ForecastExtra = {
   id: string
   project_id: string
   type: 'role' | 'custom' | 'comment'
-  role: Role | null
+  role: null
   line_name: string | null
   year: number
   month: number
@@ -53,19 +53,23 @@ export default function ForecastPage() {
   const [changeOrders,    setChangeOrders]     = useState<ChangeOrder[]>([])
   const [hourEntries,     setHourEntries]      = useState<HourEntry[]>([])
   const [monthPlans,      setMonthPlans]       = useState<ProjectMonthPlan[]>([])
+  const [phases,          setPhases]           = useState<ProjectPhase[]>([])
+  const [internalCosts,   setInternalCosts]    = useState<ProjectInternalCostEntry[]>([])
+  const [generated,       setGenerated]        = useState(false)
   const [invoices,        setInvoices]         = useState<ProjectInvoice[]>([])
   const [extras,          setExtras]           = useState<ForecastExtra[]>([])
   const [customLineNames, setCustomLineNames]  = useState<string[]>([])
   const [generalComment,  setGeneralComment]   = useState('')
-  const [timeTypes,       setTimeTypes]        = useState<TimeType[]>([])
   const [loading,         setLoading]          = useState(true)
   const [edits,           setEdits]            = useState<Record<string, string | number>>({})
   const [saving,          setSaving]           = useState(false)
   const [dirty,           setDirty]            = useState(false)
   const [saved,           setSaved]            = useState(false)
+  // Allocated hours from resource pool, keyed "year-month"
+  const [allocByMonth,    setAllocByMonth]     = useState<Map<string, { hours: number; cost: number }>>(new Map())
 
   const fetchAll = useCallback(async () => {
-    const [allProj, bls, wrls, cos, hes, mp, inv, ext, tt] = await Promise.all([
+    const [allProj, bls, wrls, cos, hes, mp, inv, ext, ph, ic, alloc] = await Promise.all([
       fetch('/api/projects').then((r) => r.json()),
       fetch(`/api/budget-lines?project_id=${id}`).then((r) => r.json()),
       fetch(`/api/weekly-reports?project_id=${id}&with_lines=true`).then((r) => r.json()),
@@ -74,7 +78,9 @@ export default function ForecastPage() {
       fetch(`/api/project-month-plans?project_id=${id}`).then((r) => r.json()),
       fetch(`/api/invoices?project_id=${id}`).then((r) => r.json()),
       fetch(`/api/project-forecast-extras?project_id=${id}`).then((r) => r.json()),
-      fetch('/api/time-types').then((r) => r.json()),
+      fetch(`/api/project-phases?project_id=${id}`).then((r) => r.json()),
+      fetch(`/api/project-internal-costs?project_id=${id}`).then((r) => r.json()),
+      fetch(`/api/projects/${id}/allocated-hours`).then((r) => r.json()),
     ])
     setProject((allProj as Project[]).find((p) => p.id === id) ?? null)
     setBudgetLines(Array.isArray(bls) ? bls : [])
@@ -82,6 +88,8 @@ export default function ForecastPage() {
     setChangeOrders(Array.isArray(cos) ? cos : [])
     setHourEntries(Array.isArray(hes) ? hes : [])
     setMonthPlans(Array.isArray(mp) ? mp : [])
+    setPhases(Array.isArray(ph) ? ph : [])
+    setInternalCosts(Array.isArray(ic) ? ic : [])
     setInvoices(Array.isArray(inv) ? inv : [])
     const extArr: ForecastExtra[] = Array.isArray(ext) ? ext : []
     setExtras(extArr)
@@ -96,7 +104,13 @@ export default function ForecastPage() {
     }
     setCustomLineNames(names)
     setGeneralComment(extArr.find((e) => e.type === 'comment' && e.line_name === 'general')?.text ?? '')
-    setTimeTypes(Array.isArray(tt) ? tt : [])
+    // Build allocByMonth map from allocated-hours response
+    const allocMap = new Map<string, { hours: number; cost: number }>()
+    const monthly: Array<{ year: number; month: number; hours: number; cost: number }> = Array.isArray(alloc?.monthly) ? alloc.monthly : []
+    for (const entry of monthly) {
+      allocMap.set(`${entry.year}-${entry.month}`, { hours: entry.hours, cost: entry.cost })
+    }
+    setAllocByMonth(allocMap)
     setLoading(false)
   }, [id])
 
@@ -170,6 +184,23 @@ export default function ForecastPage() {
 
   // ── Cell value (main table) ───────────────────────────────────────────────
   function getVal(year: number, month: number, field: Field): number {
+    // internalHours and internalCost are always derived — never from edits or plan
+    if (field === 'internalHours' || field === 'internalCost') {
+      // Past months: use actual recorded hours/cost
+      if (isPast(year, month)) {
+        return actuals[`${year}-${month}`]?.[field] ?? 0
+      }
+      // Current/future: derive from resource pool allocation + internal cost entries
+      if (field === 'internalHours') {
+        return allocByMonth.get(`${year}-${month}`)?.hours ?? 0
+      }
+      // internalCost: pool cost + Σ internal cost entries active this month
+      const poolCost = allocByMonth.get(`${year}-${month}`)?.cost ?? 0
+      const mi = year * 12 + (month - 1)
+      const entryCost = internalCosts.reduce((s, entry) => s + internalCostForMonth(entry, mi), 0)
+      return poolCost + entryCost
+    }
+
     const editKey = `${year}-${month}-${field}`
     if (editKey in edits) return edits[editKey] as number
 
@@ -189,7 +220,7 @@ export default function ForecastPage() {
     setSaved(false)
   }
 
-  // ── Extra value (role hours + custom costs) ──────────────────────────────
+  // ── Extra value (custom costs) ───────────────────────────────────────────
   function getExtra(typeKey: string, year: number, month: number): number {
     const editKey = `extra-${typeKey}-${year}-${month}`
     if (editKey in edits) return edits[editKey] as number
@@ -208,14 +239,6 @@ export default function ForecastPage() {
 
   function extraRowTotal(typeKey: string): number {
     return grid.reduce((s, { year, month }) => s + getExtra(typeKey, year, month), 0)
-  }
-
-  function roleCostPerHour(role: Role): number {
-    return getRoleCostPerHour(role, timeTypes)
-  }
-
-  function roleInternalCost(role: Role, year: number, month: number): number {
-    return getExtra(`role-${role}`, year, month) * roleCostPerHour(role)
   }
 
 
@@ -298,23 +321,18 @@ export default function ForecastPage() {
       .map(({ year, month }) => {
         const revenue       = getVal(year, month, 'revenue')       as number
         const ueCost        = getVal(year, month, 'ueCost')        as number
-        const ueHours       = getVal(year, month, 'ueHours')       as number
         const internalCost  = getVal(year, month, 'internalCost')  as number
         const internalHours = getVal(year, month, 'internalHours') as number
         const otherCost     = getVal(year, month, 'otherCost')     as number
         const risk          = getVal(year, month, 'risk')          as number
-        if (!revenue && !ueCost && !ueHours && !internalCost && !internalHours && !otherCost && !risk) return null
-        return { project_id: id, year, month, expected_revenue: revenue, ue_cost: ueCost, ue_hours: ueHours, internal_cost: internalCost, internal_hours: internalHours, other_cost: otherCost, risk, comment: '' }
+        if (!revenue && !ueCost && !internalCost && !internalHours && !otherCost && !risk) return null
+        return { project_id: id, year, month, expected_revenue: revenue, ue_cost: ueCost, internal_cost: internalCost, internal_hours: internalHours, other_cost: otherCost, risk, comment: '' }
       })
       .filter(Boolean)
 
-    // Extras rows
+    // Extras rows — custom cost lines only (no role rows)
     const extraRows: Omit<ForecastExtra, 'id'>[] = []
     for (const { year, month } of grid) {
-      for (const role of ROLES) {
-        const v = getExtra(`role-${role}`, year, month)
-        if (v) extraRows.push({ project_id: id, type: 'role', role, line_name: null, year, month, value: v })
-      }
       for (const name of customLineNames) {
         const v = getExtra(`custom-${name}`, year, month)
         if (v) extraRows.push({ project_id: id, type: 'custom', role: null, line_name: name, year, month, value: v })
@@ -338,8 +356,42 @@ export default function ForecastPage() {
       }),
     ])
 
-    setSaving(false); setDirty(false); setSaved(true); setEdits({})
+    setSaving(false); setDirty(false); setSaved(true); setEdits({}); setGenerated(false)
     fetchAll()
+  }
+
+  // ── Generer prognose fra fremdriftsplanen ──────────────────────────────────
+  // Fordel budsjett-totalene (inntekt + UE-kost) utover månedene fasene varer,
+  // vektet per fase, og legg interne kostnader i sine faktiske måneder. Skriver
+  // til UTKASTET (edits) for nåværende + fremtidige måneder — historiske måneder
+  // beholder sine faktiske tall. Brukeren ser over og trykker «Lagre».
+  function generateFromPlan() {
+    // Avledet fasevekt: fasens andel = Σ(budsjettlinjer tagget til fasen × kundepris).
+    // Brukes som vekt i fordelingen (manuell vekt overstyrer; ingen tagging → fall
+    // tilbake til fasens varighet). Se ØKONOMIMODELL.md punkt 1b.
+    const salesByPhase = new Map<string, number>()
+    for (const bl of manualLines) {
+      if (!bl.phase_id) continue
+      salesByPhase.set(bl.phase_id, (salesByPhase.get(bl.phase_id) ?? 0) + bl.budget_quantity * bl.customer_price_snapshot)
+    }
+    const anyTagged = salesByPhase.size > 0
+    const phasesForDist = phases.map((p) => ({
+      ...p,
+      derivedWeight: anyTagged ? (salesByPhase.get(p.id) ?? 0) : null,
+    }))
+    const dist = distributeForecastFromPhases({ phases: phasesForDist, budgetRevenue, budgetCost, internalCosts })
+    setEdits((prev) => {
+      const next = { ...prev }
+      for (const { year, month } of grid) {
+        if (isPast(year, month)) continue
+        const m = dist.get(`${year}-${month}`)
+        next[`${year}-${month}-revenue`] = m ? Math.round(m.revenue) : 0
+        next[`${year}-${month}-ueCost`]  = m ? Math.round(m.ueCost) : 0
+        // internalCost and internalHours are derived from resource pool — not set here
+      }
+      return next
+    })
+    setDirty(true); setSaved(false); setGenerated(true)
   }
 
   // Group by year for column headers
@@ -394,12 +446,25 @@ export default function ForecastPage() {
           <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Prognosemodul</h1>
           <p className="text-sm text-[var(--color-text-muted)]">{project.project_number} · {project.customer} · {grid.length} måneder</p>
         </div>
+        <button onClick={generateFromPlan} disabled={saving || phases.length === 0}
+          title={phases.length === 0 ? 'Legg til faser i fremdriftsplanen først' : 'Fyll månedsplanen automatisk fra fremdriftsplanen (vekt per fase)'}
+          className="flex items-center gap-1.5 px-4 py-2 border border-indigo-300 text-indigo-700 text-sm font-medium rounded-lg hover:bg-indigo-50 disabled:opacity-50 transition-colors">
+          <Wand2 size={14} />
+          Generer fra fremdriftsplan
+        </button>
         <button onClick={handleSave} disabled={saving || !dirty}
           className="flex items-center gap-1.5 px-4 py-2 bg-blue-600 text-white text-sm font-medium rounded-lg hover:bg-blue-700 disabled:opacity-50 transition-colors">
           <Save size={14} />
           {saving ? 'Lagrer...' : saved && !dirty ? 'Lagret ✓' : 'Lagre prognose'}
         </button>
       </div>
+
+      {generated && (
+        <div className="bg-indigo-50 border border-indigo-200 rounded-lg px-4 py-2.5 text-sm text-indigo-800 flex items-center gap-2">
+          <Wand2 size={14} className="flex-none" />
+          <span>Prognosen er fylt fra fremdriftsplanen (nåværende + fremtidige måneder). Se over tallene og trykk <strong>Lagre prognose</strong> — eller last siden på nytt for å forkaste.</span>
+        </div>
+      )}
 
       {/* ── Igjen å fordele ─────────────────────────────────────────────── */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
@@ -463,19 +528,21 @@ export default function ForecastPage() {
       <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
         <div className="px-5 py-3 border-b border-border bg-muted">
           <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Månedlig fordeling</h2>
-          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Historiske måneder viser faktiske tall · Fremtidige måneder er redigerbare</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Historiske måneder viser faktiske tall · Fremtidige måneder er redigerbare · Interne timer og internkost avledes fra ressurspoolen</p>
         </div>
         <div className="overflow-x-auto">
           <table className="text-sm border-collapse">
             <TableHeader labelCol="Kategori" />
             <tbody>
               {ROWS.map(({ key, label, color, unit }) => {
-                const total = rowTotal(key)
+                const total   = rowTotal(key)
+                const derived = DERIVED_FIELDS.has(key)
                 return (
                   <tr key={key} className="border-b border-gray-50 hover:bg-gray-50/40">
                     <td className={`px-4 py-2 font-semibold sticky left-0 bg-white z-10 ${color} whitespace-nowrap`} style={{ minWidth: 160 }}>
                       {label}
                       <span className="ml-1 text-[10px] font-normal text-[var(--color-text-muted)]">({unit})</span>
+                      {derived && <span className="ml-1 text-[10px] font-normal text-[var(--color-text-muted)]">· pool</span>}
                     </td>
                     {grid.map(({ year, month }) => {
                       const past    = isPast(year, month)
@@ -483,7 +550,8 @@ export default function ForecastPage() {
                       const val     = getVal(year, month, key)
                       const borderL = month === 1 ? 'border-l border-border' : ''
 
-                      if (past) {
+                      // Past months and derived fields are always read-only
+                      if (past || derived) {
                         return (
                           <td key={`${year}-${month}`}
                             className={`px-2 py-2 text-right text-xs text-[var(--color-text-muted)] ${borderL}`}
@@ -640,121 +708,6 @@ export default function ForecastPage() {
             </table>
           </div>
         )}
-      </div>
-
-      {/* ── Timeoversikt (hours by role) ─────────────────────────────────── */}
-      <div className="bg-white rounded-xl border border-border shadow-sm overflow-hidden">
-        <div className="px-5 py-3 border-b border-border bg-muted">
-          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Timeoversikt</h2>
-          <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Planlagte timer per rolle per måned</p>
-        </div>
-        <div className="overflow-x-auto">
-          <table className="text-sm border-collapse">
-            <TableHeader labelCol="Rolle" />
-            <tbody>
-              {ROLES.map((role) => {
-                const typeKey = `role-${role}`
-                const total = extraRowTotal(typeKey)
-                return (
-                  <tr key={role} className="border-b border-gray-50 hover:bg-gray-50/40">
-                    <td className="px-4 py-2 font-semibold sticky left-0 bg-white z-10 text-indigo-700 whitespace-nowrap" style={{ minWidth: 160 }}>
-                      {ROLE_LABELS[role]}
-                      <span className="ml-1 text-[10px] font-normal text-[var(--color-text-muted)]">(timer)</span>
-                    </td>
-                    {grid.map(({ year, month }) => {
-                      const isCur   = year === curYear && month === curMonth
-                      const borderL = month === 1 ? 'border-l border-border' : ''
-                      const val     = getExtra(typeKey, year, month)
-                      return (
-                        <td key={`${year}-${month}`}
-                          className={`px-1 py-1 ${isCur ? 'bg-blue-50/40' : ''} ${borderL}`}
-                          style={{ minWidth: 72 }}>
-                          <NumberInput
-                            value={val || ''} placeholder="0"
-                            onChange={(raw) => setExtra(typeKey, year, month, Number(raw))}
-                            className="w-full text-right px-1.5 py-1 text-xs border border-border rounded focus:outline-none focus:ring-1 focus:ring-blue-400 text-[var(--color-text-primary)] bg-white"
-                          />
-                        </td>
-                      )
-                    })}
-                    <td className="px-4 py-2 text-right font-bold text-sm text-indigo-700 border-l border-border whitespace-nowrap" style={{ minWidth: 108 }}>
-                      {total > 0 ? `${new Intl.NumberFormat('nb-NO').format(total)} t` : '–'}
-                    </td>
-                  </tr>
-                )
-              })}
-              {/* Total hours row */}
-              <tr className="border-t-2 border-border bg-muted">
-                <td className="px-4 py-2.5 font-bold text-[var(--color-text-secondary)] sticky left-0 bg-muted z-10" style={{ minWidth: 160 }}>Sum timer</td>
-                {grid.map(({ year, month }) => {
-                  const total   = ROLES.reduce((s, r) => s + getExtra(`role-${r}`, year, month), 0)
-                  const borderL = month === 1 ? 'border-l border-border' : ''
-                  return (
-                    <td key={`${year}-${month}`}
-                      className={`px-2 py-2.5 text-right text-xs font-medium text-[var(--color-text-secondary)] ${borderL}`}
-                      style={{ minWidth: 72 }}>
-                      {total > 0 ? `${total}t` : '–'}
-                    </td>
-                  )
-                })}
-                <td className="px-4 py-2.5 text-right font-bold text-sm text-[var(--color-text-secondary)] border-l border-border" style={{ minWidth: 108 }}>
-                  {(() => {
-                    const t = ROLES.reduce((s, r) => s + extraRowTotal(`role-${r}`), 0)
-                    return t > 0 ? `${new Intl.NumberFormat('nb-NO').format(t)} t` : '–'
-                  })()}
-                </td>
-              </tr>
-              {/* Internal cost per role */}
-              {ROLES.map((role) => {
-                const rate  = roleCostPerHour(role)
-                const total = grid.reduce((s, { year, month }) => s + roleInternalCost(role, year, month), 0)
-                return (
-                  <tr key={`cost-${role}`} className="border-b border-gray-50 hover:bg-gray-50/40">
-                    <td className="px-4 py-2 sticky left-0 bg-white z-10 whitespace-nowrap" style={{ minWidth: 160 }}>
-                      <span className="text-purple-600 font-semibold text-xs">{ROLE_LABELS[role]}</span>
-                      {rate > 0 && <span className="ml-1 text-[10px] text-[var(--color-text-muted)]">{new Intl.NumberFormat('nb-NO').format(rate)} kr/t</span>}
-                    </td>
-                    {grid.map(({ year, month }) => {
-                      const cost    = roleInternalCost(role, year, month)
-                      const borderL = month === 1 ? 'border-l border-border' : ''
-                      return (
-                        <td key={`${year}-${month}`}
-                          className={`px-2 py-2 text-right text-xs text-purple-600 ${borderL}`}
-                          style={{ minWidth: 72 }}>
-                          {cost > 0 ? fmtShort(cost) : '–'}
-                        </td>
-                      )
-                    })}
-                    <td className="px-4 py-2 text-right font-bold text-xs text-purple-600 border-l border-border whitespace-nowrap" style={{ minWidth: 108 }}>
-                      {total > 0 ? fmt(total) : '–'}
-                    </td>
-                  </tr>
-                )
-              })}
-              {/* Total internal cost */}
-              <tr className="border-t-2 border-border bg-purple-50">
-                <td className="px-4 py-2.5 font-bold text-purple-700 sticky left-0 bg-purple-50 z-10" style={{ minWidth: 160 }}>Sum internkostnad</td>
-                {grid.map(({ year, month }) => {
-                  const total   = ROLES.reduce((s, r) => s + roleInternalCost(r, year, month), 0)
-                  const borderL = month === 1 ? 'border-l border-border' : ''
-                  return (
-                    <td key={`${year}-${month}`}
-                      className={`px-2 py-2.5 text-right text-xs font-medium text-purple-700 ${borderL}`}
-                      style={{ minWidth: 72 }}>
-                      {total > 0 ? fmtShort(total) : '–'}
-                    </td>
-                  )
-                })}
-                <td className="px-4 py-2.5 text-right font-bold text-sm text-purple-700 border-l border-border" style={{ minWidth: 108 }}>
-                  {(() => {
-                    const t = ROLES.reduce((s, r) => s + grid.reduce((s2, { year, month }) => s2 + roleInternalCost(r, year, month), 0), 0)
-                    return t > 0 ? fmt(t) : '–'
-                  })()}
-                </td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
       </div>
 
       {/* ── Kommentar ────────────────────────────────────────────────────── */}

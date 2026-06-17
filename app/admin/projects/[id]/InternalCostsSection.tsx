@@ -12,8 +12,8 @@ interface Props {
   projectId: string
   internalCosts: ProjectInternalCostEntry[]
   totalInternalCost: number
-  /** Prosjektets sluttdato — sluttmåned for åpne løpende poster. */
-  projectEnd: string | null
+  /** Fremdriftsplanens slutt — sluttmåned for åpne løpende poster (riggplass o.l.). */
+  periodEnd: string | null
   /** Called after a successful POST so the parent can re-fetch. */
   onAdded: () => void
   /** Open the parent's confirm dialog with the row id queued for deletion. */
@@ -37,12 +37,12 @@ export default function InternalCostsSection({
   projectId,
   internalCosts,
   totalInternalCost,
-  projectEnd,
+  periodEnd,
   onAdded,
   onRequestDelete,
 }: Props) {
   const now = new Date()
-  const fallbackEndMi = fallbackEndMonthIndex(projectEnd, now)
+  const fallbackEndMi = fallbackEndMonthIndex(periodEnd, now)
   const [draft, setDraft] = useState({
     recurrence: 'one_time' as 'one_time' | 'monthly',
     year: now.getFullYear(),
@@ -133,7 +133,7 @@ export default function InternalCostsSection({
                   <input type="number" min="2020" max="2040" value={draft.end_year} onChange={(e) => setDraft((p) => ({ ...p, end_year: Number(e.target.value) }))} className={`${inputCls} w-20`} />
                 </>
               ) : (
-                <span className="text-xs text-[var(--color-text-muted)]">løper ut prosjektet</span>
+                <span className="text-xs text-[var(--color-text-muted)]">løper ut fremdriftsplanen</span>
               )}
             </div>
           </div>

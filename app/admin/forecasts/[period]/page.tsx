@@ -18,6 +18,7 @@ import type {
   ForecastPeriod,
   ProjectForecast,
   ProjectForecastMonth,
+  ProjectMonthPlan,
   ForecastStatus,
 } from '@/types'
 
@@ -160,11 +161,12 @@ export default function ForecastPeriodPage() {
         totalSales,
         invoiced,
         remaining: totalSales - invoiced,
-        expectedRevenue: existing?.expected_revenue ?? 0,
-        expectedUeCost: existing?.expected_ue_cost ?? 0,
-        expectedInternalCost: existing?.expected_internal_cost ?? 0,
-        expectedOtherCost: existing?.expected_other_cost ?? 0,
-        riskAmount: existing?.risk_amount ?? 0,
+        // Header avledes av månedene (Pakke 3) — Σ months, ikke lagret header.
+        expectedRevenue: monthRows.reduce((s, m) => s + m.expected_revenue, 0),
+        expectedUeCost: monthRows.reduce((s, m) => s + m.expected_ue_cost, 0),
+        expectedInternalCost: monthRows.reduce((s, m) => s + m.expected_internal_cost, 0),
+        expectedOtherCost: monthRows.reduce((s, m) => s + m.expected_other_cost, 0),
+        riskAmount: monthRows.reduce((s, m) => s + m.risk_amount, 0),
         comment: existing?.comment ?? '',
         status: existing?.status ?? 'not_started',
         submittedAt: existing?.submitted_at ?? null,
@@ -188,24 +190,57 @@ export default function ForecastPeriodPage() {
     setEntries((p) => ({ ...p, [pid]: { ...p[pid], ...upd, dirty: true } }))
   }
 
+  // Header-totalene er avledet av månedene (Pakke 3): hold dem i synk med Σ months
+  // slik at lagrings-payload + totals alltid stemmer. Returnerer en oppdatert entry.
+  function withDerivedHeader(e: ForecastEntry): ForecastEntry {
+    return {
+      ...e,
+      expectedRevenue: e.months.reduce((s, m) => s + m.expected_revenue, 0),
+      expectedUeCost: e.months.reduce((s, m) => s + m.expected_ue_cost, 0),
+      expectedInternalCost: e.months.reduce((s, m) => s + m.expected_internal_cost, 0),
+      expectedOtherCost: e.months.reduce((s, m) => s + m.expected_other_cost, 0),
+      riskAmount: e.months.reduce((s, m) => s + m.risk_amount, 0),
+    }
+  }
+
   function updateMonth(pid: string, idx: number, field: keyof MonthData, value: string | number) {
     setEntries((prev) => {
       const entry = prev[pid]
       const months = [...entry.months]
       months[idx] = { ...months[idx], [field]: typeof value === 'string' && field !== 'comment' ? num(value) : value }
-      return { ...prev, [pid]: { ...entry, months, dirty: true } }
+      return { ...prev, [pid]: withDerivedHeader({ ...entry, months, dirty: true }) }
     })
   }
 
-  function syncFromMonths(pid: string) {
+  // Forhåndsfyll periode-prognosens måneder fra den LØPENDE prognosen (month_plans)
+  // + pool-avledet internkost (allocated-hours). Lagrer ikke automatisk — brukeren
+  // ser over og trykker Lagre/Send inn selv (Pakke 3).
+  async function prefillFromMonthPlans(pid: string) {
+    if (!period) return
+    const [plansRaw, allocRaw] = await Promise.all([
+      fetch(`/api/project-month-plans?project_id=${pid}`).then((r) => r.json()).catch(() => []),
+      fetch(`/api/projects/${pid}/allocated-hours`).then((r) => r.json()).catch(() => null),
+    ])
+    const plans: ProjectMonthPlan[] = Array.isArray(plansRaw) ? plansRaw : []
+    const monthly: { year: number; month: number; cost: number }[] =
+      allocRaw && Array.isArray(allocRaw.monthly) ? allocRaw.monthly : []
+
     setEntries((prev) => {
       const e = prev[pid]
-      const rev = e.months.reduce((s, m) => s + m.expected_revenue, 0)
-      const ue = e.months.reduce((s, m) => s + m.expected_ue_cost, 0)
-      const ic = e.months.reduce((s, m) => s + m.expected_internal_cost, 0)
-      const oc = e.months.reduce((s, m) => s + m.expected_other_cost, 0)
-      const ri = e.months.reduce((s, m) => s + m.risk_amount, 0)
-      return { ...prev, [pid]: { ...e, expectedRevenue: rev, expectedUeCost: ue, expectedInternalCost: ic, expectedOtherCost: oc, riskAmount: ri, dirty: true } }
+      const months = e.months.map((m) => {
+        const plan = plans.find((p) => p.year === m.year && p.month === m.month)
+        const alloc = monthly.find((a) => a.year === m.year && a.month === m.month)
+        return {
+          ...m,
+          expected_revenue: plan?.expected_revenue ?? 0,
+          expected_ue_cost: plan?.ue_cost ?? 0,
+          expected_other_cost: plan?.other_cost ?? 0,
+          risk_amount: plan?.risk ?? 0,
+          expected_internal_cost: alloc?.cost ?? 0,
+          // comment beholdes som den er
+        }
+      })
+      return { ...prev, [pid]: withDerivedHeader({ ...e, months, dirty: true }) }
     })
   }
 
@@ -218,15 +253,11 @@ export default function ForecastPeriodPage() {
       forecast_period_id: period.id,
       project_id: pid,
       project_manager_id: userId || null,
-      total_sales_value_snapshot: e.totalSales,
-      already_invoiced_snapshot: e.invoiced,
-      remaining_invoice_value_snapshot: e.remaining,
       expected_revenue: e.expectedRevenue,
       expected_ue_cost: e.expectedUeCost,
       expected_internal_cost: e.expectedInternalCost,
       expected_other_cost: e.expectedOtherCost,
       risk_amount: e.riskAmount,
-      expected_profit: profit(e),
       comment: e.comment,
       status: e.status === 'not_started' ? 'draft' : e.status,
     }
@@ -500,23 +531,21 @@ export default function ForecastPeriodPage() {
                     ))}
                   </div>
 
-                  {/* Forecast inputs */}
+                  {/* Forecast inputs — avledet (read-only) av månedene (Pakke 3).
+                      Redigering skjer i «Månedlig fordeling» eller via forhåndsfyll. */}
                   <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
                     {[
-                      { label: 'Forventet omsetning', field: 'expectedRevenue' as const },
-                      { label: 'Forventet UE-kostnad', field: 'expectedUeCost' as const },
-                      { label: 'Forventet internkostnad', field: 'expectedInternalCost' as const },
-                      { label: 'Annen kostnad', field: 'expectedOtherCost' as const },
-                      { label: 'Risiko / avsetning', field: 'riskAmount' as const },
-                    ].map(({ label, field }) => (
-                      <div key={field}>
+                      { label: 'Forventet omsetning', value: e.expectedRevenue },
+                      { label: 'Forventet UE-kostnad', value: e.expectedUeCost },
+                      { label: 'Forventet internkostnad', value: e.expectedInternalCost },
+                      { label: 'Annen kostnad', value: e.expectedOtherCost },
+                      { label: 'Risiko / avsetning', value: e.riskAmount },
+                    ].map(({ label, value }) => (
+                      <div key={label}>
                         <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">{label}</label>
-                        <NumberInput
-                          value={e[field] || ''}
-                          disabled={!canEdit}
-                          onChange={(raw) => update(e.projectId, { [field]: num(raw) })}
-                          className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60 disabled:cursor-not-allowed"
-                        />
+                        <div className="px-3 py-2 text-sm rounded-lg bg-muted font-semibold text-[var(--color-text-primary)]">
+                          {fmt(value)}
+                        </div>
                       </div>
                     ))}
                     <div>
@@ -540,6 +569,19 @@ export default function ForecastPeriodPage() {
                       className="w-full px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:ring-1 focus:ring-primary disabled:opacity-60 disabled:cursor-not-allowed resize-none"
                     />
                   </div>
+
+                  {/* Forhåndsfyll fra løpende prognose (Pakke 3) */}
+                  {canEdit && (
+                    <div>
+                      <Button
+                        variant="secondary"
+                        className="px-3 py-1.5 text-xs"
+                        onClick={() => prefillFromMonthPlans(e.projectId)}
+                      >
+                        Hent fra løpende prognose
+                      </Button>
+                    </div>
+                  )}
 
                   {/* Monthly breakdown toggle */}
                   <div>
@@ -591,14 +633,6 @@ export default function ForecastPeriodPage() {
                             </tbody>
                           </table>
                         </div>
-                        {canEdit && (
-                          <button
-                            className="text-xs text-primary hover:underline"
-                            onClick={() => syncFromMonths(e.projectId)}
-                          >
-                            ↑ Synkroniser totaler fra månedlige verdier
-                          </button>
-                        )}
                       </div>
                     )}
                   </div>

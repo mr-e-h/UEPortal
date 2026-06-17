@@ -2,7 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react'
 import Link from 'next/link'
-import { Plus, Trash2, ChevronDown, ChevronRight, ChevronLeft, Save, Pencil, Check, X, GripVertical } from 'lucide-react'
+import { Plus, Trash2, ChevronDown, ChevronRight, ChevronLeft, Save, Pencil, Check, X, GripVertical, Heading2 } from 'lucide-react'
 import type { PhaseType } from '@/components/admin/FremdriftsplanClient'
 import Card from '@/components/ui/Card'
 import Field from '@/components/ui/Field'
@@ -11,6 +11,7 @@ import Button from '@/components/ui/Button'
 import ErrorBox from '@/components/ui/ErrorBox'
 import EmptyState from '@/components/ui/EmptyState'
 import { useConfirm } from '@/components/ui/useConfirm'
+import ProjectTypeImportConfig from './ProjectTypeImportConfig'
 import { api, apiErrorMessage } from '@/lib/api'
 import type { ProjectType, ProjectTypeChecklistItem } from '@/types'
 
@@ -180,20 +181,23 @@ function TypeCard({ type, isExpanded, onToggle, onDelete, onRename, onChange }: 
   const [newItem, setNewItem] = useState('')
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  // Drag-and-drop for å endre rekkefølge (erstatter opp/ned-pilene).
+  const [dragIndex, setDragIndex] = useState<number | null>(null)
+  const [overIndex, setOverIndex] = useState<number | null>(null)
 
   useEffect(() => {
     setItems(type.items)
     setDirty(false)
   }, [type.items])
 
-  function addItem(e: React.FormEvent) {
-    e.preventDefault()
+  function addItem(is_section: boolean) {
     if (!newItem.trim()) return
     setItems((prev) => [...prev, {
       id: `tmp_${Date.now()}`,
       project_type_id: type.id,
       label: newItem.trim(),
       sort_order: prev.length * 10,
+      is_section,
       created_at: new Date().toISOString(),
     }])
     setNewItem('')
@@ -205,12 +209,13 @@ function TypeCard({ type, isExpanded, onToggle, onDelete, onRename, onChange }: 
     setDirty(true)
   }
 
-  function moveItem(idx: number, dir: -1 | 1) {
-    const target = idx + dir
-    if (target < 0 || target >= items.length) return
+  // Flytt en rad fra én posisjon til en annen (drag-and-drop).
+  function reorder(from: number, to: number) {
+    if (from === to || from < 0 || to < 0) return
     setItems((prev) => {
       const next = [...prev]
-      ;[next[idx], next[target]] = [next[target], next[idx]]
+      const [moved] = next.splice(from, 1)
+      next.splice(to, 0, moved)
       return next
     })
     setDirty(true)
@@ -226,7 +231,7 @@ function TypeCard({ type, isExpanded, onToggle, onDelete, onRename, onChange }: 
     const res = await fetch(`/api/project-types/${type.id}/items`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ items: items.map((i) => ({ label: i.label })) }),
+      body: JSON.stringify({ items: items.map((i) => ({ label: i.label, is_section: i.is_section })) }),
     })
     setSaving(false)
     if (!res.ok) {
@@ -278,7 +283,13 @@ function TypeCard({ type, isExpanded, onToggle, onDelete, onRename, onChange }: 
           </div>
         )}
         <span className="text-xs text-[var(--color-text-muted)]">
-          {type.items.length} {type.items.length === 1 ? 'punkt' : 'punkter'}
+          {(() => {
+            const sectionCount = type.items.filter((i) => i.is_section).length
+            const itemCount = type.items.length - sectionCount
+            return sectionCount > 0
+              ? `${itemCount} ${itemCount === 1 ? 'punkt' : 'punkter'} · ${sectionCount} ${sectionCount === 1 ? 'seksjon' : 'seksjoner'}`
+              : `${itemCount} ${itemCount === 1 ? 'punkt' : 'punkter'}`
+          })()}
         </span>
         <button
           type="button"
@@ -297,54 +308,92 @@ function TypeCard({ type, isExpanded, onToggle, onDelete, onRename, onChange }: 
             <p className="text-sm text-[var(--color-text-muted)]">Ingen punkter ennå. Legg til under.</p>
           ) : (
             <ul className="space-y-1">
-              {items.map((item, idx) => (
-                <li key={item.id} className="flex items-center gap-2 bg-card border border-border rounded px-3 py-1.5">
-                  <span className="text-xs text-[var(--color-text-muted)] font-mono w-6">{idx + 1}.</span>
-                  <input
-                    value={item.label}
-                    onChange={(e) => updateLabel(idx, e.target.value)}
-                    className="flex-1 text-sm bg-transparent focus:outline-none"
-                  />
-                  <button
-                    type="button"
-                    onClick={() => moveItem(idx, -1)}
-                    disabled={idx === 0}
-                    className="text-xs text-[var(--color-text-muted)] hover:text-primary disabled:opacity-30 px-1"
-                    title="Flytt opp"
-                  >↑</button>
-                  <button
-                    type="button"
-                    onClick={() => moveItem(idx, 1)}
-                    disabled={idx === items.length - 1}
-                    className="text-xs text-[var(--color-text-muted)] hover:text-primary disabled:opacity-30 px-1"
-                    title="Flytt ned"
-                  >↓</button>
-                  <button
-                    type="button"
-                    onClick={() => removeItem(idx)}
-                    className="text-[var(--color-text-muted)] hover:text-red-600"
-                    title="Fjern punkt"
+              {items.map((item, idx) => {
+                const isDragging = dragIndex === idx
+                const isDropTarget = overIndex === idx && dragIndex !== null && dragIndex !== idx
+                const grip = (
+                  <span
+                    draggable
+                    onDragStart={(e) => { setDragIndex(idx); e.dataTransfer.effectAllowed = 'move' }}
+                    className="cursor-grab active:cursor-grabbing p-0.5 -ml-1 text-[var(--color-text-muted)] hover:text-primary touch-none flex-none"
+                    title="Dra for å endre rekkefølge"
+                    aria-label="Dra for å endre rekkefølge"
                   >
-                    <Trash2 size={12} />
-                  </button>
-                </li>
-              ))}
+                    <GripVertical size={14} />
+                  </span>
+                )
+                const dropCls = `transition-colors ${isDragging ? 'opacity-40' : ''} ${isDropTarget ? 'border-primary border-dashed bg-primary-soft' : 'border-border'}`
+                const onDragOver = (e: React.DragEvent) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; if (overIndex !== idx) setOverIndex(idx) }
+                const onDrop = (e: React.DragEvent) => { e.preventDefault(); if (dragIndex !== null) reorder(dragIndex, idx); setDragIndex(null); setOverIndex(null) }
+                const onDragEnd = () => { setDragIndex(null); setOverIndex(null) }
+                return item.is_section ? (
+                  <li key={item.id} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd} className={`flex items-center gap-2 bg-muted border rounded px-3 py-1.5 mt-2 first:mt-0 ${dropCls}`}>
+                    {grip}
+                    <Heading2 size={13} className="text-[var(--color-text-muted)] flex-none" />
+                    <input
+                      value={item.label}
+                      onChange={(e) => updateLabel(idx, e.target.value)}
+                      className="flex-1 text-sm font-semibold bg-transparent focus:outline-none text-[var(--color-text-primary)]"
+                    />
+                    <span className="text-[10px] font-medium text-[var(--color-text-muted)] uppercase tracking-wide px-1.5 py-0.5 bg-border/60 rounded flex-none">
+                      Seksjon
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => removeItem(idx)}
+                      className="text-[var(--color-text-muted)] hover:text-red-600 flex-none"
+                      title="Fjern seksjon"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </li>
+                ) : (
+                  <li key={item.id} onDragOver={onDragOver} onDrop={onDrop} onDragEnd={onDragEnd} className={`flex items-center gap-2 bg-card border rounded px-3 py-1.5 pl-6 ${dropCls}`}>
+                    {grip}
+                    <span className="text-xs text-[var(--color-text-muted)] font-mono w-6">{idx + 1}.</span>
+                    <input
+                      value={item.label}
+                      onChange={(e) => updateLabel(idx, e.target.value)}
+                      className="flex-1 text-sm bg-transparent focus:outline-none"
+                    />
+                    <button
+                      type="button"
+                      onClick={() => removeItem(idx)}
+                      className="text-[var(--color-text-muted)] hover:text-red-600 flex-none"
+                      title="Fjern punkt"
+                    >
+                      <Trash2 size={12} />
+                    </button>
+                  </li>
+                )
+              })}
             </ul>
           )}
 
-          <form onSubmit={addItem} className="flex gap-2 pt-2">
+          <form
+            className="flex gap-2 pt-2 flex-wrap"
+            onSubmit={(e) => { e.preventDefault(); addItem(false) }}
+          >
             <input
               value={newItem}
               onChange={(e) => setNewItem(e.target.value)}
-              placeholder="Nytt sjekklistepunkt"
-              className="flex-1 px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
+              placeholder="Navn på punkt eller seksjon"
+              className="flex-1 min-w-[180px] px-3 py-2 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary"
             />
             <button
               type="submit"
               disabled={!newItem.trim()}
               className="inline-flex items-center gap-1 px-3 py-2 text-sm bg-muted hover:bg-gray-200 text-[var(--color-text-primary)] rounded-lg font-medium disabled:opacity-50"
             >
-              <Plus size={14} /> Legg til
+              <Plus size={14} /> Punkt
+            </button>
+            <button
+              type="button"
+              onClick={() => addItem(true)}
+              disabled={!newItem.trim()}
+              className="inline-flex items-center gap-1 px-3 py-2 text-sm border border-border bg-card hover:bg-muted text-[var(--color-text-secondary)] rounded-lg font-medium disabled:opacity-50"
+            >
+              <Heading2 size={14} /> Seksjon
             </button>
           </form>
 
@@ -358,6 +407,7 @@ function TypeCard({ type, isExpanded, onToggle, onDelete, onRename, onChange }: 
           )}
 
           <DefaultPhasesEditor typeId={type.id} />
+          <ProjectTypeImportConfig typeId={type.id} />
         </div>
       )}
     </Card>

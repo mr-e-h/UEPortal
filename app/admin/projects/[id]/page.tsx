@@ -8,7 +8,7 @@ import { useProjectData } from './useProjectData'
 import { useMe } from '@/lib/useMe'
 import type { Product } from '@/types'
 import { fmtProductLabel } from '@/lib/format'
-import { internalCostTotal, fallbackEndMonthIndex } from '@/lib/internal-costs'
+import { internalCostTotal, fallbackEndMonthIndex, planEndDate } from '@/lib/internal-costs'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import ErrorBox from '@/components/ui/ErrorBox'
 import { useConfirm } from '@/components/ui/useConfirm'
@@ -19,6 +19,7 @@ const InvoicesSection = dynamic(() => import('./InvoicesSection'), { ssr: false 
 const ChangeOrdersSection = dynamic(() => import('./ChangeOrdersSection'), { ssr: false })
 import ReportingsSection from './ReportingsSection'
 import InternalCostsSection from './InternalCostsSection'
+import SubcontractorsSection from './SubcontractorsSection'
 import MaterialSection from './MaterialSection'
 import ForecastSection from './ForecastSection'
 import OverviewSection from './OverviewSection'
@@ -30,6 +31,7 @@ import ChecklistSection from './ChecklistSection'
 const TABS = [
   { id: 'oversikt', label: 'Oversikt' },
   { id: 'budsjett', label: 'Budsjett' },
+  { id: 'underentreprenorer', label: 'Underentreprenører' },
   { id: 'sjekkliste', label: 'Sjekkliste' },
   { id: 'fremdriftsplan', label: 'Fremdriftsplan' },
   { id: 'prognose', label: 'Prognose' },
@@ -54,8 +56,8 @@ export default function ProjectDetailPage() {
   // (tabs, dialog open/close, draft form values) stays here.
   const {
     project, allProducts, budgetLines, reportLines, projectSubs, allSubs,
-    changeOrders, internalCosts, weeklyReportsWL, subPrices, milestones,
-    budgetVersions, monthPlans, projectManagers, loading, adminName,
+    changeOrders, internalCosts, weeklyReportsWL, subPrices, milestones, phases, phaseTypes,
+    budgetVersions, monthPlans, projectManagers, invoices, loading, adminName,
     fetchAll, addBudgetLine: addBudgetLineHandler, addSubToProject: addSubHandler,
     removeSubFromProject, updateReportStatus, updateChangeOrderStatus: updateCOStatus,
     deleteInternalCost,
@@ -200,6 +202,17 @@ export default function ProjectDetailPage() {
     fetchAll()
   }
 
+  // Tagg en budsjettlinje til en fase (eller fjern taggen). Gir avledet
+  // fasevekt i prognosen — se ØKONOMIMODELL.md punkt 1b.
+  async function handleAssignPhase(lineId: string, phaseId: string | null) {
+    await fetch('/api/budget-lines', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: lineId, phase_id: phaseId }),
+    }).catch(() => {})
+    fetchAll()
+  }
+
   async function addSubToProject(subId: string) {
     if (!subId) return
     await addSubHandler(subId)
@@ -253,8 +266,13 @@ export default function ProjectDetailPage() {
   const assignedSubIds = new Set(projectSubs.map((ps) => ps.subcontractor_id))
   const projectSubDetails = allSubs.filter((s) => assignedSubIds.has(s.id))
 
+  // Periodens slutt for løpende interne kostnader følger FREMDRIFTSPLANEN
+  // (seneste fase/milepæl), ikke prosjektets statiske sluttdato — så f.eks.
+  // riggplass regnes over varigheten man faktisk planlegger, og oppdateres når
+  // fremdriftsplanen endres. Tom plan → fall tilbake til prosjektets sluttdato.
+  const planEnd = planEndDate(phases, milestones, project.end_date)
   // Engangs + løpende månedlige interne kostnader, utvidet over periodene.
-  const totalInternalCost = internalCostTotal(internalCosts, fallbackEndMonthIndex(project.end_date, new Date()))
+  const totalInternalCost = internalCostTotal(internalCosts, fallbackEndMonthIndex(planEnd, new Date()))
 
   // "Select all" must match the visible filter — selecting hidden rows is
   // confusing and the count "X valgt" would be wrong. Filter the same way
@@ -380,6 +398,8 @@ export default function ProjectDetailPage() {
           weeklyReportsWL={weeklyReportsWL}
           changeOrders={changeOrders}
           internalCosts={internalCosts}
+          invoices={invoices}
+          periodEnd={planEnd}
           projectManagers={projectManagers}
           onGoToTab={(tab) => setActiveTab(tab)}
         />
@@ -415,6 +435,7 @@ export default function ProjectDetailPage() {
           onOpenFremdriftsplan={() => setActiveTab('fremdriftsplan')}
           onOpenInternalCosts={() => setActiveTab('interne')}
           onOpenInvoices={() => setActiveTab('fakturagrunnlag')}
+          invoices={invoices}
           milestones={milestones}
           budgetLines={budgetLines}
           internalCosts={internalCosts}
@@ -437,6 +458,9 @@ export default function ProjectDetailPage() {
           allSubs={allSubs}
           projectSubDetails={projectSubDetails}
           changeOrders={changeOrders}
+          phases={phases}
+          phaseTypes={phaseTypes}
+          onAssignPhase={handleAssignPhase}
           showAddLine={showAddLine}
           setShowAddLine={setShowAddLine}
           newLine={newLine}
@@ -464,6 +488,19 @@ export default function ProjectDetailPage() {
           budgetVersions={budgetVersions}
           dragOver={dragOver}
           setDragOver={setDragOver}
+        />
+      )}
+
+      {/* ── UNDERENTREPRENØRER ───────────────────────────────────────── */}
+      {activeTab === 'underentreprenorer' && (
+        <SubcontractorsSection
+          budgetLines={budgetLines}
+          projectSubs={projectSubs}
+          allSubs={allSubs}
+          allProducts={allProducts}
+          weeklyReportsWL={weeklyReportsWL}
+          phases={phases}
+          phaseTypes={phaseTypes}
         />
       )}
 
@@ -513,7 +550,7 @@ export default function ProjectDetailPage() {
           projectId={id}
           internalCosts={internalCosts}
           totalInternalCost={totalInternalCost}
-          projectEnd={project.end_date}
+          periodEnd={planEnd}
           onAdded={fetchAll}
           onRequestDelete={setConfirmDeleteCostId}
         />
