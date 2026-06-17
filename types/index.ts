@@ -193,6 +193,22 @@ export interface ProjectBudgetLine {
 }
 
 /**
+ * Andel av en budsjettlinje tildelt ÉN underentreprenør — for å dele ett produkt
+ * mellom flere UE (mengde + kostpris + ansvar per UE). Kunden faktureres for hele
+ * produktet via budsjettlinjas mengde × kundepris; UE-kost = Σ(andel.mengde ×
+ * andel.kostpris). Brukes KUN når en linje deles — én-UE-linjer bruker fortsatt
+ * assigned_subcontractor_id + subcontractor_cost_price_snapshot på selve linja.
+ */
+export interface ProjectBudgetLineSubcontractor {
+  id: string
+  budget_line_id: string
+  subcontractor_id: string
+  quantity: number
+  cost_price_snapshot: number
+  created_at: string
+}
+
+/**
  * EM-statusflyt:
  *
  *   draft               UE har påbegynt men ikke sendt inn ennå

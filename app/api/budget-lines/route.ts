@@ -111,6 +111,7 @@ export async function PUT(request: NextRequest) {
     assigned_subcontractor_id?: string | null
     line_type?: string
     phase_id?: string | null
+    budget_quantity?: number
   }
   if (!body.id) return NextResponse.json({ error: 'id mangler' }, { status: 400 })
 
@@ -135,6 +136,14 @@ export async function PUT(request: NextRequest) {
 
   if (body.phase_id !== undefined) {
     updates.phase_id = body.phase_id
+  }
+
+  if (body.budget_quantity !== undefined) {
+    const qty = Number(body.budget_quantity)
+    if (!Number.isFinite(qty) || qty < 0) {
+      return NextResponse.json({ error: 'Mengde må være et ikke-negativt tall' }, { status: 400 })
+    }
+    updates.budget_quantity = qty
   }
 
   if (body.assigned_subcontractor_id !== undefined) {
