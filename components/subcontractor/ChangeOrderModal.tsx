@@ -72,6 +72,18 @@ export default function ChangeOrderModal({
   const [previewUrl, setPreviewUrl] = useState<string | null>(null)
   const [submitting, setSubmitting] = useState(false)
   const [error, setError] = useState('')
+  // Persistert id for EMen som ble lagret/sendt i steg 1. Settes så snart
+  // POST/PUT er OK, slik at et nytt «Send»-klikk (eller «Last opp på nytt»)
+  // gjenbruker SAMME EM i stedet for å opprette en duplikat. Initialiseres
+  // fra en eventuell kladd vi åpnet for redigering.
+  const [savedOrderId, setSavedOrderId] = useState<string | null>(
+    initialDraft?.id ?? null
+  )
+  // True når EMen er lagret men vedlegget feilet i steg 2. Da viser vi en
+  // målrettet «Last opp på nytt»-knapp i stedet for å lage ny EM.
+  const [attachmentFailed, setAttachmentFailed] = useState(false)
+  // Egen submitting-flag for den isolerte vedlegg-re-opplastingen.
+  const [retryingAttachment, setRetryingAttachment] = useState(false)
   // Konsekvens-linjer for read-only-visning når EMen åpnes. Lastes lazy
   // når modal åpnes med en eksisterende EM som har has_consequence_lines.
   // Customer-pris er strippet ut av endepunktet.
@@ -133,6 +145,9 @@ export default function ChangeOrderModal({
     setFile(f)
     setExistingAttachmentUrl(null)
     setError('')
+    // Nytt vedlegg valgt etter en steg 2-feil → nullstill feiltilstanden
+    // så «Send» igjen kjører normalflyten (PUT + vedlegg) på samme EM.
+    setAttachmentFailed(false)
   }, [])
 
   function clearFile() {
@@ -142,6 +157,8 @@ export default function ChangeOrderModal({
     setFile(null)
     setExistingAttachmentUrl(null)
     if (fileInputRef.current) fileInputRef.current.value = ''
+    // Uten fil gir «Last opp på nytt» ingen mening — fjern feilbanneren.
+    setAttachmentFailed(false)
   }
 
   useEffect(() => {
@@ -196,6 +213,55 @@ export default function ChangeOrderModal({
     if (f) applyFile(f)
   }
 
+  // Steg 2, isolert: POST KUN til /attachment for en allerede lagret EM.
+  // Brukes både i normalflyten og av «Last opp på nytt». Kaster ved feil
+  // slik at kalleren kan skille steg 1 fra steg 2.
+  async function uploadAttachment(orderId: string, f: File) {
+    await new Promise<void>((resolve, reject) => {
+      const reader = new FileReader()
+      reader.onload = async () => {
+        try {
+          const res = await fetch(`/api/change-orders/${orderId}/attachment`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              filename: f.name,
+              data: reader.result as string,
+              mimeType: f.type,
+            }),
+          })
+          if (!res.ok) {
+            const data = await res.json().catch(() => ({} as { error?: string }))
+            reject(new Error(data.error ?? `Vedlegg-opplasting feilet (${res.status})`))
+            return
+          }
+          resolve()
+        } catch (err) {
+          reject(err)
+        }
+      }
+      reader.onerror = () => reject(reader.error ?? new Error('Klarte ikke lese filen'))
+      reader.readAsDataURL(f)
+    })
+  }
+
+  // «Last opp på nytt» etter at steg 1 lyktes men steg 2 feilet. POSTer KUN
+  // vedlegget for den allerede lagrede EMen — ingen ny POST/PUT av selve EMen,
+  // så ingen duplikat. Ved suksess fullføres flyten med onSuccess().
+  async function handleRetryAttachment() {
+    if (!savedOrderId || !file) return
+    setRetryingAttachment(true)
+    setError('')
+    try {
+      await uploadAttachment(savedOrderId, file)
+      setAttachmentFailed(false)
+      onSuccess()
+    } catch (err) {
+      setError(err instanceof Error ? err.message : 'Vedlegget kunne ikke lastes opp. Prøv igjen.')
+      setRetryingAttachment(false)
+    }
+  }
+
   async function handleSave(action: 'pending' | 'draft') {
     if (action === 'pending') {
       const qty = Number(quantity)
@@ -211,13 +277,17 @@ export default function ChangeOrderModal({
 
     setSubmitting(true)
     setError('')
+    setAttachmentFailed(false)
 
     try {
       const qty = Number(quantity) || 0
-      let orderId: string
 
-      if (initialDraft) {
-        const res = await fetch(`/api/change-orders/${initialDraft.id}`, {
+      // Steg 1: lagre/send selve EMen. PUT hvis vi alt har en id (åpnet kladd
+      // ELLER en EM vi nettopp opprettet og som vedlegget feilet på) — slik
+      // unngår vi en duplikat-EM når UE klikker «Send» på nytt etter steg 2-feil.
+      let orderId: string
+      if (savedOrderId) {
+        const res = await fetch(`/api/change-orders/${savedOrderId}`, {
           method: 'PUT',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
@@ -261,37 +331,21 @@ export default function ChangeOrderModal({
         const created = await res.json() as { id: string }
         orderId = created.id
       }
+      // Steg 1 lyktes: behold id-en så et nytt klikk PUT-er (ikke POST-er).
+      setSavedOrderId(orderId)
 
+      // Steg 2: vedlegget. Feiler dette er EMen ALLEREDE lagret — ikke kall
+      // onSuccess(); behold orderId og vis «Last opp på nytt» slik at UE kun
+      // re-POSTer vedlegget mot samme EM. Ingen duplikat-EM.
       if (file) {
-        // Two-stage: read the file as base64, then POST. Either stage can fail;
-        // surface real errors so the user can retry instead of seeing a silent
-        // success (EM was created but attachment never uploaded).
-        await new Promise<void>((resolve, reject) => {
-          const reader = new FileReader()
-          reader.onload = async () => {
-            try {
-              const res = await fetch(`/api/change-orders/${orderId}/attachment`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  filename: file.name,
-                  data: reader.result as string,
-                  mimeType: file.type,
-                }),
-              })
-              if (!res.ok) {
-                const data = await res.json().catch(() => ({} as { error?: string }))
-                reject(new Error(data.error ?? `Vedlegg-opplasting feilet (${res.status})`))
-                return
-              }
-              resolve()
-            } catch (err) {
-              reject(err)
-            }
-          }
-          reader.onerror = () => reject(reader.error ?? new Error('Klarte ikke lese filen'))
-          reader.readAsDataURL(file)
-        })
+        try {
+          await uploadAttachment(orderId, file)
+        } catch (err) {
+          setAttachmentFailed(true)
+          setError(err instanceof Error ? err.message : 'Vedlegget kunne ikke lastes opp.')
+          setSubmitting(false)
+          return
+        }
       }
 
       onSuccess()
@@ -584,7 +638,39 @@ export default function ChangeOrderModal({
             </div>
           </div>
 
-          {error && <p className="text-sm text-red-600">{error}</p>}
+          {/* Vedlegg feilet i steg 2, men EMen er lagret. Egen rød banner med
+              målrettet «Last opp på nytt» som KUN re-POSTer vedlegget mot den
+              allerede lagrede EMen — så UE ikke trykker «Send» på nytt og lager
+              en duplikat. Selve «Send»-knappen vil uansett PUT-e (savedOrderId
+              er satt), så også den veien er duplikat-sikker. */}
+          {attachmentFailed ? (
+            <div className="bg-red-50 border border-red-200 rounded-lg p-3 space-y-2">
+              <p className="text-sm font-medium text-red-800">
+                Endringsmeldingen er lagret, men vedlegget ble ikke lastet opp.
+              </p>
+              {error && <p className="text-xs text-red-700">{error}</p>}
+              <div className="flex items-center gap-3">
+                <Button
+                  type="button"
+                  variant="primary"
+                  onClick={handleRetryAttachment}
+                  disabled={retryingAttachment || !file}
+                >
+                  {retryingAttachment ? 'Laster opp…' : 'Last opp på nytt'}
+                </Button>
+                <button
+                  type="button"
+                  onClick={onSuccess}
+                  disabled={retryingAttachment}
+                  className="text-xs font-medium text-red-700 hover:text-red-900 underline disabled:opacity-50"
+                >
+                  Fortsett uten vedlegg
+                </button>
+              </div>
+            </div>
+          ) : (
+            error && <p className="text-sm text-red-600">{error}</p>
+          )}
 
           <div className="flex gap-3 justify-end pt-1">
             <Button type="button" variant="secondary" onClick={onClose} disabled={submitting}>

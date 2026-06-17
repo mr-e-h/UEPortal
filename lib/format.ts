@@ -96,6 +96,19 @@ export function parseNorwegianNumber(input: string): number {
   return isNaN(n) ? 0 : n
 }
 
+/* ── Frist-/datomatte ────────────────────────────────────────────────── */
+
+/**
+ * Antall hele dager fra i dag til `dateISO` (negativt = forfalt). null når
+ * datoen mangler. ÉN kilde for «dager igjen»-logikken som driver frist-
+ * fargingen på dashbordet og i prosjektlista — ikke reimplementer lokalt.
+ */
+export function daysUntil(dateISO: string | null | undefined): number | null {
+  if (!dateISO) return null
+  const ms = new Date(dateISO).getTime() - new Date().getTime()
+  return Math.ceil(ms / (1000 * 60 * 60 * 24))
+}
+
 /**
  * Kanonisk EM-tittel: "Endringsmelding 7 - Sentrumsgården".
  *

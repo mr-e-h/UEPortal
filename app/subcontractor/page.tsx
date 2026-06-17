@@ -1,13 +1,13 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, type ReactNode } from 'react'
 import Link from 'next/link'
 import { useRouter } from 'next/navigation'
-import { CheckCircle2, Clock, Send, Plus, Mail } from 'lucide-react'
+import { CheckCircle2, Clock, Send, Plus, Mail, Wallet, FileText, PiggyBank, ChevronRight, AlertCircle } from 'lucide-react'
 import ProjectPickerModal from '@/components/subcontractor/ProjectPickerModal'
 import Card from '@/components/ui/Card'
 import EmptyState from '@/components/ui/EmptyState'
-import { fmtNOK as fmt, fmtDateLong as fmtDate, fmtDateTime } from '@/lib/format'
+import { fmtNOK as fmt, fmtDateLong as fmtDate, fmtDateTime, daysUntil } from '@/lib/format'
 import { changeOrderType, changeOrderStatus } from '@/lib/statuses'
 import { useMe } from '@/lib/useMe'
 
@@ -96,10 +96,48 @@ const EMPTY_DASHBOARD: DashboardPayload = {
   projects: [],
 }
 
-function daysUntil(s: string | null | undefined): number | null {
-  if (!s) return null
-  const ms = new Date(s).getTime() - new Date().getTime()
-  return Math.ceil(ms / (1000 * 60 * 60 * 24))
+interface KpiCardProps {
+  label: string
+  value: string
+  hint: string
+  icon: ReactNode
+  iconBg: string
+  href?: string
+}
+
+function KpiCard({ label, value, hint, icon, iconBg, href }: KpiCardProps) {
+  const body = (
+    <>
+      <div className="flex items-start gap-4">
+        <div className={`w-12 h-12 rounded-xl flex items-center justify-center flex-none ${iconBg}`}>
+          {icon}
+        </div>
+        <div className="min-w-0 flex-1">
+          <div className="flex items-center justify-between gap-2">
+            <p className="text-sm font-medium text-[var(--color-text-secondary)]">{label}</p>
+            {href && (
+              <ChevronRight size={18} className="flex-none text-[var(--color-text-muted)] group-hover:text-[var(--color-text-secondary)]" />
+            )}
+          </div>
+          <p className="text-3xl font-bold text-[var(--color-text-primary)] mt-1 leading-tight tabular-nums">{value}</p>
+          <p className="text-xs text-[var(--color-text-muted)] mt-1">{hint}</p>
+        </div>
+      </div>
+    </>
+  )
+
+  if (href) {
+    return (
+      <Link
+        href={href}
+        className="group bg-card border border-border rounded-2xl p-5 hover:border-[var(--color-border-strong)] hover:shadow-sm transition-all"
+      >
+        {body}
+      </Link>
+    )
+  }
+
+  return <div className="bg-card border border-border rounded-2xl p-5">{body}</div>
 }
 
 export default function SubcontractorPage() {
@@ -146,6 +184,10 @@ export default function SubcontractorPage() {
 
   const today = new Date().toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' })
 
+  // S.2 — «Hva venter på meg». Kun revisjon teller som UE-egen oppgave;
+  // «til behandling»-boksene venter på admin og holdes utenfor.
+  const revisionCount = dashboard.revisionChangeOrders.length
+
   return (
     <div className="p-6 space-y-6">
       {/* Greeting */}
@@ -154,30 +196,73 @@ export default function SubcontractorPage() {
         <h1 className="text-xl font-bold text-[var(--color-text-primary)] mt-0.5">
           {userName ? `Hei, ${userName.split(' ')[0]}` : 'Oversikt'}
         </h1>
+        {revisionCount > 0 ? (
+          <p className="text-sm font-medium text-orange-700 mt-1 inline-flex items-center gap-1.5">
+            <AlertCircle size={15} strokeWidth={2} />
+            Du har {revisionCount} {revisionCount === 1 ? 'endringsmelding som må rettes' : 'endringsmeldinger som må rettes'}
+          </p>
+        ) : (
+          <p className="text-sm text-[var(--color-text-muted)] mt-1 inline-flex items-center gap-1.5">
+            <CheckCircle2 size={15} strokeWidth={2} className="text-green-600" />
+            Alt er à jour
+          </p>
+        )}
       </div>
 
-      {/* Two big KPI cards — cash-flow focused */}
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <div className="bg-card border border-border rounded-2xl p-5 flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-none bg-green-50">
-            <CheckCircle2 size={22} className="text-green-600" strokeWidth={1.75} />
+      {/* KPI-er — alle 5 fra payloaden, gruppert i budsjett-status vs kontantstrøm. */}
+      <div className="space-y-4">
+        {/* Budsjett-status: avtalt verdi → fakturert → gjenstår å fakturere */}
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">Budsjett-status</h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <KpiCard
+              label="Mitt budsjett"
+              value={fmt(dashboard.kpi.ordreverdi)}
+              hint="Avtalt verdi av arbeidet du er tildelt"
+              icon={<Wallet size={22} className="text-slate-600" strokeWidth={1.75} />}
+              iconBg="bg-slate-100"
+            />
+            <KpiCard
+              label="Fakturert"
+              value={fmt(dashboard.kpi.fakturert)}
+              hint="Sum av dine registrerte fakturaer"
+              icon={<FileText size={22} className="text-blue-600" strokeWidth={1.75} />}
+              iconBg="bg-blue-50"
+              href="/subcontractor/invoice-basis"
+            />
+            <KpiCard
+              label="Gjenstår å fakturere"
+              value={fmt(dashboard.kpi.gjenstaaende)}
+              hint="Av budsjettet som ikke er fakturert ennå"
+              icon={<PiggyBank size={22} className="text-violet-600" strokeWidth={1.75} />}
+              iconBg="bg-violet-50"
+              href="/subcontractor/invoice-basis"
+            />
           </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-[var(--color-text-secondary)]">Klart til fakturering</p>
-            <p className="text-3xl font-bold text-[var(--color-text-primary)] mt-1 leading-tight">{fmt(dashboard.kpi.fakturerbart)}</p>
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">Godkjent arbeid som ikke er fakturert ennå</p>
+        </section>
+
+        {/* Kontantstrøm: klart til fakturering → venter på godkjenning */}
+        <section>
+          <h2 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-2">Kontantstrøm</h2>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <KpiCard
+              label="Klart til fakturering"
+              value={fmt(dashboard.kpi.fakturerbart)}
+              hint="Godkjent arbeid som ikke er fakturert ennå"
+              icon={<CheckCircle2 size={22} className="text-green-600" strokeWidth={1.75} />}
+              iconBg="bg-green-50"
+              href="/subcontractor/invoice-basis"
+            />
+            <KpiCard
+              label="Venter på godkjenning"
+              value={fmt(dashboard.kpi.produsertIkkeBedt)}
+              hint="Innsendt arbeid som venter på godkjenning fra prosjektleder"
+              icon={<Clock size={22} className="text-amber-600" strokeWidth={1.75} />}
+              iconBg="bg-amber-50"
+              href="/subcontractor/weekly-reports"
+            />
           </div>
-        </div>
-        <div className="bg-card border border-border rounded-2xl p-5 flex items-start gap-4">
-          <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-none bg-amber-50">
-            <Clock size={22} className="text-amber-600" strokeWidth={1.75} />
-          </div>
-          <div className="min-w-0 flex-1">
-            <p className="text-sm font-medium text-[var(--color-text-secondary)]">Sendt inn, venter på godkjenning</p>
-            <p className="text-3xl font-bold text-[var(--color-text-primary)] mt-1 leading-tight">{fmt(dashboard.kpi.produsertIkkeBedt)}</p>
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">Innsendt arbeid som venter på godkjenning fra prosjektleder</p>
-          </div>
-        </div>
+        </section>
       </div>
 
       {/* Two action columns — button on top, pending list below */}

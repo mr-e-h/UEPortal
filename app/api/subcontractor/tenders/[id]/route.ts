@@ -158,6 +158,16 @@ export async function PUT(
     bidLineRows.push({ tender_line_id: line.id, unit_price: unitPrice })
   }
 
+  // T.1: refuse a binding submission with no prices — a 0-total bid could be
+  // mistaken for the cheapest offer and awarded by mistake. Saving a 0-draft
+  // is still allowed (only submit is blocked).
+  if (body.submit && total === 0) {
+    return NextResponse.json(
+      { error: 'Du må fylle inn minst én pris før du kan sende inn tilbudet' },
+      { status: 400 },
+    )
+  }
+
   const now = new Date().toISOString()
 
   // Upsert the UE's current bid (one current bid per UE per tender in phase 1).

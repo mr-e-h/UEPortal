@@ -378,6 +378,7 @@ export interface WeeklyReportLine {
   reviewed_at: string | null
   reviewed_by: string | null
   billed_at: string | null
+  ue_invoice_id: string | null
 }
 
 export interface InvoiceBasis {

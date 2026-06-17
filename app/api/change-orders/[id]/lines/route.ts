@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { isAdmin, isSub } from '@/lib/api-guard'
+import { stripCustomerEconomicsLines } from '@/lib/economy-isolation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import type { ChangeOrderLine } from '@/types'
 
@@ -41,10 +42,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
   // UE strip: hide customer-side prices. They still see qty, product, unit
   // and their own cost snapshot.
   if (isSub(session)) {
-    lines = lines.map((l) => {
-      const { customer_price_snapshot: _cp, ...rest } = l
-      return rest as ChangeOrderLine
-    })
+    lines = stripCustomerEconomicsLines(lines) as ChangeOrderLine[]
   }
 
   return NextResponse.json(lines)

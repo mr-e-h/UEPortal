@@ -1,19 +1,21 @@
 ﻿'use client'
 
-import { useEffect, useState, useCallback } from 'react'
+import { useEffect, useState, useCallback, useRef } from 'react'
+import Link from 'next/link'
 import dynamic from 'next/dynamic'
 import { useRouter, useParams, useSearchParams } from 'next/navigation'
-import { ChevronLeft, ChevronRight, Plus, TrendingUp, CheckCircle, Clock, BarChart3, ChevronDown } from 'lucide-react'
+import { ChevronLeft, ChevronRight, Plus, TrendingUp, CheckCircle, Clock, BarChart3, ChevronDown, Wallet, Receipt, AlertTriangle, Copy } from 'lucide-react'
 import type { WeeklyReport, WeeklyReportLine, ChangeOrder, GanttMilestone, ActivityEntry, PhaseType, ProjectPhase } from '@/types'
 import { getCurrentWeek, formatWeekLabel, prevWeek as prevISOWeek, nextWeek as nextISOWeek } from '@/lib/utils/weeks'
 import { calculateBudgetUsage, type LineWithReportStatus } from '@/lib/utils/budgetUsage'
 import NumberInput from '@/components/NumberInput'
 import SortableTable from '@/components/SortableTable'
-import Badge from '@/components/ui/Badge'
 import Button from '@/components/ui/Button'
 import Card from '@/components/ui/Card'
+import StatusPill from '@/components/ui/StatusPill'
 import { useMe } from '@/lib/useMe'
 import { api } from '@/lib/api'
+import { readyToInvoice } from '@/lib/economy'
 
 // Lazy-load heavy interactive components — they're only shown after a click
 // (modal opens, budget line expands, Gantt tab activated). Keeps the initial
@@ -24,7 +26,8 @@ const GanttView = dynamic(() => import('@/components/subcontractor/GanttView'), 
 const VersionDiffModal = dynamic(() => import('@/components/admin/VersionDiffModal'), { ssr: false })
 const UEFremdriftsplan = dynamic(() => import('@/components/subcontractor/UEFremdriftsplan'), { ssr: false })
 import { fmtNOK as fmt } from '@/lib/format'
-import { weeklyReportStatus, weeklyReportLineStatus, changeOrderType } from '@/lib/statuses'
+import { weeklyReportStatus, weeklyReportLineStatus, changeOrderType, changeOrderPill } from '@/lib/statuses'
+import { emNeedsRevision } from '@/lib/attention'
 
 type BudgetLineWithProduct = {
   id: string
@@ -47,6 +50,11 @@ type ProjectWithLines = {
   status: string
   start_date: string
   end_date: string | null
+  // Sum egne fakturaer (UE-eget kosttall, ferdig summert server-side). Brukes
+  // til «Klart til fakturering»-KPIen (4.6). Garantert på raden fra
+  // /api/subcontractor/projects, men holdes valgfri her så eldre cache-rader
+  // ikke krasjer typingen.
+  invoiced_value?: number
   budget_lines: BudgetLineWithProduct[]
   project_managers: ProjectManager[]
 }
@@ -82,6 +90,18 @@ type UEConsequenceLine = {
 }
 type BudgetLineOption = Pick<BudgetLineWithProduct, 'product_id' | 'product_name' | 'unit'> & { cost_price?: number }
 
+// Faner på prosjekt-detaljsiden (S.1). Handling (send EM / lever rapport)
+// ligger på henholdsvis Endringsmeldinger- og Rapportering-fanen, som begge
+// er lett tilgjengelige i fane-raden.
+const TABS = [
+  { id: 'oversikt', label: 'Oversikt' },
+  { id: 'budsjett', label: 'Budsjett' },
+  { id: 'rapportering', label: 'Rapportering' },
+  { id: 'endringsmeldinger', label: 'Endringsmeldinger' },
+  { id: 'fakturering', label: 'Fakturering' },
+] as const
+type TabId = (typeof TABS)[number]['id']
+
 export default function SubcontractorProjectPage() {
   const router = useRouter()
   const { id } = useParams<{ id: string }>()
@@ -106,12 +126,40 @@ export default function SubcontractorProjectPage() {
   const [expandedData, setExpandedData] = useState<EnrichedReport | null>(null)
   const [showEMModal, setShowEMModal] = useState(false)
 
+  // ─── Fane-navigasjon (S.1) ───────────────────────────────────────────────
+  // Oversikt / Budsjett / Rapportering / Endringsmeldinger / Fakturering.
+  // De tunge seksjonene (Gantt/Fremdriftsplan/budsjett-graf/EM-modal) lazy-
+  // lastes fortsatt — fanene styrer bare hvilke Card-seksjoner som monteres.
+  const [activeTab, setActiveTab] = useState<TabId>('oversikt')
+
+  // Ukesrapport-flyt: ref til «Lever rapport»-kortet så ?action=weekly-report
+  // (og fane-bytte) kan scrolle det inn i view, og en suksess-banner +
+  // fremhevet rad etter innsending (2.4).
+  const reportCardRef = useRef<HTMLDivElement>(null)
+  const [submitSuccess, setSubmitSuccess] = useState<{ week: number; year: number } | null>(null)
+  const [highlightReportId, setHighlightReportId] = useState<string | null>(null)
+
   // Dashboard quick action: when the picker sends us here with ?action=new-em,
-  // auto-open the EM modal. Strip the param afterwards so a page refresh
+  // auto-open the EM modal (+ switch to the Endringsmeldinger tab so the modal
+  // opens over the right surface). Strip the param afterwards so a page refresh
   // doesn't pop it back open.
   useEffect(() => {
     if (searchParams.get('action') !== 'new-em') return
+    setActiveTab('endringsmeldinger')
     setShowEMModal(true)
+    const url = new URL(window.location.href)
+    url.searchParams.delete('action')
+    window.history.replaceState({}, '', url.toString())
+  }, [searchParams])
+
+  // Sett til true av ?action=weekly-report — håndteres i en egen effekt som
+  // venter til data er lastet (createNewDraft trenger subcontractorId +
+  // ferdiglastet historikk). Strip param her så refresh ikke trigger på nytt.
+  const [pendingWeeklyAction, setPendingWeeklyAction] = useState(false)
+  useEffect(() => {
+    if (searchParams.get('action') !== 'weekly-report') return
+    setPendingWeeklyAction(true)
+    setActiveTab('rapportering')
     const url = new URL(window.location.href)
     url.searchParams.delete('action')
     window.history.replaceState({}, '', url.toString())
@@ -252,11 +300,33 @@ export default function SubcontractorProjectPage() {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [me])
 
+  // 2.1 — picker-snarvei (?action=weekly-report): når data er lastet, bytt til
+  // Rapportering-fanen (gjort i action-effekten over), scroll «Lever rapport»-
+  // kortet inn i view og start en kladd automatisk hvis den valgte uka ikke
+  // alt har en aktiv kladd. Samme mekanisme som ?action=new-em, bare for rapport.
+  useEffect(() => {
+    if (!pendingWeeklyAction || loading) return
+    setPendingWeeklyAction(false)
+    const run = async () => {
+      if (!(currentReport && currentReport.status === 'draft')) {
+        await createNewDraft()
+      }
+      // Vent en frame så kortet er montert på Rapportering-fanen før scroll.
+      requestAnimationFrame(() => {
+        reportCardRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' })
+      })
+    }
+    run()
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [pendingWeeklyAction, loading])
+
   async function changeWeek(newYear: number, newWeek: number) {
     if (!subcontractorId) return
     setYear(newYear)
     setWeek(newWeek)
     setSubmitError('')
+    setSubmitSuccess(null)
+    setHighlightReportId(null)
     setExpandedId(null)
     const weekReports = allReports.filter((r) => r.year === newYear && r.week_number === newWeek)
     const draft = weekReports.find((r) => r.status === 'draft') ?? null
@@ -280,8 +350,8 @@ export default function SubcontractorProjectPage() {
     changeWeek(next.year, next.week)
   }
 
-  async function createNewDraft() {
-    if (!subcontractorId) return
+  async function createNewDraft(): Promise<WeeklyReport | null> {
+    if (!subcontractorId) return null
     setCreatingDraft(true)
     const report = await fetch('/api/weekly-reports', {
       method: 'POST',
@@ -292,6 +362,44 @@ export default function SubcontractorProjectPage() {
     setInputs({})
     await loadHistory(subcontractorId)
     setCreatingDraft(false)
+    return report
+  }
+
+  // 2.2 — «Kopier forrige uke»: fyll Antall-kolonnen med mengdene fra den
+  // SENESTE innsendte uka FØR den valgte uka. Bevisst klikk (ikke auto), så
+  // UE bare overstyrer det som er endret. Bruker allReports som alt er lastet
+  // og sortert nyest-først. Krever en aktiv kladd; tomme verdier hoppes over.
+  function copyPreviousWeek() {
+    // Finn først den seneste innsendte uka strengt før den valgte.
+    const prev = allReports.find(
+      (r) =>
+        r.status !== 'draft' &&
+        (r.year < year || (r.year === year && r.week_number < week))
+    )
+    if (!prev) return
+    // Summer mengde per budsjettlinje over ALLE innsendinger den uka (en uke
+    // kan ha flere innsendinger / submission_number).
+    const qtyByLine = new Map<string, number>()
+    allReports
+      .filter((r) => r.status !== 'draft' && r.year === prev.year && r.week_number === prev.week_number)
+      .forEach((r) =>
+        r.lines.forEach((l) => {
+          qtyByLine.set(
+            l.project_budget_line_id,
+            (qtyByLine.get(l.project_budget_line_id) ?? 0) + l.reported_quantity
+          )
+        })
+      )
+    setInputs((current) => {
+      const next = { ...current }
+      ;(project?.budget_lines ?? []).forEach((bl) => {
+        const q = qtyByLine.get(bl.id) ?? 0
+        if (q > 0) {
+          next[bl.id] = { quantity: String(q), comment: next[bl.id]?.comment ?? '' }
+        }
+      })
+      return next
+    })
   }
 
   // Returns true on success — caller can decide whether to proceed. Previously
@@ -326,9 +434,11 @@ export default function SubcontractorProjectPage() {
     if (!currentReport) return
     setSubmitting(true)
     setSubmitError('')
+    setSubmitSuccess(null)
     const saved = await saveLines()
     if (!saved) { setSubmitting(false); return }
 
+    const submittedId = currentReport.id
     const res = await fetch(`/api/weekly-reports/${currentReport.id}/submit`, { method: 'POST' })
     if (!res.ok) {
       const data = await res.json().catch(() => ({} as { error?: string }))
@@ -343,6 +453,9 @@ export default function SubcontractorProjectPage() {
     setInputs({})
     await loadHistory(subcontractorId)
     setSubmitting(false)
+    // 2.4 — positiv kvittering: inline suksess-banner + fremhev den nye raden.
+    setSubmitSuccess({ week, year })
+    setHighlightReportId(submittedId)
   }
 
   async function handleEMSuccess() {
@@ -388,7 +501,45 @@ export default function SubcontractorProjectPage() {
     .reduce((s, co) => s + co.total_cost, 0)
   const progressPct = totalBudgetValue > 0 ? Math.min(100, Math.round((totalApprovedValue / totalBudgetValue) * 100)) : 0
 
+  // 3.2 — Gjenstår budsjett (kr) = mitt budsjett − godkjent kost. Kan bli
+  // negativ når UE har produsert/EM-et utover opprinnelig ordre; vises rødt da.
+  const remainingBudgetValue = totalBudgetValue - totalApprovedValue
+  const remainingPct = totalBudgetValue > 0
+    ? Math.max(0, Math.round((remainingBudgetValue / totalBudgetValue) * 100))
+    : 0
+
+  // 4.6 — Klart til fakturering = godkjent kost + godkjente EM − allerede
+  // fakturert (invoiced_value fra server). Ren kost, ingen kundepris.
+  const invoicedValue = project.invoiced_value ?? 0
+  const readyToInvoiceValue = readyToInvoice({
+    approvedWork: totalApprovedValue,
+    approvedChangeOrders: approvedEMValue,
+    invoiced: invoicedValue,
+  })
+
+  // 3.4 — segment-bredder for den stablede fremdriftsbaren. Nevneren er det
+  // største av budsjett og faktisk produsert (godkjent + til behandling), så
+  // overproduksjon ikke får baren til å renne over 100 %.
+  const barDenominator = Math.max(totalBudgetValue, totalApprovedValue + totalPendingValue, 1)
+  const wApproved = (totalApprovedValue / barDenominator) * 100
+  const wPending = (totalPendingValue / barDenominator) * 100
+  const wRemaining = Math.max(0, 100 - wApproved - wPending)
+  // Kroneverdien som svarer til grå-segmentets BREDDE (budsjett − godkjent − til
+  // behandling). Brukes i bar-tooltip/forklaring så tall og bredde stemmer; KPI-
+  // kortet «Gjenstår budsjett» bruker bevisst remainingBudgetValue (uten pending).
+  const barRemainingValue = Math.max(0, barDenominator - totalApprovedValue - totalPendingValue)
+
+  // 1.5 — antall EM-er som trenger UE-revisjon (klient-side fra lastet data).
+  const revisionCount = changeOrders.filter((co) => emNeedsRevision(co.status)).length
+
   const hasAnyInput = Object.values(inputs).some((v) => Number(v.quantity) > 0)
+
+  // 2.2 — finnes det en innsendt uke FØR den valgte å kopiere fra?
+  const hasPreviousWeek = allReports.some(
+    (r) =>
+      r.status !== 'draft' &&
+      (r.year < year || (r.year === year && r.week_number < week))
+  )
 
   const weekSubmissions = allReports.filter((r) => r.year === year && r.week_number === week)
   const weekLines = weekSubmissions.flatMap((r) => r.lines)
@@ -474,12 +625,43 @@ export default function SubcontractorProjectPage() {
         onClose={() => setDiffEntry(null)}
       />
 
+      {/* ─── Fane-navigasjon (S.1) ────────────────────────────────────────────── */}
+      <div className="border-b border-border">
+        <nav className="flex gap-1 overflow-x-auto">
+          {TABS.map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2.5 text-sm font-medium whitespace-nowrap border-b-2 transition-colors ${
+                activeTab === tab.id
+                  ? 'border-blue-600 text-blue-600'
+                  : 'border-transparent text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] hover:border-border'
+              }`}
+            >
+              {tab.label}
+              {tab.id === 'endringsmeldinger' && revisionCount > 0 && (
+                <span className="ml-1.5 inline-flex items-center justify-center text-[10px] font-semibold px-1.5 py-0.5 rounded-full bg-orange-100 text-orange-700">
+                  {revisionCount}
+                </span>
+              )}
+            </button>
+          ))}
+        </nav>
+      </div>
+
+      {/* ═══ FANE: OVERSIKT ═══════════════════════════════════════════════════ */}
+      {activeTab === 'oversikt' && (
+      <>
       {/* ─── Financial KPI cards ──────────────────────────────────────────────── */}
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        {[
+      {/* S.7 — entydige etiketter: «Mitt budsjett» (UE-eget kostbudsjett, ikke
+          salgsverdi mot kunde) og «Gjenstår budsjett» (budsjett−godkjent, ikke
+          «gjenstår å fakturere»). 3.2 = Gjenstår-kortet, 4.6 = Klart til
+          fakturering-kortet med lenke til fakturagrunnlaget. */}
+      <div className="grid grid-cols-2 md:grid-cols-3 gap-4">
+        {([
           {
             icon: BarChart3,
-            label: 'Ordreverdi',
+            label: 'Mitt budsjett',
             value: fmt(totalBudgetValue),
             sub: `${project.budget_lines.length} produktlinjer`,
             color: 'text-indigo-600 bg-indigo-50',
@@ -488,7 +670,7 @@ export default function SubcontractorProjectPage() {
             icon: CheckCircle,
             label: 'Godkjent arbeid',
             value: fmt(totalApprovedValue),
-            sub: `${progressPct}% av ordreverdi`,
+            sub: `${progressPct}% av budsjett`,
             color: 'text-green-600 bg-green-50',
           },
           {
@@ -499,45 +681,96 @@ export default function SubcontractorProjectPage() {
             color: 'text-orange-600 bg-orange-50',
           },
           {
+            icon: Wallet,
+            label: 'Gjenstår budsjett',
+            value: fmt(remainingBudgetValue),
+            sub: `${remainingPct}% igjen av budsjett`,
+            color: 'text-slate-600 bg-slate-100',
+            valueClass: remainingBudgetValue < 0 ? 'text-danger' : undefined,
+          },
+          {
             icon: TrendingUp,
             label: 'Godkjente EM',
             value: fmt(approvedEMValue),
             sub: `${changeOrders.filter((co) => co.status === 'approved').length} endringsmeldinger`,
             color: 'text-blue-600 bg-blue-50',
           },
-        ].map(({ icon: Icon, label, value, sub, color }) => (
-          <div key={label} className="bg-white rounded-xl border border-border p-4 flex items-start gap-3">
-            <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-none ${color}`}>
-              <Icon size={18} />
+          {
+            icon: Receipt,
+            label: 'Klart til fakturering',
+            value: fmt(readyToInvoiceValue),
+            sub: 'Se fakturagrunnlag →',
+            color: 'text-emerald-600 bg-emerald-50',
+            href: `/subcontractor/invoice-basis?project=${id}`,
+            valueClass: readyToInvoiceValue < 0 ? 'text-danger' : undefined,
+          },
+        ] as {
+          icon: typeof BarChart3
+          label: string
+          value: string
+          sub: string
+          color: string
+          href?: string
+          valueClass?: string
+        }[]).map(({ icon: Icon, label, value, sub, color, href, valueClass }) => {
+          const inner = (
+            <>
+              <div className={`w-9 h-9 rounded-lg flex items-center justify-center flex-none ${color}`}>
+                <Icon size={18} />
+              </div>
+              <div className="min-w-0">
+                <p className={`text-xl font-bold leading-none ${valueClass ?? 'text-[var(--color-text-primary)]'}`}>{value}</p>
+                <p className="text-xs font-medium text-[var(--color-text-primary)] mt-1 leading-tight">{label}</p>
+                <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{sub}</p>
+              </div>
+            </>
+          )
+          return href ? (
+            <Link
+              key={label}
+              href={href}
+              className="bg-white rounded-xl border border-border p-4 flex items-start gap-3 hover:border-primary/40 hover:shadow-sm transition-colors"
+            >
+              {inner}
+            </Link>
+          ) : (
+            <div key={label} className="bg-white rounded-xl border border-border p-4 flex items-start gap-3">
+              {inner}
             </div>
-            <div className="min-w-0">
-              <p className="text-xl font-bold text-[var(--color-text-primary)] leading-none">{value}</p>
-              <p className="text-xs font-medium text-[var(--color-text-primary)] mt-1 leading-tight">{label}</p>
-              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">{sub}</p>
-            </div>
-          </div>
-        ))}
+          )
+        })}
       </div>
 
-      {/* Progress bar */}
+      {/* Stablet fremdriftsbar (3.4): Godkjent / Til behandling / Gjenstår,
+          hver med kronetooltip. Speiler admin-heroens bar (ProjectStatusHero). */}
       {totalBudgetValue > 0 && (
         <div className="bg-white rounded-xl border border-border p-4 space-y-2">
           <div className="flex justify-between items-center text-xs text-[var(--color-text-muted)]">
-            <span className="font-medium text-[var(--color-text-primary)]">Fremdrift (godkjent arbeid)</span>
-            <span className="font-semibold text-[var(--color-text-primary)]">{progressPct}%</span>
+            <span className="font-medium text-[var(--color-text-primary)]">Fremdrift</span>
+            <span className="font-semibold text-[var(--color-text-primary)]">{progressPct}% godkjent</span>
           </div>
-          <div className="h-2.5 w-full bg-muted rounded-full overflow-hidden">
-            <div
-              className="h-full rounded-full transition-all"
-              style={{
-                width: `${progressPct}%`,
-                backgroundColor: progressPct >= 80 ? '#10B981' : progressPct >= 40 ? '#6366F1' : '#F59E0B',
-              }}
-            />
+          <div className="flex w-full h-2.5 rounded-full overflow-hidden bg-muted">
+            {wApproved > 0 && (
+              <div className="h-full bg-green-500" style={{ width: `${wApproved}%` }} title={`Godkjent: ${fmt(totalApprovedValue)}`} />
+            )}
+            {wPending > 0 && (
+              <div className="h-full bg-amber-400" style={{ width: `${wPending}%` }} title={`Til behandling: ${fmt(totalPendingValue)}`} />
+            )}
+            {wRemaining > 0 && (
+              <div className="h-full bg-gray-200" style={{ width: `${wRemaining}%` }} title={`Gjenstår: ${fmt(barRemainingValue)}`} />
+            )}
           </div>
-          <div className="flex justify-between text-xs text-[var(--color-text-muted)]">
-            <span>Godkjent: {fmt(totalApprovedValue)}</span>
-            <span>Budsjett: {fmt(totalBudgetValue)}</span>
+          <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-[var(--color-text-muted)]">
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-green-500" /> Godkjent: {fmt(totalApprovedValue)}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-amber-400" /> Til behandling: {fmt(totalPendingValue)}
+            </span>
+            <span className="inline-flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-gray-300" /> Gjenstår: {fmt(barRemainingValue)}
+            </span>
+            <span className="ml-auto">Budsjett: {fmt(totalBudgetValue)}</span>
           </div>
         </div>
       )}
@@ -575,7 +808,17 @@ export default function SubcontractorProjectPage() {
           </div>
         </Card>
       )}
+      </>
+      )}
 
+      {/* ═══ FANE: BUDSJETT ═══════════════════════════════════════════════════ */}
+      {activeTab === 'budsjett' && (
+      <>
+      {project.budget_lines.length === 0 && (
+        <div className="bg-card border border-border rounded-xl p-8 text-center text-sm text-[var(--color-text-muted)]">
+          Ingen produkter tildelt på dette prosjektet ennå.
+        </div>
+      )}
       {/* ─── Budsjett-oversikt ───────────────────────────────────────────────── */}
       {project.budget_lines.length > 0 && (
         <Card className="overflow-hidden">
@@ -594,7 +837,9 @@ export default function SubcontractorProjectPage() {
               <thead>
                 <tr className="border-b border-border bg-muted">
                   <th className="px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Produkt</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-28">Avtalt pris</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-28">Godkjent / Total</th>
+                  <th className="px-3 py-2 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-24">Gjenstående</th>
                   <th className="px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-40">Fremdrift</th>
                   <th className="px-3 py-2 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide w-32">Verdi</th>
                   <th className="w-8" />
@@ -637,12 +882,23 @@ export default function SubcontractorProjectPage() {
                       <td className="px-3 py-2.5">
                         <span className="font-medium text-[var(--color-text-primary)]">{bl.product_name}</span>
                       </td>
+                      {/* S.8 — UE-ens egen avtalte enhetspris (trygt: UE-eget kosttall) */}
+                      <td className="px-3 py-2.5 text-right whitespace-nowrap text-xs text-[var(--color-text-secondary)]">
+                        {bl.subcontractor_cost_price_snapshot > 0 ? (
+                          <>{fmt(bl.subcontractor_cost_price_snapshot)}<span className="text-[var(--color-text-muted)]">/{bl.unit}</span></>
+                        ) : '–'}
+                      </td>
                       <td className="px-3 py-2.5 text-right whitespace-nowrap text-xs">
                         <span className="font-semibold text-[var(--color-text-primary)]">{usage.approved}</span>
                         <span className="text-[var(--color-text-muted)]"> / {bl.budget_quantity} {bl.unit}</span>
                         {usage.pending > 0 && (
                           <span className="ml-1 text-orange-500">+{usage.pending}</span>
                         )}
+                      </td>
+                      {/* 3.3 — gjenstående mengde, alltid synlig (ikke bak en kladd).
+                          Rød når negativ (overprodusert mot budsjett). */}
+                      <td className={`px-3 py-2.5 text-right whitespace-nowrap text-xs font-medium ${usage.remaining < 0 ? 'text-danger' : 'text-[var(--color-text-primary)]'}`}>
+                        {usage.remaining} {bl.unit}
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1.5">
@@ -672,7 +928,7 @@ export default function SubcontractorProjectPage() {
                   if (isExpanded) {
                     rows.push(
                       <tr key={`${bl.id}-chart`} className="bg-muted/30">
-                        <td colSpan={5} className="px-0 py-0">
+                        <td colSpan={7} className="px-0 py-0">
                           <BudgetLineChart
                             productName={bl.product_name}
                             unit={bl.unit}
@@ -692,13 +948,27 @@ export default function SubcontractorProjectPage() {
           </div>
         </Card>
       )}
+      </>
+      )}
 
+      {/* ═══ FANE: RAPPORTERING ═══════════════════════════════════════════════ */}
+      {activeTab === 'rapportering' && (
+      <>
       {/* ─── Lever rapport ───────────────────────────────────────────────────── */}
       <Card className="overflow-hidden">
-        <div className="px-6 py-4 border-b border-border">
+        <div ref={reportCardRef} className="px-6 py-4 border-b border-border scroll-mt-4">
           <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Lever rapport</h2>
         </div>
         <div className="p-6 space-y-4">
+          {/* 2.4 — suksess-banner etter innsending (ingen toast finnes, så en
+              liten inline-banner). Vises til neste innsending / uke-bytte. */}
+          {submitSuccess && (
+            <div className="flex items-start gap-2 rounded-lg border border-green-200 bg-green-50 px-4 py-3 text-sm text-green-800">
+              <CheckCircle size={16} className="flex-none mt-0.5 text-green-600" />
+              <span>Rapport for uke {submitSuccess.week} sendt — venter på godkjenning.</span>
+            </div>
+          )}
+
           <div className="flex items-center gap-2">
             <button onClick={prevWeek} className="p-1.5 text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)] border border-border rounded-lg hover:bg-muted transition-colors">
               <ChevronLeft size={16} />
@@ -724,20 +994,41 @@ export default function SubcontractorProjectPage() {
             </div>
           )}
 
-          <button
-            onClick={createNewDraft}
-            disabled={creatingDraft || hasActiveDraft}
-            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
-          >
-            <Plus size={14} />
-            {creatingDraft ? 'Oppretter...' : `Ny innsending uke ${week}`}
-          </button>
-
-          {hasActiveDraft && project.budget_lines.length > 0 && (
+          {project.budget_lines.length === 0 ? (
+            <p className="text-sm text-[var(--color-text-muted)]">Ingen produkter tildelt på dette prosjektet ennå.</p>
+          ) : (
             <>
-              <p className="text-sm font-semibold text-[var(--color-text-primary)]">
-                Innsending #{currentReport!.submission_number ?? 1} — Uke {week}
-              </p>
+              {/* 2.3 — budsjettlinje-tabellen vises ALLTID. Uten aktiv kladd er
+                  den read-only med en «Start rapport»-knapp; ingen blokk bak
+                  «Ny innsending» lenger. 2.2 = «Kopier forrige uke». */}
+              <div className="flex flex-wrap items-center gap-2">
+                {hasActiveDraft ? (
+                  <p className="text-sm font-semibold text-[var(--color-text-primary)]">
+                    Innsending #{currentReport!.submission_number ?? 1} — Uke {week}
+                  </p>
+                ) : (
+                  <button
+                    onClick={() => createNewDraft()}
+                    disabled={creatingDraft}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-primary border border-primary/30 rounded-lg hover:bg-primary/5 transition-colors disabled:opacity-40 disabled:cursor-not-allowed"
+                  >
+                    <Plus size={14} />
+                    {creatingDraft ? 'Oppretter...' : `Start rapport uke ${week}`}
+                  </button>
+                )}
+                {hasActiveDraft && hasPreviousWeek && (
+                  <button
+                    type="button"
+                    onClick={copyPreviousWeek}
+                    className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium text-[var(--color-text-secondary)] border border-border rounded-lg hover:bg-muted transition-colors"
+                    title="Fyll Antall-kolonnen med forrige innsendte ukes mengder"
+                  >
+                    <Copy size={14} />
+                    Kopier forrige uke
+                  </button>
+                )}
+              </div>
+
               <div className="overflow-x-auto rounded-lg border border-border">
                 <table className="w-full text-sm">
                   <thead>
@@ -771,23 +1062,31 @@ export default function SubcontractorProjectPage() {
                             )}
                           </td>
                           <td className="px-3 py-2">
-                            <NumberInput
-                              placeholder="0"
-                              value={qty}
-                              onChange={(raw) => setInputs((prev) => ({ ...prev, [bl.id]: { ...prev[bl.id], quantity: raw, comment: prev[bl.id]?.comment ?? '' } }))}
-                              onBlur={saveLines}
-                              className="w-full px-2 py-1 text-sm border border-border rounded text-right focus:outline-none focus:border-primary"
-                            />
+                            {hasActiveDraft ? (
+                              <NumberInput
+                                placeholder="0"
+                                value={qty}
+                                onChange={(raw) => setInputs((prev) => ({ ...prev, [bl.id]: { ...prev[bl.id], quantity: raw, comment: prev[bl.id]?.comment ?? '' } }))}
+                                onBlur={saveLines}
+                                className="w-full px-2 py-1 text-sm border border-border rounded text-right focus:outline-none focus:border-primary"
+                              />
+                            ) : (
+                              <div className="text-right text-[var(--color-text-muted)]">–</div>
+                            )}
                           </td>
                           <td className="px-3 py-2">
-                            <input
-                              type="text"
-                              placeholder="Valgfri"
-                              value={comment}
-                              onChange={(e) => setInputs((prev) => ({ ...prev, [bl.id]: { quantity: prev[bl.id]?.quantity ?? '', comment: e.target.value } }))}
-                              onBlur={saveLines}
-                              className="w-full px-2 py-1 text-sm border border-border rounded focus:outline-none focus:border-primary"
-                            />
+                            {hasActiveDraft ? (
+                              <input
+                                type="text"
+                                placeholder="Valgfri"
+                                value={comment}
+                                onChange={(e) => setInputs((prev) => ({ ...prev, [bl.id]: { quantity: prev[bl.id]?.quantity ?? '', comment: e.target.value } }))}
+                                onBlur={saveLines}
+                                className="w-full px-2 py-1 text-sm border border-border rounded focus:outline-none focus:border-primary"
+                              />
+                            ) : (
+                              <span className="text-[var(--color-text-muted)]">–</span>
+                            )}
                           </td>
                         </tr>
                       )
@@ -795,17 +1094,20 @@ export default function SubcontractorProjectPage() {
                   </tbody>
                 </table>
               </div>
-              <div className="flex items-center gap-3">
-                {submitError && <span className="text-sm text-danger">{submitError}</span>}
-                <Button variant="primary" onClick={handleSubmit} disabled={submitting || !hasAnyInput}>
-                  {submitting ? 'Sender inn...' : `Send inn rapport #${currentReport!.submission_number ?? 1}`}
-                </Button>
-              </div>
-            </>
-          )}
 
-          {hasActiveDraft && project.budget_lines.length === 0 && (
-            <p className="text-sm text-[var(--color-text-muted)]">Ingen produkter tildelt ennå</p>
+              {hasActiveDraft && (
+                <div className="flex flex-wrap items-center gap-3">
+                  {submitError && <span className="text-sm text-danger">{submitError}</span>}
+                  <Button variant="primary" onClick={handleSubmit} disabled={submitting || !hasAnyInput}>
+                    {submitting ? 'Sender inn...' : `Send inn rapport #${currentReport!.submission_number ?? 1}`}
+                  </Button>
+                  {/* 2.5 — forklar hvorfor knappen er grå */}
+                  {!hasAnyInput && !submitting && (
+                    <span className="text-xs text-[var(--color-text-muted)]">Skriv inn minst én mengde for å sende inn</span>
+                  )}
+                </div>
+              )}
+            </>
           )}
 
           {weeklySummaryRows.length > 0 && (
@@ -870,9 +1172,10 @@ export default function SubcontractorProjectPage() {
                   return s + l.reported_quantity * (bl?.subcontractor_cost_price_snapshot ?? 0)
                 }, 0)
               const isExpanded = expandedId === report.id
+              const isHighlighted = highlightReportId === report.id
 
               return (
-                <div key={report.id}>
+                <div key={report.id} className={isHighlighted ? 'bg-green-50/60 ring-1 ring-inset ring-green-200' : ''}>
                   <div className="px-6 py-3.5 flex items-center gap-3">
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-0.5">
@@ -961,6 +1264,23 @@ export default function SubcontractorProjectPage() {
           </div>
         )}
       </Card>
+      </>
+      )}
+
+      {/* ═══ FANE: ENDRINGSMELDINGER ══════════════════════════════════════════ */}
+      {activeTab === 'endringsmeldinger' && (
+      <>
+      {/* 1.5 — oransje varselbånd over EM-listen når noen EM-er trenger UE-
+          revisjon. Telleren utledes klient-side fra data som alt er lastet. */}
+      {revisionCount > 0 && (
+        <div className="flex items-start gap-2 rounded-lg border border-orange-200 bg-orange-50 px-4 py-3 text-sm text-orange-800">
+          <AlertTriangle size={16} className="flex-none mt-0.5 text-orange-600" />
+          <span>
+            <span className="font-semibold">{revisionCount} endringsmelding{revisionCount !== 1 ? 'er' : ''}</span>
+            {' '}trenger revisjon. Klikk på raden{revisionCount !== 1 ? 'e' : ''} merket «Trenger revisjon» for å rette opp og sende inn på nytt.
+          </span>
+        </div>
+      )}
 
       {/* ─── Endringsmeldinger ───────────────────────────────────────────────── */}
       <Card className="overflow-hidden">
@@ -1003,13 +1323,18 @@ export default function SubcontractorProjectPage() {
                   return [
                   <tr
                     key={co.id}
-                    className={`border-b border-border last:border-0 ${
-                      isEditable ? 'cursor-pointer hover:bg-muted/50' : ''
-                    } ${co.status === 'revision_requested' ? 'bg-orange-50/40' : ''}`}
+                    className={`border-b border-border last:border-0 cursor-pointer hover:bg-muted/50 ${
+                      co.status === 'revision_requested' ? 'bg-orange-50/40' : ''
+                    }`}
                     onClick={
-                      isEditable
-                        ? () => { setEditingDraft(co); setShowEMModal(true) }
-                        : undefined
+                      // Rad-klikk åpner EM-detaljsiden (lese-modus) for ALLE
+                      // statuser. For redigerbare EM-er sender vi ?edit=1 så
+                      // detaljsiden åpner redigerings-/revisjonsmodalen direkte.
+                      () => router.push(
+                        isEditable
+                          ? `/subcontractor/change-orders/${co.id}?edit=1`
+                          : `/subcontractor/change-orders/${co.id}`,
+                      )
                     }
                   >
                     <td className="px-3 py-2 font-semibold tabular-nums text-[var(--color-text-secondary)]">
@@ -1083,7 +1408,13 @@ export default function SubcontractorProjectPage() {
                       )}
                     </td>
                     <td className="px-3 py-2">
-                      <Badge status={co.status} />
+                      {/* 1.7 — «Sendt kunde» (blå) når admin har videresendt
+                          EMen, ellers vanlig status-pille. Felles ordliste. */}
+                      {(() => {
+                        const sentToCustomer = co.status === 'pending' && !!co.sent_to_customer_at
+                        const m = changeOrderPill(co.status, sentToCustomer)
+                        return <StatusPill meta={m} />
+                      })()}
                     </td>
                     <td className="px-3 py-2 text-[var(--color-text-muted)] whitespace-nowrap">
                       {co.submitted_at?.split('T')[0] ?? '–'}
@@ -1146,6 +1477,69 @@ export default function SubcontractorProjectPage() {
           </div>
         )}
       </Card>
+      </>
+      )}
+
+      {/* ═══ FANE: FAKTURERING (4.6) ══════════════════════════════════════════ */}
+      {activeTab === 'fakturering' && (
+      <>
+      <Card className="overflow-hidden">
+        <div className="px-6 py-4 border-b border-border">
+          <h2 className="text-base font-semibold text-[var(--color-text-primary)]">Fakturering</h2>
+        </div>
+        <div className="p-6 space-y-5">
+          {/* Tre kost-tall (alle UE-egne, ingen kundepris): hva som er klart å
+              fakturere, hva som alt er fakturert, og differansen. */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="rounded-xl border border-border p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-emerald-50 text-emerald-600 flex-none">
+                  <Receipt size={16} />
+                </div>
+                <p className="text-xs font-medium text-[var(--color-text-primary)]">Klart til fakturering</p>
+              </div>
+              <p className={`text-xl font-bold ${readyToInvoiceValue < 0 ? 'text-danger' : 'text-[var(--color-text-primary)]'}`}>{fmt(readyToInvoiceValue)}</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Godkjent + godkjente EM − fakturert</p>
+            </div>
+            <div className="rounded-xl border border-border p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-blue-50 text-blue-600 flex-none">
+                  <CheckCircle size={16} />
+                </div>
+                <p className="text-xs font-medium text-[var(--color-text-primary)]">Fakturert</p>
+              </div>
+              <p className="text-xl font-bold text-[var(--color-text-primary)]">{fmt(invoicedValue)}</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Sum av dine registrerte fakturaer</p>
+            </div>
+            <div className="rounded-xl border border-border p-4">
+              <div className="flex items-center gap-2 mb-1">
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center bg-green-50 text-green-600 flex-none">
+                  <BarChart3 size={16} />
+                </div>
+                <p className="text-xs font-medium text-[var(--color-text-primary)]">Godkjent grunnlag</p>
+              </div>
+              <p className="text-xl font-bold text-[var(--color-text-primary)]">{fmt(totalApprovedValue + approvedEMValue)}</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">Godkjent arbeid + godkjente EM</p>
+            </div>
+          </div>
+
+          <Link
+            href={`/subcontractor/invoice-basis?project=${id}`}
+            className="inline-flex items-center gap-1.5 px-4 py-2 text-sm font-medium text-white bg-primary rounded-lg hover:bg-primary/90 transition-colors"
+          >
+            <Receipt size={15} />
+            Åpne fakturagrunnlag for dette prosjektet
+            <ChevronRight size={15} />
+          </Link>
+
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Fakturagrunnlaget viser godkjente linjer og endringsmeldinger linje-for-linje, og lar deg registrere
+            fakturerte beløp.
+          </p>
+        </div>
+      </Card>
+      </>
+      )}
     </div>
   )
 }

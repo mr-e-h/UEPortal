@@ -60,7 +60,10 @@ export async function GET(_request: NextRequest) {
     sb.from('project_budget_lines').select('id, project_id, product_id, budget_quantity, subcontractor_cost_price_snapshot, assigned_subcontractor_id, line_type'),
     // change_order_number MÅ være med — dashboardet bygger "Endringsmelding N"-
     // titler fra den; uten feltet rendres "Endringsmelding ?".
-    sb.from('change_orders').select('id, change_order_number, project_id, subcontractor_id, product_id, requested_quantity, unit, cost_price_snapshot, total_cost, status, submitted_at').eq('subcontractor_id', subId),
+    // em_type, submitted_by og admin_comment leses av dashboardet (type-badge,
+    // innsender og revisjonsårsak i revisjons-/til-behandling-listene) — uten
+    // dem viser oppgaveboksen tom kommentar, feil type og ingen innsender.
+    sb.from('change_orders').select('id, change_order_number, project_id, subcontractor_id, product_id, requested_quantity, unit, cost_price_snapshot, total_cost, status, em_type, submitted_by, admin_comment, submitted_at').eq('subcontractor_id', subId),
     sb.from('weekly_reports').select('id, project_id, subcontractor_id, year, week_number, status, submitted_at, submission_number').eq('subcontractor_id', subId),
     sb.from('weekly_report_lines').select('id, weekly_report_id, project_budget_line_id, reported_quantity, status'),
     sb.from('ue_invoices').select('id, subcontractor_id, amount').eq('subcontractor_id', subId),

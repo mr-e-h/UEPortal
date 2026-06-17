@@ -1,17 +1,18 @@
 'use client'
 
 import { useEffect, useState, useCallback } from 'react'
-import { useRouter } from 'next/navigation'
+import { useRouter, useSearchParams } from 'next/navigation'
+import { Plus, AlertTriangle } from 'lucide-react'
 import type { ChangeOrder, ActivityEntry } from '@/types'
-import type { BadgeStatus } from '@/components/ui/Badge'
-import Badge from '@/components/ui/Badge'
 import Card from '@/components/ui/Card'
+import StatusPill from '@/components/ui/StatusPill'
 import SortableTable from '@/components/SortableTable'
 import type { Column } from '@/components/SortableTable'
 import { fmtNOK as fmt, fmtChangeOrderTitle } from '@/lib/format'
-import { changeOrderType } from '@/lib/statuses'
+import { changeOrderType, changeOrderPill } from '@/lib/statuses'
 import { useMe } from '@/lib/useMe'
 import VersionDiffModal from '@/components/admin/VersionDiffModal'
+import ProjectPickerModal from '@/components/subcontractor/ProjectPickerModal'
 
 // API legger til has_admin_edits + has_consequence_lines etter UE-strip
 // av kundepris-felter — se app/api/subcontractor/change-orders/route.ts.
@@ -52,20 +53,26 @@ type EMRow = {
   attachment_url: string | null
   has_admin_edits: boolean
   has_consequence_lines: boolean
+  admin_comment: string | null
+  sent_to_customer_at: string | null
 }
 
 export default function SubcontractorChangeOrdersPage() {
   const router = useRouter()
+  const searchParams = useSearchParams()
   const { me } = useMe()
   const [projects, setProjects] = useState<ProjectWithLines[]>([])
   const [changeOrders, setChangeOrders] = useState<UEChangeOrder[]>([])
   const [loading, setLoading] = useState(true)
-  const [statusFilter, setStatusFilter] = useState('all')
+  // Dashboardet lenker hit med ?status=revision_requested — forhåndsvelg
+  // filteret så UE lander rett på radene som trenger revisjon.
+  const [statusFilter, setStatusFilter] = useState(() => searchParams.get('status') ?? 'all')
   const [projectFilter, setProjectFilter] = useState('all')
+  const [showPicker, setShowPicker] = useState(false)
   // Versjonsdiff-popup når UE klikker 'Se endringer'-link på en EM med
   // has_admin_edits=true. Henter siste 'edited'-rad fra /api/activity og
   // sender den til VersionDiffModal. Kundepris-felter er allerede strippet
-  // rekursivt av /api/activity (stripCustomerKeysDeep) før det lander her.
+  // rekursivt av /api/activity (stripCustomerEconomicsDeep) før det lander her.
   const [diffEntry, setDiffEntry] = useState<ActivityEntry | null>(null)
   const [loadingDiff, setLoadingDiff] = useState<string | null>(null)
 
@@ -126,36 +133,56 @@ export default function SubcontractorChangeOrdersPage() {
       attachment_url: co.attachment_url,
       has_admin_edits: co.has_admin_edits,
       has_consequence_lines: co.has_consequence_lines,
+      admin_comment: co.admin_comment,
+      sent_to_customer_at: co.sent_to_customer_at,
     }))
+
+  // Teller for varselbåndet — uavhengig av gjeldende filter, så UE alltid ser
+  // hvor mange EMer admin har returnert til revisjon på tvers av prosjekter.
+  const revisionCount = changeOrders.filter((co) => co.status === 'revision_requested').length
 
   const columns: Column<EMRow>[] = [
     {
       key: 'em_title',
       label: 'Endringsmelding',
       sortable: true,
-      render: (row) => (
-        <div className="flex flex-col gap-1">
-          <span className="font-medium text-[var(--color-text-primary)]">{row.em_title}</span>
-          <div className="flex items-center gap-1.5 flex-wrap">
-            {row.has_admin_edits && (
-              <button
-                type="button"
-                onClick={(e) => { e.stopPropagation(); openLatestEdit(row.id) }}
-                disabled={loadingDiff === row.id}
-                className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors disabled:opacity-50"
-                title="Prosjektleder har redigert denne EM-en. Klikk for å se hva som er endret."
-              >
-                Endret av prosjektleder · Se endringer
-              </button>
-            )}
-            {row.has_consequence_lines && (
-              <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200">
-                Har konsekvens ved avslag
-              </span>
+      render: (row) => {
+        return (
+          <div className="flex flex-col gap-1">
+            <span className="font-medium text-[var(--color-text-primary)]">{row.em_title}</span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {row.has_admin_edits && (
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); openLatestEdit(row.id) }}
+                  disabled={loadingDiff === row.id}
+                  className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded bg-purple-100 text-purple-700 hover:bg-purple-200 transition-colors disabled:opacity-50"
+                  title="Prosjektleder har redigert denne EM-en. Klikk for å se hva som er endret."
+                >
+                  Endret av prosjektleder · Se endringer
+                </button>
+              )}
+              {row.has_consequence_lines && (
+                <span className="inline-flex text-[10px] font-medium px-1.5 py-0.5 rounded bg-orange-50 text-orange-700 border border-orange-200">
+                  Har konsekvens ved avslag
+                </span>
+              )}
+            </div>
+            {/* 1.4: vis admin-kommentaren inline for revisjons-rader, så UE
+                ser hva som må rettes uten å klikke inn på prosjektet — samme
+                mønster som prosjektsiden. */}
+            {row.status === 'revision_requested' && (
+              row.admin_comment ? (
+                <span className="text-xs text-orange-700">
+                  <span className="font-semibold">Trenger revisjon: </span>{row.admin_comment}
+                </span>
+              ) : (
+                <span className="text-xs text-orange-700 font-medium">Klikk for å rette opp</span>
+              )
             )}
           </div>
-        </div>
-      ),
+        )
+      },
     },
     {
       key: 'em_type',
@@ -183,7 +210,14 @@ export default function SubcontractorChangeOrdersPage() {
     {
       key: 'status',
       label: 'Status',
-      render: (row) => <Badge status={row.status as BadgeStatus} />,
+      render: (row) => {
+        // 1.7: blå «Sendt kunde» når admin har sendt EMen videre
+        // (pending + sent_to_customer_at). changeOrderPill gir samme ord og
+        // farger som admin-detalj og dashboard.
+        const sentToCustomer = row.status === 'pending' && !!row.sent_to_customer_at
+        const p = changeOrderPill(row.status, sentToCustomer)
+        return <StatusPill meta={p} />
+      },
     },
     {
       key: 'submitted_at',
@@ -215,14 +249,28 @@ export default function SubcontractorChangeOrdersPage() {
     {
       key: 'action',
       label: '',
-      render: (row) => (
-        <button
-          className="text-xs text-primary hover:underline"
-          onClick={(e) => { e.stopPropagation(); router.push(`/subcontractor/projects/${row.project_id}`) }}
-        >
-          Gå til prosjekt →
-        </button>
-      ),
+      render: (row) => {
+        // Redigering ligger bak en eksplisitt knapp som kun vises for kladd /
+        // trenger-revisjon. Rad-klikk åpner uansett detaljsiden (alle statuser).
+        const editable = row.status === 'draft' || row.status === 'revision_requested'
+        return (
+          <button
+            className="text-xs text-primary hover:underline"
+            onClick={(e) => {
+              e.stopPropagation()
+              router.push(
+                editable
+                  ? `/subcontractor/change-orders/${row.id}?edit=1`
+                  : `/subcontractor/change-orders/${row.id}`,
+              )
+            }}
+          >
+            {editable
+              ? (row.status === 'revision_requested' ? 'Revider →' : 'Rediger →')
+              : 'Se detaljer →'}
+          </button>
+        )
+      },
     },
   ]
 
@@ -232,12 +280,44 @@ export default function SubcontractorChangeOrdersPage() {
 
   return (
     <div className="p-6 space-y-6">
-      <div>
-        <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Endringsmeldinger</h1>
-        <p className="text-sm text-[var(--color-text-secondary)] mt-1">
-          Alle dine endringsmeldinger på tvers av prosjekter
-        </p>
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">Endringsmeldinger</h1>
+          <p className="text-sm text-[var(--color-text-secondary)] mt-1">
+            Alle dine endringsmeldinger på tvers av prosjekter
+          </p>
+        </div>
+        {/* 1.3: send en ny EM direkte herfra — picker er allerede koblet,
+            prosjektlisten er lastet. */}
+        <button
+          type="button"
+          onClick={() => setShowPicker(true)}
+          disabled={projects.length === 0}
+          className="inline-flex items-center gap-2 px-4 py-2 text-sm font-semibold bg-primary text-white rounded-lg hover:bg-primary-hover transition-colors shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+        >
+          <Plus size={16} strokeWidth={2.5} /> Send endringsmelding
+        </button>
       </div>
+
+      {/* 1.5: varselbånd når admin har returnert EMer til revisjon — synlig der
+          UE faktisk jobber med EM, ikke bare på dashbordet. Knappen filtrerer
+          listen rett til de aktuelle radene. */}
+      {revisionCount > 0 && statusFilter !== 'revision_requested' && (
+        <div className="flex items-center gap-3 px-4 py-3 rounded-lg border border-orange-200 bg-orange-50 text-orange-800">
+          <AlertTriangle size={18} className="flex-none text-orange-600" />
+          <p className="text-sm flex-1">
+            <span className="font-semibold">{revisionCount}</span>{' '}
+            endringsmelding{revisionCount !== 1 ? 'er' : ''} trenger revisjon fra deg.
+          </p>
+          <button
+            type="button"
+            onClick={() => setStatusFilter('revision_requested')}
+            className="flex-none text-sm font-semibold text-orange-800 underline hover:no-underline"
+          >
+            Vis dem
+          </button>
+        </div>
+      )}
 
       <Card className="overflow-hidden">
         <div className="px-6 py-4 border-b border-border flex items-center gap-4 flex-wrap">
@@ -277,7 +357,7 @@ export default function SubcontractorChangeOrdersPage() {
           columns={columns}
           data={rows}
           emptyText="Ingen endringsmeldinger"
-          onRowClick={(row) => router.push(`/subcontractor/projects/${row.project_id}`)}
+          onRowClick={(row) => router.push(`/subcontractor/change-orders/${row.id}`)}
         />
       </Card>
 
@@ -292,6 +372,16 @@ export default function SubcontractorChangeOrdersPage() {
         productNameLookup={(id) => productNameMap.get(id) ?? id}
         onClose={() => setDiffEntry(null)}
       />
+
+      {/* 1.3: prosjektvelger for ny EM. Ruter til
+          /subcontractor/projects/{id}?action=new-em som auto-åpner skjemaet. */}
+      {showPicker && (
+        <ProjectPickerModal
+          projects={projects.map((p) => ({ id: p.id, name: p.name, project_number: p.project_number }))}
+          action="new-em"
+          onClose={() => setShowPicker(false)}
+        />
+      )}
     </div>
   )
 }

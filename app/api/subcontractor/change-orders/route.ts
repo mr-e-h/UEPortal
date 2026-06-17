@@ -4,6 +4,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { readJson, getDeletedProjectIds } from '@/lib/data'
 import { resolveEffectiveSub } from '@/lib/tender'
 import { getSupabaseAdmin } from '@/lib/supabase'
+import { stripCustomerEconomics } from '@/lib/economy-isolation'
 import type { ChangeOrder } from '@/types'
 
 /**
@@ -55,13 +56,14 @@ export async function GET(request: NextRequest) {
     conseqSet = new Set((conseqRes.data ?? []).map((r: { change_order_id: string }) => r.change_order_id))
   }
 
-  const safe: UEChangeOrder[] = filtered.map(
-    ({ customer_price_snapshot: _cp, total_customer_value: _tcv, profit: _p, ...rest }) => ({
+  const safe: UEChangeOrder[] = filtered.map((order) => {
+    const rest = stripCustomerEconomics(order)
+    return {
       ...rest,
       has_admin_edits: editedSet.has(rest.id),
       has_consequence_lines: conseqSet.has(rest.id),
-    }),
-  )
+    }
+  })
 
   return NextResponse.json(safe)
 }

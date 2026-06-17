@@ -85,16 +85,24 @@ Felter som strippes for UE i alle GET-endepunkter:
 - `profit`
 - `customer_price` (på `products`-tabellen)
 
-Pattern brukt overalt:
+Pattern brukt overalt — bruk den delte helperen i `lib/economy-isolation.ts`
+(IKKE håndrull inline-destrukturering lenger):
 ```ts
-if (isSub(session)) {
-  const { customer_price_snapshot: _cp, total_customer_value: _tcv, profit: _p, ...rest } = row
-  return rest
+import { stripCustomerEconomics, stripCustomerEconomicsLines, stripCustomerEconomicsDeep } from '@/lib/economy-isolation'
+
+if (!canSeeCustomerEconomics(session)) {        // UE OG byggeleder
+  return NextResponse.json(rows.map(stripCustomerEconomics))
 }
+return NextResponse.json(rows)                   // main/company/PM: rått
 ```
+`stripCustomerEconomics(row)` fjerner alle tre kundepris-nøklene fra en
+change_orders-rad; `stripCustomerEconomicsLines(lines)` fjerner kun
+`customer_price_snapshot` fra linje-/konsekvenslinje-arrays;
+`stripCustomerEconomicsDeep(value)` strip­per rekursivt (activity_log-metadata).
+Helperen gjør KUN nøkkel-fjerning — *gatingen* (når) ligger på hvert endepunkt.
 
 Når du legger til nye endepunkter som returnerer EM-, budget-line- eller
-report-line-data: bruk samme strip. **Ikke** stol på client-side filtrering.
+report-line-data: bruk samme helper. **Ikke** stol på client-side filtrering.
 
 ### Prosjekt-bemanning og scope
 Hvert prosjekt har nøyaktig ÉN prosjektleder (`project_managers`) og ÉN

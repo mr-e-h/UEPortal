@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
 import { isAdmin, isSub } from '@/lib/api-guard'
+import { stripCustomerEconomicsLines } from '@/lib/economy-isolation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import type { ChangeOrderConsequenceLine } from '@/types'
 
@@ -47,10 +48,7 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   // UE-strip kundepris (samme regel som /lines).
   if (isSub(session)) {
-    lines = lines.map((l) => {
-      const { customer_price_snapshot: _cp, ...rest } = l
-      return rest as ChangeOrderConsequenceLine
-    })
+    lines = stripCustomerEconomicsLines(lines) as ChangeOrderConsequenceLine[]
   }
 
   return NextResponse.json(lines)

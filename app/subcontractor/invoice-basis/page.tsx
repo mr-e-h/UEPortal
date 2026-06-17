@@ -1,9 +1,10 @@
 'use client'
 
-import { useEffect, useState, useCallback } from 'react'
-import { Download, Plus, Trash2 } from 'lucide-react'
+import { useEffect, useState, useCallback, useMemo } from 'react'
+import { Download, Plus, Trash2, Check } from 'lucide-react'
 import type { Project } from '@/types'
-import { fmtNOK as fmt, fmtNumber } from '@/lib/format'
+import { fmtNOK as fmt, fmtNumber, parseNorwegianNumber } from '@/lib/format'
+import { readyToInvoice } from '@/lib/economy'
 import { useMe } from '@/lib/useMe'
 import { useConfirm } from '@/components/ui/useConfirm'
 import Field from '@/components/ui/Field'
@@ -11,6 +12,7 @@ import Card from '@/components/ui/Card'
 import StatusPill from '@/components/ui/StatusPill'
 import EmptyState from '@/components/ui/EmptyState'
 import Button from '@/components/ui/Button'
+import NumberInput from '@/components/NumberInput'
 
 const fmtQty = (n: number) => fmtNumber(n, 2)
 
@@ -26,6 +28,9 @@ type LineItem = {
   cost_total: number
   date: string
   source: 'report' | 'change_order'
+  // Billed status (4.7). null = not yet invoiced. CO-lines are always null.
+  billed_at: string | null
+  ue_invoice_id: string | null
 }
 
 type Summary = {
@@ -56,13 +61,23 @@ export default function UEInvoiceBasisPage() {
   const [projectFilter, setProjectFilter] = useState('all')
   const [dateFrom, setDateFrom] = useState('')
   const [dateTo, setDateTo] = useState('')
+  // 4.7: «Skjul fakturerte» er en ren klient-side visnings-filtrering
+  // (displayLines). Grunnlaget hentes alltid fullt — summene over påvirkes aldri.
+  const [hideBilled, setHideBilled] = useState(false)
+  // 4.7: per-line selection (report_line_id) for «Fakturer valgte».
+  const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set())
+  const [billingLines, setBillingLines] = useState(false)
 
   // Invoice form state
   const [invoiceAmount, setInvoiceAmount] = useState('')
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().split('T')[0])
   const [invoiceNote, setInvoiceNote] = useState('')
-  const [invoiceProjectId, setInvoiceProjectId] = useState('all')
+  // 4.3: no «Alle prosjekter» default — UE must pick a project so the invoice
+  // is scoped and counts in the per-project «Gjenstår».
+  const [invoiceProjectId, setInvoiceProjectId] = useState('')
   const [savingInvoice, setSavingInvoice] = useState(false)
+  // 4.2 / 4.3: red banner for save/delete/billing failures + missing project.
+  const [invError, setInvError] = useState<string | null>(null)
 
   useEffect(() => {
     if (!subId) return
@@ -78,10 +93,20 @@ export default function UEInvoiceBasisPage() {
     if (projectFilter !== 'all') params.set('project_id', projectFilter)
     if (dateFrom) params.set('from', dateFrom)
     if (dateTo) params.set('to', dateTo)
+    // NB: «Skjul fakturerte» filtreres KUN klient-side (displayLines). Grunnlaget
+    // hentes alltid fullt, slik at «Gjenstår å fakturere» (godkjent − fakturert)
+    // ikke dobbelt-trekker de fakturerte linjene.
 
     const data = await fetch(`/api/subcontractor/invoice-basis?${params}`).then((r) => r.json())
     setLines(data.lines ?? [])
     setSummary(data.summary ?? null)
+    // Prune any selection that no longer matches a visible line.
+    setSelectedLines((prev) => {
+      const visible = new Set<string>((data.lines ?? []).map((l: LineItem) => l.report_line_id).filter(Boolean))
+      const next = new Set<string>()
+      prev.forEach((id) => { if (visible.has(id)) next.add(id) })
+      return next
+    })
     setLoading(false)
   }, [subId, projectFilter, dateFrom, dateTo])
 
@@ -89,9 +114,14 @@ export default function UEInvoiceBasisPage() {
     if (!subId) return
     const params = new URLSearchParams({ subcontractor_id: subId })
     if (projectFilter !== 'all') params.set('project_id', projectFilter)
+    // 4.1 (BUG): scope registered invoices to the same date window as the basis,
+    // otherwise a date-filtered «Gjenstår å fakturere» compares a windowed basis
+    // against ALL invoices and goes negative/red without reason.
+    if (dateFrom) params.set('from', dateFrom)
+    if (dateTo) params.set('to', dateTo)
     const data = await fetch(`/api/subcontractor/ue-invoices?${params}`).then((r) => r.json())
     setInvoices(Array.isArray(data) ? data : [])
-  }, [subId, projectFilter])
+  }, [subId, projectFilter, dateFrom, dateTo])
 
   useEffect(() => {
     if (subId) {
@@ -101,30 +131,108 @@ export default function UEInvoiceBasisPage() {
   }, [fetchBasis, fetchInvoices, subId])
 
   async function registerInvoice() {
-    const amt = Number(invoiceAmount.replace(',', '.'))
-    if (!subId || isNaN(amt) || amt <= 0) return
+    setInvError(null)
+    // 4.3: a project must be chosen so the invoice is scoped and counts in the
+    // per-project «Gjenstår». Inline error, reuse the same banner as 4.2.
+    if (!invoiceProjectId) {
+      setInvError('Velg et prosjekt før du registrerer fakturaen.')
+      return
+    }
+    // 4.5: parse the thousand-separated input with the shared Norwegian parser.
+    const amt = parseNorwegianNumber(invoiceAmount)
+    if (!subId || amt <= 0) {
+      setInvError('Skriv inn et gyldig beløp.')
+      return
+    }
     setSavingInvoice(true)
-    await fetch('/api/subcontractor/ue-invoices', {
+    const res = await fetch('/api/subcontractor/ue-invoices', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         subcontractor_id: subId,
-        project_id: invoiceProjectId === 'all' ? null : invoiceProjectId,
+        project_id: invoiceProjectId,
         amount: amt,
         invoice_date: invoiceDate,
         note: invoiceNote,
       }),
     })
+    setSavingInvoice(false)
+    // 4.2: surface failures and DO NOT clear the fields, so the UE can retry.
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({} as { error?: string }))
+      setInvError(d.error ?? 'Kunne ikke lagre fakturaen. Prøv igjen.')
+      return
+    }
     setInvoiceAmount('')
     setInvoiceNote('')
     await fetchInvoices()
-    setSavingInvoice(false)
   }
 
   async function deleteInvoice(id: string) {
     if (!(await confirmAction({ title: 'Slett fakturaregistrering?', message: 'Registreringen fjernes og «Gjenstår å fakturere» oppdateres.', confirmLabel: 'Slett' }))) return
-    await fetch(`/api/subcontractor/ue-invoices?id=${id}&subcontractor_id=${subId}`, { method: 'DELETE' })
-    await fetchInvoices()
+    setInvError(null)
+    const res = await fetch(`/api/subcontractor/ue-invoices?id=${id}&subcontractor_id=${subId}`, { method: 'DELETE' })
+    // 4.2: same error-surfacing on delete.
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({} as { error?: string }))
+      setInvError(d.error ?? 'Kunne ikke slette fakturaregistreringen. Prøv igjen.')
+      return
+    }
+    // Un-billing on the server reopens the lines, so refresh the basis too.
+    await Promise.all([fetchInvoices(), fetchBasis()])
+  }
+
+  // 4.7: register an invoice for the picked lines and mark them billed. The sum
+  // of the selected cost totals is used as the amount, so the registered figure
+  // is an exact reconciliation of the chosen lines (never a re-typed number).
+  async function billSelected() {
+    setInvError(null)
+    const ids = Array.from(selectedLines)
+    if (ids.length === 0) return
+    // Kryss-prosjekt-vern (defense-in-depth): #1 lar bare linjer velges når ett
+    // konkret prosjekt er filtrert, så utvalget hører normalt til ÉTT prosjekt.
+    // Vi utleder likevel prosjektet fra linjene selv (ikke fra «Registrer
+    // faktura»-velgeren) og avviser et blandet utvalg, så beløpet aldri havner
+    // på feil prosjekt og per-prosjekt «Gjenstår» ikke spriker.
+    const billProjects = new Set(
+      lines.filter((l) => l.report_line_id && selectedLines.has(l.report_line_id)).map((l) => l.project_id),
+    )
+    if (billProjects.size !== 1) {
+      setInvError('Du kan bare fakturere linjer fra ett prosjekt om gangen. Filtrer på ett prosjekt, eller velg linjer som hører til samme prosjekt.')
+      return
+    }
+    const billProjectId = Array.from(billProjects)[0]
+    setBillingLines(true)
+    const res = await fetch('/api/subcontractor/ue-invoices', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        subcontractor_id: subId,
+        project_id: billProjectId,
+        amount: selectedTotal,
+        invoice_date: invoiceDate,
+        note: invoiceNote,
+        line_ids: ids,
+      }),
+    })
+    setBillingLines(false)
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({} as { error?: string }))
+      setInvError(d.error ?? 'Kunne ikke fakturere de valgte linjene. Prøv igjen.')
+      return
+    }
+    setSelectedLines(new Set())
+    setInvoiceNote('')
+    await Promise.all([fetchInvoices(), fetchBasis()])
+  }
+
+  function toggleLine(id: string) {
+    setSelectedLines((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
   }
 
   function exportCSV() {
@@ -151,7 +259,71 @@ export default function UEInvoiceBasisPage() {
 
   const totalApproved = summary?.total_cost ?? 0
   const totalInvoiced = invoices.reduce((s, inv) => s + inv.amount, 0)
-  const totalRemaining = totalApproved - totalInvoiced
+  // #7: «Gjenstår å fakturere» via den delte formelen. summary.total_cost folder
+  // allerede inn både godkjente rapportlinjer og godkjente EM-er (UE-kost), så
+  // hele godkjent-kosten går inn som approvedWork; EM-leddet er 0 her.
+  const totalRemaining = readyToInvoice({
+    approvedWork: totalApproved,
+    approvedChangeOrders: 0,
+    invoiced: totalInvoiced,
+  })
+
+  // #2: et datofilter trekker grunnlaget på arbeidets submitted_at, men
+  // fakturaene på invoice_date — to forskjellige dato-akser. «Gjenstår» (og
+  // per-linje-fakturering) blir derfor misvisende så snart en dato er satt.
+  // Vi skjuler/grår dem da, men beholder «Godkjent total» og «Fakturert».
+  const dateFilterActive = !!(dateFrom || dateTo)
+
+  // #1: linje-valg og per-linje-fakturering gir bare mening når ETT konkret
+  // prosjekt er filtrert. Med «Alle prosjekter» ville «velg alle»/«Fakturer
+  // valgte» spenne over flere prosjekter, mens fakturaen må tagges til ett →
+  // felle. Tillat derfor linje-valg kun for ett prosjekt og uten datofilter (#2).
+  const canBillLines = projectFilter !== 'all' && !dateFilterActive
+
+  // #1/#2: når linje-fakturering ikke lenger er tillatt (bytte til «Alle
+  // prosjekter» eller satt datofilter), nullstill et eventuelt utvalg så et
+  // gjemt valg ikke kan faktureres på feil scope.
+  useEffect(() => {
+    if (!canBillLines) setSelectedLines((prev) => (prev.size ? new Set() : prev))
+  }, [canBillLines])
+
+  // #1: avkrysningskolonnen vises kun når linje-fakturering er tillatt.
+  // colSpan-verdiene for laster/tom/footer følger med så tabellen ikke sprekker.
+  const fullColSpan = canBillLines ? 9 : 8
+  const footerLeadSpan = canBillLines ? 5 : 4
+
+  // 4.7: «Skjul fakturerte» er ren visnings-filtrering — påvirker ALDRI summene
+  // over (de bygger på det fulle grunnlaget), kun hvilke rader tabellen viser.
+  const displayLines = useMemo(
+    () => (hideBilled ? lines.filter((l) => !l.billed_at) : lines),
+    [lines, hideBilled],
+  )
+
+  // 4.7: only report lines (with a report_line_id) that are not yet billed can
+  // be selected — change-order lines have no billed concept and no line id.
+  // #1/#2: and only when a single project is filtered (no date filter), so
+  // line-billing never spans projects or mixes date axes.
+  const selectableLines = useMemo(
+    () => (canBillLines ? lines.filter((l) => l.report_line_id && !l.billed_at) : []),
+    [lines, canBillLines],
+  )
+  const selectedTotal = useMemo(
+    () => lines
+      .filter((l) => l.report_line_id && selectedLines.has(l.report_line_id))
+      .reduce((s, l) => s + l.cost_total, 0),
+    [lines, selectedLines],
+  )
+  const allSelectableChosen =
+    selectableLines.length > 0 && selectableLines.every((l) => selectedLines.has(l.report_line_id!))
+
+  function toggleAll() {
+    setSelectedLines((prev) => {
+      if (allSelectableChosen) return new Set()
+      const next = new Set(prev)
+      selectableLines.forEach((l) => next.add(l.report_line_id!))
+      return next
+    })
+  }
 
   return (
     <main className="px-4 sm:px-6 py-8 space-y-6">
@@ -171,6 +343,11 @@ export default function UEInvoiceBasisPage() {
           Eksporter CSV
         </button>
       </div>
+
+      {/* 4.2/4.3: red error banner for save/delete/billing failures + validation */}
+      {invError && (
+        <p className="text-sm text-red-600 bg-red-50 border border-red-200 rounded-lg px-3 py-2">{invError}</p>
+      )}
 
       {/* Filters */}
       <Card className="p-4 flex flex-wrap gap-4 items-end">
@@ -206,12 +383,26 @@ export default function UEInvoiceBasisPage() {
           linjeantall-kortet var støy og er fjernet. */}
       {summary && (
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-          <Card className={`p-4 ${totalRemaining < 0 ? 'border-red-200 bg-red-50' : ''}`}>
-            <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Gjenstår å fakturere</p>
-            <p className={`text-2xl font-bold mt-1 ${totalRemaining < 0 ? 'text-red-600' : totalRemaining === 0 ? 'text-green-600' : 'text-[var(--color-text-primary)]'}`}>
-              {fmt(totalRemaining)}
-            </p>
-          </Card>
+          {/* #2: med datofilter måles grunnlaget på arbeidets submitted_at og
+              fakturaene på invoice_date — to akser som ikke kan trekkes fra
+              hverandre. Grå ut «Gjenstår» med en kort forklaring i stedet for å
+              vise et villedende tall. «Godkjent total» og «Fakturert» står. */}
+          {dateFilterActive ? (
+            <Card className="p-4 bg-muted/40">
+              <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Gjenstår å fakturere</p>
+              <p className="text-2xl font-bold mt-1 text-[var(--color-text-muted)]">–</p>
+              <p className="text-xs text-[var(--color-text-muted)] mt-0.5">
+                Skjult med datofilter — grunnlaget filtreres på arbeidsdato og fakturaene på fakturadato, så differansen blir ikke sammenliknbar. Fjern datofilteret for å se gjenstående.
+              </p>
+            </Card>
+          ) : (
+            <Card className={`p-4 ${totalRemaining < 0 ? 'border-red-200 bg-red-50' : ''}`}>
+              <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Gjenstår å fakturere</p>
+              <p className={`text-2xl font-bold mt-1 ${totalRemaining < 0 ? 'text-red-600' : totalRemaining === 0 ? 'text-green-600' : 'text-[var(--color-text-primary)]'}`}>
+                {fmt(totalRemaining)}
+              </p>
+            </Card>
+          )}
           <Card className="p-4">
             <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Godkjent total</p>
             <p className="text-2xl font-bold text-[var(--color-text-primary)] mt-1">{fmt(totalApproved)}</p>
@@ -224,20 +415,41 @@ export default function UEInvoiceBasisPage() {
         </div>
       )}
 
-      {/* Register invoice */}
+      {/* Register invoice — #9/#10: dette er engangs-/EM-veien. Den merker
+          INGEN rapportlinjer som fakturert, så bruk den til endringsmeldinger
+          (EM kan ikke linje-faktureres) eller à konto / samlebeløp. For å
+          fakturere konkrete rapportlinjer presist, bruk «Fakturer valgte linjer»
+          i tabellen under — ellers kan samme arbeid bli fakturert to ganger. */}
       <Card className="p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Registrer faktura</h2>
+        <div className="space-y-1">
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Registrer faktura (engangsbeløp / EM)</h2>
+          <p className="text-xs text-[var(--color-text-muted)]">
+            Et fritt beløp som ikke knyttes til enkeltlinjer — for endringsmeldinger eller à konto. Vil du fakturere bestemte rapportlinjer, bruk «Fakturer valgte linjer» i tabellen under, så de ikke kan faktureres på nytt.
+          </p>
+        </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
           <Field label="Beløp (NOK)">
-            <input
-              type="number"
-              min="0"
-              step="1"
+            {/* 4.5: tusenskille mens UE skriver (NumberInput), parses med
+                parseNorwegianNumber ved lagring. */}
+            <NumberInput
+              inputMode="numeric"
               placeholder="0"
               value={invoiceAmount}
-              onChange={(e) => setInvoiceAmount(e.target.value)}
+              onChange={setInvoiceAmount}
               className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-primary bg-white text-[var(--color-text-primary)]"
             />
+            {/* 4.4: «Fyll inn gjenstående» — synk med prosjektfilteret (gjenstår
+                speiler det aktive scopet). Skjult når ingenting gjenstår, eller
+                med datofilter (#2) der «Gjenstår» ikke er sammenliknbart. */}
+            {!dateFilterActive && totalRemaining > 0 && (
+              <button
+                type="button"
+                onClick={() => setInvoiceAmount(String(Math.round(totalRemaining)))}
+                className="mt-1 text-xs text-primary hover:underline"
+              >
+                Fyll inn gjenstående ({fmt(totalRemaining)})
+              </button>
+            )}
           </Field>
           <Field label="Fakturadato">
             <input
@@ -248,12 +460,13 @@ export default function UEInvoiceBasisPage() {
             />
           </Field>
           <Field label="Prosjekt">
+            {/* 4.3: ingen «Alle prosjekter»-default — UE må velge prosjekt. */}
             <select
               value={invoiceProjectId}
               onChange={(e) => setInvoiceProjectId(e.target.value)}
               className="w-full px-3 py-1.5 text-sm border border-border rounded-lg focus:outline-none focus:border-primary bg-white text-[var(--color-text-primary)]"
             >
-              <option value="all">Alle prosjekter</option>
+              <option value="">Velg prosjekt…</option>
               {projects.map((p) => <option key={p.id} value={p.id}>{p.name}</option>)}
             </select>
           </Field>
@@ -269,7 +482,7 @@ export default function UEInvoiceBasisPage() {
         </div>
         <Button
           onClick={registerInvoice}
-          disabled={savingInvoice || !invoiceAmount || Number(invoiceAmount) <= 0}
+          disabled={savingInvoice || parseNorwegianNumber(invoiceAmount) <= 0}
           className="inline-flex items-center gap-1.5"
         >
           <Plus size={14} />
@@ -328,12 +541,68 @@ export default function UEInvoiceBasisPage() {
 
       {/* Approved lines table */}
       <div className="bg-card rounded-lg border border-border overflow-hidden">
-        <div className="px-5 py-3 border-b border-border">
-          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Godkjente linjer</h2>
+        <div className="px-5 py-3 border-b border-border flex flex-wrap items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Godkjente linjer</h2>
+            {/* 4.7: sum av valgte linjer som hjelp til beløp. */}
+            {selectedLines.size > 0 && (
+              <span className="text-xs text-[var(--color-text-muted)]">
+                {selectedLines.size} valgt · <span className="font-semibold text-[var(--color-text-primary)]">{fmt(selectedTotal)}</span>
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-3">
+            {/* 4.7: «Skjul fakturerte» — ren klient-side visnings-filtrering. */}
+            <label className="flex items-center gap-1.5 text-xs text-[var(--color-text-secondary)] cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={hideBilled}
+                onChange={(e) => setHideBilled(e.target.checked)}
+                className="rounded border-border"
+              />
+              Skjul fakturerte
+            </label>
+            {/* #9/#10: «Fakturer valgte linjer» — den presise per-linje-veien for
+                rapportlinjer. Sender line_ids og merker dem fakturert, så samme
+                arbeid ikke kan faktureres på nytt. Vises kun når linje-valg er
+                tillatt (ett prosjekt, uten datofilter). */}
+            {canBillLines && selectedLines.size > 0 && (
+              <Button
+                onClick={billSelected}
+                disabled={billingLines}
+                className="inline-flex items-center gap-1.5 py-1.5"
+              >
+                <Check size={14} />
+                {billingLines ? 'Fakturerer...' : `Fakturer valgte linjer (${fmt(selectedTotal)})`}
+              </Button>
+            )}
+          </div>
         </div>
+        {/* #1: linje-fakturering krever ett konkret prosjekt (og intet datofilter,
+            #2). Forklar hvorfor avkrysning/«velg alle»/«Fakturer valgte» er borte. */}
+        {!canBillLines && (
+          <p className="px-5 py-2.5 text-xs text-[var(--color-text-secondary)] bg-muted/40 border-b border-border">
+            {dateFilterActive
+              ? 'Fjern datofilteret for å fakturere enkeltlinjer — med datofilter blander grunnlag og fakturaer ulike dato-akser.'
+              : 'Filtrer på ett prosjekt for å fakturere linjer. Da kan du krysse av rapportlinjer og fakturere dem presist uten å risikere å fakturere samme arbeid to ganger.'}
+          </p>
+        )}
         <table className="w-full text-sm">
           <thead>
             <tr className="bg-muted border-b border-border">
+              {/* #1: «velg alle» vises kun når linje-fakturering er tillatt. */}
+              {canBillLines && (
+                <th className="px-4 py-3 w-10 text-left">
+                  <input
+                    type="checkbox"
+                    checked={allSelectableChosen}
+                    onChange={toggleAll}
+                    disabled={selectableLines.length === 0}
+                    aria-label="Velg alle linjer som kan faktureres"
+                    className="rounded border-border disabled:opacity-40"
+                  />
+                </th>
+              )}
               <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Prosjekt</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Produkt</th>
               <th className="px-4 py-3 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Mengde</th>
@@ -341,25 +610,44 @@ export default function UEInvoiceBasisPage() {
               <th className="px-4 py-3 text-right text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Sum</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Dato</th>
               <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Kilde</th>
+              <th className="px-4 py-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">Status</th>
             </tr>
           </thead>
           <tbody>
             {loading ? (
               <tr>
-                <td colSpan={7} className="py-10 text-center text-[var(--color-text-muted)]">Laster...</td>
+                <td colSpan={fullColSpan} className="py-10 text-center text-[var(--color-text-muted)]">Laster...</td>
               </tr>
-            ) : lines.length === 0 ? (
+            ) : displayLines.length === 0 ? (
               <tr>
-                <td colSpan={7}>
+                <td colSpan={fullColSpan}>
                   <EmptyState
-                    title="Ingen godkjente linjer"
-                    description="Endre filteret over for å se andre perioder eller prosjekter."
+                    title={hideBilled && lines.length > 0 ? 'Alt er fakturert' : 'Ingen godkjente linjer'}
+                    description={hideBilled && lines.length > 0 ? 'Fjern «Skjul fakturerte» for å se de fakturerte linjene.' : 'Endre filteret over for å se andre perioder eller prosjekter.'}
                   />
                 </td>
               </tr>
             ) : (
-              lines.map((l, i) => (
+              displayLines.map((l, i) => {
+                // Only unbilled report lines (with an id) are selectable.
+                const selectable = !!l.report_line_id && !l.billed_at
+                const checked = !!l.report_line_id && selectedLines.has(l.report_line_id)
+                return (
                 <tr key={l.report_line_id ?? l.change_order_id ?? i} className="border-b border-border hover:bg-muted/40">
+                  {/* #1: avkrysningscellen finnes kun når linje-fakturering er tillatt. */}
+                  {canBillLines && (
+                    <td className="px-4 py-2.5">
+                      {selectable && (
+                        <input
+                          type="checkbox"
+                          checked={checked}
+                          onChange={() => toggleLine(l.report_line_id!)}
+                          aria-label={`Velg linje ${l.product_name}`}
+                          className="rounded border-border"
+                        />
+                      )}
+                    </td>
+                  )}
                   <td className="px-4 py-2.5 font-medium text-[var(--color-text-primary)] max-w-[160px] truncate">{l.project_name}</td>
                   <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{l.product_name}</td>
                   <td className="px-4 py-2.5 text-right text-[var(--color-text-secondary)]">
@@ -373,18 +661,34 @@ export default function UEInvoiceBasisPage() {
                       {l.source === 'report' ? 'Rapport' : 'EM'}
                     </StatusPill>
                   </td>
+                  <td className="px-4 py-2.5">
+                    {/* 4.7: per-linje fakturert-status for rapportlinjer.
+                        #10: EM-/CO-linjer kan ikke linje-faktureres — gjør det
+                        til en synlig, bevisst forklaring (ikke en skjult quirk):
+                        de faktureres via «Registrer faktura (engangsbeløp / EM)». */}
+                    {l.source === 'report' ? (
+                      <StatusPill tone={l.billed_at ? 'green' : 'gray'}>
+                        {l.billed_at ? 'Fakturert' : 'Ikke fakturert'}
+                      </StatusPill>
+                    ) : (
+                      <span className="text-xs text-[var(--color-text-muted)]" title="Endringsmeldinger faktureres som engangsbeløp via «Registrer faktura», ikke per linje.">
+                        Faktureres via engangsbeløp
+                      </span>
+                    )}
+                  </td>
                 </tr>
-              ))
+                )
+              })
             )}
           </tbody>
-          {summary && lines.length > 0 && (
+          {summary && displayLines.length > 0 && (
             <tfoot>
               <tr className="bg-muted border-t border-border">
-                <td colSpan={4} className="px-4 py-3 text-sm font-semibold text-[var(--color-text-secondary)]">Totalt godkjent</td>
+                <td colSpan={footerLeadSpan} className="px-4 py-3 text-sm font-semibold text-[var(--color-text-secondary)]">Totalt godkjent</td>
                 <td className="px-4 py-3 text-right text-sm font-bold text-[var(--color-text-primary)]">
                   {fmt(summary.total_cost)}
                 </td>
-                <td colSpan={2} />
+                <td colSpan={3} />
               </tr>
             </tfoot>
           )}

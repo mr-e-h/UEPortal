@@ -3,34 +3,8 @@ import { randomUUID } from 'crypto'
 import { getSession } from '@/lib/auth'
 import { isAdmin, isSub, canSeeCustomerEconomics, getProjectScope, getProjectWriteScope, requireStaff } from '@/lib/api-guard'
 import { getSupabaseAdmin } from '@/lib/supabase'
+import { stripCustomerEconomicsDeep } from '@/lib/economy-isolation'
 import type { ActivityEntry } from '@/types'
-
-// Keys that contain customer-side pricing. Stripped fra metadata.before/after
-// rekursivt når requester er UE, så Versjonslogg-popup aldri avslører
-// Kundepris, Salgsverdi eller Fortjeneste — uansett hvor dypt i strukturen
-// de ligger.
-//
-// Strukturen ble nestet i Prioritet 3:
-//   metadata.before = { change_order: {...}, lines: [...], consequence_lines: [...] }
-// så en flat top-level-strip leker dypere kundepriser. stripCustomerKeysDeep
-// traverserer både objekt-trær og arrays.
-const CUSTOMER_PRICING_KEYS = new Set(['customer_price_snapshot', 'total_customer_value', 'profit'])
-
-function stripCustomerKeysDeep(value: unknown): unknown {
-  if (Array.isArray(value)) {
-    return value.map((item) => stripCustomerKeysDeep(item))
-  }
-  if (value !== null && typeof value === 'object') {
-    const out: Record<string, unknown> = {}
-    for (const [k, v] of Object.entries(value as Record<string, unknown>)) {
-      if (!CUSTOMER_PRICING_KEYS.has(k)) {
-        out[k] = stripCustomerKeysDeep(v)
-      }
-    }
-    return out
-  }
-  return value
-}
 
 export async function GET(request: NextRequest) {
   // Subs can read activity for their own change_orders; admins can read all.
@@ -103,8 +77,8 @@ export async function GET(request: NextRequest) {
       return {
         ...r,
         metadata: {
-          before: stripCustomerKeysDeep(r.metadata.before) as Record<string, unknown> | undefined,
-          after: stripCustomerKeysDeep(r.metadata.after) as Record<string, unknown> | undefined,
+          before: stripCustomerEconomicsDeep(r.metadata.before) as Record<string, unknown> | undefined,
+          after: stripCustomerEconomicsDeep(r.metadata.after) as Record<string, unknown> | undefined,
         },
       }
     })

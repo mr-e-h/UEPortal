@@ -7,6 +7,7 @@ import { useMe } from '@/lib/useMe'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import ErrorBox from '@/components/ui/ErrorBox'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { fmtNOK, fmtDeadline } from '@/lib/format'
 import type { TenderLine, TenderBid, TenderBidLine } from '@/types'
 
@@ -31,6 +32,7 @@ export default function SubcontractorTenderDetailPage() {
   const params = useParams<{ id: string }>()
   const tenderId = params.id
   const { me } = useMe()
+  const { confirm, confirmDialog } = useConfirm()
 
   const [data, setData] = useState<Payload | null>(null)
   const [loading, setLoading] = useState(true)
@@ -76,6 +78,22 @@ export default function SubcontractorTenderDetailPage() {
 
   async function save(submit: boolean) {
     if (!data) return
+    // T.1: a binding submission needs at least one price. A 0-total draft is
+    // still allowed — only block the submit path.
+    if (submit && total === 0) {
+      setNotice(null)
+      setError('Du må fylle inn minst én pris før du kan sende inn tilbudet.')
+      return
+    }
+    // T.2: a tender bid is binding — confirm with the total before sending.
+    if (submit) {
+      const ok = await confirm({
+        title: submitted ? 'Send inn revidert tilbud?' : 'Send inn tilbud?',
+        message: `Du sender inn et bindende tilbud med totalsum ${fmtNOK(total)}. Vil du fortsette?`,
+        confirmLabel: submitted ? 'Send revidert tilbud' : 'Send inn tilbud',
+      })
+      if (!ok) return
+    }
     setError(null)
     setNotice(null)
     setSaving(true)
@@ -104,6 +122,28 @@ export default function SubcontractorTenderDetailPage() {
     } finally {
       setSaving(false)
     }
+  }
+
+  // T.5: copy a line's unit price down to every following EMPTY line that
+  // shares the same unit — saves repetitive typing on long tenders. Lines that
+  // already have a price are left untouched.
+  function copyPriceDown(fromLineId: string) {
+    if (!data || locked) return
+    const value = prices[fromLineId]
+    if (value === undefined || value === '') return
+    const fromIdx = data.lines.findIndex((l) => l.id === fromLineId)
+    if (fromIdx < 0) return
+    const fromUnit = data.lines[fromIdx].unit
+    setPrices((prev) => {
+      const next = { ...prev }
+      for (let i = fromIdx + 1; i < data.lines.length; i++) {
+        const line = data.lines[i]
+        if (line.unit !== fromUnit) continue
+        const existing = next[line.id]
+        if (existing === undefined || existing === '') next[line.id] = value
+      }
+      return next
+    })
   }
 
   if (loading) {
@@ -161,9 +201,16 @@ export default function SubcontractorTenderDetailPage() {
               </tr>
             </thead>
             <tbody>
-              {data.lines.map((line) => {
+              {data.lines.map((line, idx) => {
                 const p = Number(prices[line.id])
                 const lineSum = Number.isFinite(p) && p > 0 ? p * line.quantity : 0
+                const hasValue = (prices[line.id] ?? '') !== ''
+                // Show "copy down" only when there's a later line with the same
+                // unit that is still empty (so the action would actually do
+                // something).
+                const canCopyDown = !locked && hasValue && data.lines.some(
+                  (l, j) => j > idx && l.unit === line.unit && (prices[l.id] ?? '') === '',
+                )
                 return (
                   <tr key={line.id} className="border-b border-border last:border-0">
                     <td className="px-4 py-2.5 text-[var(--color-text-primary)]">{line.description || '(uten navn)'}</td>
@@ -171,16 +218,28 @@ export default function SubcontractorTenderDetailPage() {
                       {line.quantity} {line.unit}
                     </td>
                     <td className="px-4 py-2.5 text-right">
-                      <input
-                        type="number"
-                        min="0"
-                        step="any"
-                        disabled={locked}
-                        value={prices[line.id] ?? ''}
-                        onChange={(e) => setPrices((prev) => ({ ...prev, [line.id]: e.target.value }))}
-                        placeholder="0"
-                        className="w-28 px-2 py-1 text-sm text-right border border-border rounded focus:outline-none focus:border-blue-500 disabled:bg-muted disabled:text-[var(--color-text-muted)]"
-                      />
+                      <div className="flex items-center justify-end gap-1">
+                        <input
+                          type="number"
+                          min="0"
+                          step="any"
+                          disabled={locked}
+                          value={prices[line.id] ?? ''}
+                          onChange={(e) => setPrices((prev) => ({ ...prev, [line.id]: e.target.value }))}
+                          placeholder="0"
+                          className="w-28 px-2 py-1 text-sm text-right border border-border rounded focus:outline-none focus:border-blue-500 disabled:bg-muted disabled:text-[var(--color-text-muted)]"
+                        />
+                        {canCopyDown && (
+                          <button
+                            type="button"
+                            onClick={() => copyPriceDown(line.id)}
+                            title={`Kopier ned til tomme linjer med samme enhet (${line.unit})`}
+                            className="text-xs text-primary hover:underline whitespace-nowrap"
+                          >
+                            Kopier ned
+                          </button>
+                        )}
+                      </div>
                     </td>
                     <td className="px-4 py-2.5 text-right font-medium text-[var(--color-text-primary)] whitespace-nowrap">
                       {fmtNOK(lineSum)}
@@ -215,15 +274,23 @@ export default function SubcontractorTenderDetailPage() {
       {notice && <ErrorBox variant="success">{notice}</ErrorBox>}
 
       {!locked && (
-        <div className="flex gap-3">
-          <Button onClick={() => save(true)} disabled={saving}>
-            {saving ? 'Sender…' : submitted ? 'Send inn revidert tilbud' : 'Send inn tilbud'}
-          </Button>
-          <Button variant="secondary" onClick={() => save(false)} disabled={saving}>
-            Lagre som kladd
-          </Button>
+        <div className="space-y-2">
+          <div className="flex gap-3">
+            <Button onClick={() => save(true)} disabled={saving || total === 0}>
+              {saving ? 'Sender…' : submitted ? 'Send inn revidert tilbud' : 'Send inn tilbud'}
+            </Button>
+            <Button variant="secondary" onClick={() => save(false)} disabled={saving}>
+              Lagre som kladd
+            </Button>
+          </div>
+          {total === 0 && (
+            <p className="text-xs text-[var(--color-text-muted)]">
+              Fyll inn minst én pris for å kunne sende inn tilbudet. Du kan lagre som kladd uten priser.
+            </p>
+          )}
         </div>
       )}
+      {confirmDialog}
     </div>
   )
 }

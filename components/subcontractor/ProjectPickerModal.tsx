@@ -20,9 +20,9 @@ interface PickerProject {
  *   action="new-em"        → /subcontractor/projects/{id}?action=new-em
  *                            (the project page reads ?action and auto-opens
  *                             the ChangeOrderModal)
- *   action="weekly-report" → /subcontractor/projects/{id}
- *                            (project page lands on the weekly-report flow
- *                             by default, so no extra param needed)
+ *   action="weekly-report" → /subcontractor/projects/{id}?action=weekly-report
+ *                            (the project page reads ?action, scrolls the
+ *                             weekly-report card into view and starts a draft)
  */
 export default function ProjectPickerModal({
   projects,
@@ -57,10 +57,7 @@ export default function ProjectPickerModal({
 
   function pick(id: string) {
     onClose()
-    const href = action === 'new-em'
-      ? `/subcontractor/projects/${id}?action=new-em`
-      : `/subcontractor/projects/${id}`
-    router.push(href)
+    router.push(`/subcontractor/projects/${id}?action=${action}`)
   }
 
   return (

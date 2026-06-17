@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { resolveEffectiveSub } from '@/lib/tender'
 import { fmtProductLabel } from '@/lib/format'
+import { emNeedsAction, wrNeedsAction, emNeedsRevision } from '@/lib/attention'
 import type {
   Project,
   ProjectSubcontractor,
@@ -111,6 +112,40 @@ export async function GET(_request: NextRequest) {
     invoicedByProject.set(inv.project_id, (invoicedByProject.get(inv.project_id) ?? 0) + inv.amount)
   }
 
+  // Order-value (kr) per project = sum of this UE's assigned budget lines on the
+  // cost side. Same formula as the dashboard's orderValueByProject so the list
+  // and the dashboard agree. UE-eget kosttall — ingen kundepris.
+  const budgetValueByProject = new Map<string, number>()
+  for (const bl of allBudgetLines) {
+    if (!projectIdSet.has(bl.project_id)) continue
+    if (!(bl.line_type === 'subcontractor_work' || bl.line_type == null)) continue
+    budgetValueByProject.set(
+      bl.project_id,
+      (budgetValueByProject.get(bl.project_id) ?? 0) + bl.budget_quantity * bl.subcontractor_cost_price_snapshot,
+    )
+  }
+
+  // Per-project saks-tellinger — samme definisjon som dashboardet, men her per
+  // rad slik at prosjektlista kan vise saks-pills uten å åpne hvert prosjekt.
+  //   pending_em_count       — EM-er som venter på admin (emNeedsAction)
+  //   pending_weekly_count   — ukesrapporter som venter på admin (wrNeedsAction)
+  //   revision_count         — EM-er admin har sendt tilbake (UEs egen oppgave)
+  const pendingEmByProject = new Map<string, number>()
+  const revisionByProject = new Map<string, number>()
+  for (const co of myChangeOrders) {
+    if (emNeedsAction(co.status)) {
+      pendingEmByProject.set(co.project_id, (pendingEmByProject.get(co.project_id) ?? 0) + 1)
+    } else if (emNeedsRevision(co.status)) {
+      revisionByProject.set(co.project_id, (revisionByProject.get(co.project_id) ?? 0) + 1)
+    }
+  }
+  const pendingWeeklyByProject = new Map<string, number>()
+  for (const r of myReports) {
+    if (wrNeedsAction(r.status)) {
+      pendingWeeklyByProject.set(r.project_id, (pendingWeeklyByProject.get(r.project_id) ?? 0) + 1)
+    }
+  }
+
   // PM contacts per project
   const pmsByProject = new Map<string, Array<Pick<User, 'id' | 'full_name' | 'email'>>>()
   for (const link of pmLinks) {
@@ -150,8 +185,15 @@ export async function GET(_request: NextRequest) {
         ...project,
         budget_lines: linesWithProduct,
         project_managers: pmsByProject.get(project.id) ?? [],
+        // budget_value er UE-ens eget kostbudsjett (ordreverdi på kostsiden) —
+        // serveren sender det ferdig summert så klienten slipper å regne det
+        // fra budget_lines, og det stemmer med dashboardets order_value.
+        budget_value: budgetValueByProject.get(project.id) ?? 0,
         approved_value: approvedValueByProject.get(project.id) ?? 0,
         invoiced_value: invoicedByProject.get(project.id) ?? 0,
+        pending_em_count: pendingEmByProject.get(project.id) ?? 0,
+        pending_weekly_count: pendingWeeklyByProject.get(project.id) ?? 0,
+        revision_count: revisionByProject.get(project.id) ?? 0,
       }
     })
 

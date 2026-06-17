@@ -113,6 +113,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         reviewed_at: null,
         reviewed_by: null,
         billed_at: null,
+        ue_invoice_id: null,
       })
     }
   }

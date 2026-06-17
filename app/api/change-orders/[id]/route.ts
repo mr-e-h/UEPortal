@@ -2,7 +2,8 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession } from '@/lib/auth'
-import { isAdmin, isSub, ensureProjectWritable } from '@/lib/api-guard'
+import { isAdmin, isSub, ensureProjectWritable, getProjectScope, canSeeCustomerEconomics } from '@/lib/api-guard'
+import { stripCustomerEconomics, stripCustomerEconomicsLines } from '@/lib/economy-isolation'
 import type { ChangeOrder, ChangeOrderLine, ChangeOrderConsequenceLine, Product, SubcontractorProductPrice, ProjectBudgetLine } from '@/types'
 
 /**
@@ -170,6 +171,88 @@ async function replaceConsequenceLines(
     if (insErr) return `Konsekvens-linjer (lagre): ${insErr.message}`
   }
   return null
+}
+
+/**
+ * GET én EM med tilhørende linjer + konsekvens-linjer i ett kall. Brukes av
+ * BÅDE admin/PM/byggeleder OG UE — detaljsidene henter herfra slik at
+ * isolasjonen sitter på ÉT sted.
+ *
+ * UE-isolasjon (samme mønster som /lines + /consequence-lines):
+ *   - sub kan kun hente EM-er de SELV eier (subcontractor_id-match).
+ *   - PM/byggeleder scopes til tildelte prosjekter (getProjectScope).
+ *   - Roller uten økonomitilgang (UE OG byggeleder, jf. canSeeCustomerEconomics)
+ *     får customer_price_snapshot / total_customer_value / profit strippet både
+ *     på hovedraden, på hver linje og på hver konsekvens-linje.
+ *
+ * I motsetning til kø-GET-en i ../route.ts returnerer denne også 'draft' —
+ * UE-detaljsiden skal kunne åpnes for alle statuser.
+ */
+export async function GET(
+  _request: NextRequest,
+  { params }: { params: { id: string } },
+) {
+  try {
+    const session = await getSession()
+    if (!session) return NextResponse.json({ error: 'Ikke innlogget' }, { status: 401 })
+
+    const sb = getSupabaseAdmin()
+    const { data: order, error } = await sb
+      .from('change_orders')
+      .select('*')
+      .eq('id', params.id)
+      .maybeSingle<ChangeOrder>()
+    if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+    if (!order) return NextResponse.json({ error: 'Not found' }, { status: 404 })
+
+    // Tilgangsporter per rolle.
+    if (isSub(session)) {
+      if (!session.subcontractor_id || order.subcontractor_id !== session.subcontractor_id) {
+        return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+      }
+    } else if (isAdmin(session)) {
+      // main/company/PM — PM scopes til tildelte prosjekter.
+      const scope = await getProjectScope(session)
+      if (scope && !scope.has(order.project_id)) {
+        return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+      }
+    } else if (session.role === 'byggeleder') {
+      const scope = await getProjectScope(session)
+      if (!scope || !scope.has(order.project_id)) {
+        return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+      }
+    } else {
+      return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+    }
+
+    const [linesRes, conseqRes] = await Promise.all([
+      sb.from('change_order_lines').select('*')
+        .eq('change_order_id', params.id)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true }),
+      sb.from('change_order_consequence_lines').select('*')
+        .eq('change_order_id', params.id)
+        .order('sort_order', { ascending: true })
+        .order('created_at', { ascending: true }),
+    ])
+
+    let lines = (linesRes.data ?? []) as ChangeOrderLine[]
+    let consequenceLines = (conseqRes.data ?? []) as ChangeOrderConsequenceLine[]
+
+    // Økonomi-strip: fjern kundepris-feltene fra hovedrad + alle linjer +
+    // konsekvens-linjer for roller uten økonomitilgang (UE OG byggeleder).
+    if (!canSeeCustomerEconomics(session)) {
+      const orderRest = stripCustomerEconomics(order)
+      lines = stripCustomerEconomicsLines(lines) as ChangeOrderLine[]
+      consequenceLines = stripCustomerEconomicsLines(consequenceLines) as ChangeOrderConsequenceLine[]
+      return NextResponse.json({ change_order: orderRest, lines, consequence_lines: consequenceLines })
+    }
+
+    return NextResponse.json({ change_order: order, lines, consequence_lines: consequenceLines })
+  } catch (error) {
+    console.error('change-orders [id] GET error:', error)
+    return NextResponse.json({ error: 'Intern feil' }, { status: 500 })
+  }
 }
 
 export async function PUT(
@@ -371,8 +454,7 @@ export async function PUT(
       }
 
       if (isSub(session) && updatedOrder) {
-        const { customer_price_snapshot: _cp, total_customer_value: _tcv, profit: _p, ...rest } = updatedOrder
-        return NextResponse.json(rest)
+        return NextResponse.json(stripCustomerEconomics(updatedOrder))
       }
       return NextResponse.json(updatedOrder)
     }
@@ -507,8 +589,7 @@ export async function PUT(
     }
 
     if (isSub(session)) {
-      const { customer_price_snapshot: _cp, total_customer_value: _tcv, profit: _p, ...rest } = data
-      return NextResponse.json(rest)
+      return NextResponse.json(stripCustomerEconomics(data))
     }
     return NextResponse.json(data)
   } catch (error) {

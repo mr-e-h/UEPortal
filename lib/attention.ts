@@ -22,6 +22,15 @@ export function emNeedsAction(status: string): boolean {
   return (EM_NEEDS_ACTION as readonly string[]).includes(status)
 }
 
+/**
+ * EM-er admin har sendt tilbake til UE for retting. I motsetning til de to
+ * over (som venter på *admin*) er dette UEs egen oppgave — den telles separat
+ * så lister/bannere kan skille «venter på admin» fra «krever din handling».
+ */
+export function emNeedsRevision(status: string): boolean {
+  return status === 'revision_requested'
+}
+
 /** Per-prosjekt-tellingene som vises på prosjektkort og i bannere. */
 export interface AttentionCounts {
   change_orders: number

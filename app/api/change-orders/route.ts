@@ -4,12 +4,8 @@ import { getSupabaseAdmin } from '@/lib/supabase'
 import { getDeletedProjectIds } from '@/lib/data'
 import { getSession } from '@/lib/auth'
 import { isSub, getProjectScope, ensureProjectWritable, canSeeCustomerEconomics } from '@/lib/api-guard'
+import { stripCustomerEconomics } from '@/lib/economy-isolation'
 import type { ChangeOrder, Product, SubcontractorProductPrice, ProjectBudgetLine } from '@/types'
-
-function stripForUE<T extends ChangeOrder>(o: T) {
-  const { customer_price_snapshot: _cp, total_customer_value: _tcv, profit: _p, ...rest } = o
-  return rest
-}
 
 export async function GET(request: NextRequest) {
   try {
@@ -39,7 +35,7 @@ export async function GET(request: NextRequest) {
     const deletedProjectIds = await getDeletedProjectIds()
     orders = orders.filter((o) => !deletedProjectIds.has(o.project_id))
 
-    if (userIsSub) return NextResponse.json(orders.map(stripForUE))
+    if (userIsSub) return NextResponse.json(orders.map(stripCustomerEconomics))
 
     // PM/byggeleder scope: only see COs for assigned projects.
     const scope = await getProjectScope(session)
@@ -48,7 +44,7 @@ export async function GET(request: NextRequest) {
     // strip customer price/value/profit exactly like the UE view. main /
     // company / project_manager pass through untouched.
     if (!canSeeCustomerEconomics(session)) {
-      return NextResponse.json(orders.map(stripForUE))
+      return NextResponse.json(orders.map(stripCustomerEconomics))
     }
     return NextResponse.json(orders)
   } catch (error) {
@@ -246,7 +242,7 @@ export async function POST(request: NextRequest) {
       })
     }
 
-    return NextResponse.json(userIsSub ? stripForUE(newOrder) : newOrder, { status: 201 })
+    return NextResponse.json(userIsSub ? stripCustomerEconomics(newOrder) : newOrder, { status: 201 })
   } catch (error) {
     console.error('change-orders POST error:', error)
     return NextResponse.json({ error: 'Intern feil' }, { status: 500 })

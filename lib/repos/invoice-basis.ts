@@ -311,7 +311,13 @@ function emptyResult(): InvoiceBasisResult {
 //   - approved change orders for this subcontractor
 //   - optional project_id + date-range (report submitted_at/created_at) filters
 //   - skip lines/COs whose project is missing OR soft-deleted (proj.deleted)
-//   - NO excludeBilled concept here (the UE route never had one)
+//
+// Added (4.7): every line now carries its billed status (billed_at +
+// ue_invoice_id) so the frontend can render «Fakturert / Ikke fakturert» and
+// «Gjenstår» can become a real reconciliation. The basis always returns the
+// full approved set — «Skjul fakturerte» is a client-side display filter, not a
+// server toggle. Change orders have no billed concept yet — they always report
+// billed_at = null / ue_invoice_id = null (mirrors the documented admin quirk).
 
 export type SubInvoiceBasisFilters = {
   subcontractorId: string
@@ -332,6 +338,9 @@ export type SubInvoiceBasisLine = {
   cost_total: number
   date: string
   source: 'report' | 'change_order'
+  /** Billed status (4.7). null = not yet invoiced. COs are always null. */
+  billed_at: string | null
+  ue_invoice_id: string | null
 }
 
 export type SubInvoiceBasisResult = {
@@ -374,11 +383,15 @@ export async function getSubcontractorInvoiceBasis(
   const approvedReportIds = approvedReports.map((r) => r.id)
   let approvedLines: WeeklyReportLine[] = []
   if (approvedReportIds.length > 0) {
-    const { data, error } = await sb
+    const linesQ = sb
       .from('weekly_report_lines')
       .select('*')
       .eq('status', 'approved')
       .in('weekly_report_id', approvedReportIds)
+    // The basis always returns the full approved set; each line carries its own
+    // billed_at. «Skjul fakturerte» is a client-side display filter (page.tsx),
+    // so summary totals never double-subtract already-billed lines.
+    const { data, error } = await linesQ
     if (error) throw new Error(`getSubcontractorInvoiceBasis weekly_report_lines: ${error.message}`)
     approvedLines = (data ?? []) as WeeklyReportLine[]
   }
@@ -464,6 +477,8 @@ export async function getSubcontractorInvoiceBasis(
       cost_total: line.reported_quantity * bl.subcontractor_cost_price_snapshot,
       date: (report.submitted_at ?? report.created_at).split('T')[0],
       source: 'report',
+      billed_at: line.billed_at,
+      ue_invoice_id: line.ue_invoice_id ?? null,
     })
   }
 
@@ -483,6 +498,9 @@ export async function getSubcontractorInvoiceBasis(
       cost_total: co.total_cost,
       date: (co.reviewed_at ?? co.submitted_at ?? '').split('T')[0],
       source: 'change_order',
+      // Change orders have no billed concept yet (mirrors admin quirk).
+      billed_at: null,
+      ue_invoice_id: null,
     })
   }
 

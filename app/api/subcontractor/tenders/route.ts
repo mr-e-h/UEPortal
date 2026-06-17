@@ -66,6 +66,18 @@ export async function GET() {
 
   const inviteMap = new Map(invitations.map((i) => [i.tender_id, i]))
 
+  // Scope indication: how many lines each tender asks the UE to price. This is
+  // the UE's own pricing scope (same tender_lines they see on the detail page),
+  // never any competitor data.
+  const visibleTenderIds = tenders.map((t) => t.id)
+  const { data: lineData } = visibleTenderIds.length
+    ? await sb.from('tender_lines').select('tender_id').in('tender_id', visibleTenderIds)
+    : { data: [] }
+  const lineCountMap = new Map<string, number>()
+  for (const row of (lineData ?? []) as Array<{ tender_id: string }>) {
+    lineCountMap.set(row.tender_id, (lineCountMap.get(row.tender_id) ?? 0) + 1)
+  }
+
   const result = tenders.map((t) => {
     const proj = projMap.get(t.project_id)
     const bid = bidMap.get(t.id)
@@ -81,7 +93,18 @@ export async function GET() {
       my_bid_status: bid?.status ?? null,
       my_bid_total: bid?.total_cost ?? null,
       my_bid_submitted_at: bid?.submitted_at ?? null,
+      line_count: lineCountMap.get(t.id) ?? 0,
     }
+  })
+
+  // Nearest deadline first; tenders without a deadline sort last.
+  result.sort((a, b) => {
+    if (a.deadline_at && b.deadline_at) {
+      return new Date(a.deadline_at).getTime() - new Date(b.deadline_at).getTime()
+    }
+    if (a.deadline_at) return -1
+    if (b.deadline_at) return 1
+    return 0
   })
 
   return NextResponse.json(result)
