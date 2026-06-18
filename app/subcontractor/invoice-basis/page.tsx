@@ -28,9 +28,23 @@ type LineItem = {
   cost_total: number
   date: string
   source: 'report' | 'change_order'
-  // Billed status (4.7). null = not yet invoiced. CO-lines are always null.
+  // Billed status (4.7 / #10). null = not yet invoiced. Report lines AND
+  // change-order lines now both carry their real status (CO billed columns
+  // added in migration 0017).
   billed_at: string | null
   ue_invoice_id: string | null
+}
+
+// #10: a single selection set spans both report lines (report_line_id) and
+// change-order lines (change_order_id). The id spaces are different tables and
+// could in principle collide, so we tag each key with its source and split it
+// back into line_ids[] / co_ids[] when posting. lineKey() returns null for a
+// line that has no selectable id.
+type SelKey = `report:${string}` | `co:${string}`
+function lineKey(l: LineItem): SelKey | null {
+  if (l.source === 'report' && l.report_line_id) return `report:${l.report_line_id}`
+  if (l.source === 'change_order' && l.change_order_id) return `co:${l.change_order_id}`
+  return null
 }
 
 type Summary = {
@@ -64,8 +78,9 @@ export default function UEInvoiceBasisPage() {
   // 4.7: «Skjul fakturerte» er en ren klient-side visnings-filtrering
   // (displayLines). Grunnlaget hentes alltid fullt — summene over påvirkes aldri.
   const [hideBilled, setHideBilled] = useState(false)
-  // 4.7: per-line selection (report_line_id) for «Fakturer valgte».
-  const [selectedLines, setSelectedLines] = useState<Set<string>>(new Set())
+  // 4.7 / #10: per-line selection for «Fakturer valgte». Keyed by SelKey so the
+  // set can hold both report lines and change-order lines unambiguously.
+  const [selectedLines, setSelectedLines] = useState<Set<SelKey>>(new Set())
   const [billingLines, setBillingLines] = useState(false)
 
   // Invoice form state
@@ -102,9 +117,11 @@ export default function UEInvoiceBasisPage() {
     setSummary(data.summary ?? null)
     // Prune any selection that no longer matches a visible line.
     setSelectedLines((prev) => {
-      const visible = new Set<string>((data.lines ?? []).map((l: LineItem) => l.report_line_id).filter(Boolean))
-      const next = new Set<string>()
-      prev.forEach((id) => { if (visible.has(id)) next.add(id) })
+      const visible = new Set<SelKey>(
+        (data.lines ?? []).map((l: LineItem) => lineKey(l)).filter(Boolean) as SelKey[],
+      )
+      const next = new Set<SelKey>()
+      prev.forEach((k) => { if (visible.has(k)) next.add(k) })
       return next
     })
     setLoading(false)
@@ -187,21 +204,31 @@ export default function UEInvoiceBasisPage() {
   // is an exact reconciliation of the chosen lines (never a re-typed number).
   async function billSelected() {
     setInvError(null)
-    const ids = Array.from(selectedLines)
-    if (ids.length === 0) return
+    if (selectedLines.size === 0) return
+    // The selected lines themselves (report lines AND change-order lines).
+    const chosen = lines.filter((l) => {
+      const k = lineKey(l)
+      return k !== null && selectedLines.has(k)
+    })
     // Kryss-prosjekt-vern (defense-in-depth): #1 lar bare linjer velges når ett
     // konkret prosjekt er filtrert, så utvalget hører normalt til ÉTT prosjekt.
     // Vi utleder likevel prosjektet fra linjene selv (ikke fra «Registrer
     // faktura»-velgeren) og avviser et blandet utvalg, så beløpet aldri havner
     // på feil prosjekt og per-prosjekt «Gjenstår» ikke spriker.
-    const billProjects = new Set(
-      lines.filter((l) => l.report_line_id && selectedLines.has(l.report_line_id)).map((l) => l.project_id),
-    )
+    const billProjects = new Set(chosen.map((l) => l.project_id))
     if (billProjects.size !== 1) {
       setInvError('Du kan bare fakturere linjer fra ett prosjekt om gangen. Filtrer på ett prosjekt, eller velg linjer som hører til samme prosjekt.')
       return
     }
     const billProjectId = Array.from(billProjects)[0]
+    // #10: split the selection into report-line ids and change-order ids so the
+    // POST marks both kinds billed (server validates ownership + project per id).
+    const lineIds = chosen
+      .filter((l) => l.source === 'report' && l.report_line_id)
+      .map((l) => l.report_line_id!)
+    const coIds = chosen
+      .filter((l) => l.source === 'change_order' && l.change_order_id)
+      .map((l) => l.change_order_id!)
     setBillingLines(true)
     const res = await fetch('/api/subcontractor/ue-invoices', {
       method: 'POST',
@@ -212,7 +239,8 @@ export default function UEInvoiceBasisPage() {
         amount: selectedTotal,
         invoice_date: invoiceDate,
         note: invoiceNote,
-        line_ids: ids,
+        line_ids: lineIds,
+        co_ids: coIds,
       }),
     })
     setBillingLines(false)
@@ -226,11 +254,11 @@ export default function UEInvoiceBasisPage() {
     await Promise.all([fetchInvoices(), fetchBasis()])
   }
 
-  function toggleLine(id: string) {
+  function toggleLine(key: SelKey) {
     setSelectedLines((prev) => {
       const next = new Set(prev)
-      if (next.has(id)) next.delete(id)
-      else next.add(id)
+      if (next.has(key)) next.delete(key)
+      else next.add(key)
       return next
     })
   }
@@ -299,28 +327,32 @@ export default function UEInvoiceBasisPage() {
     [lines, hideBilled],
   )
 
-  // 4.7: only report lines (with a report_line_id) that are not yet billed can
-  // be selected — change-order lines have no billed concept and no line id.
+  // 4.7 / #10: any not-yet-billed line — report line OR change-order line — can
+  // be selected. Both kinds now carry a real billed_at (CO billed columns added
+  // in migration 0017) and a selectable id (lineKey).
   // #1/#2: and only when a single project is filtered (no date filter), so
   // line-billing never spans projects or mixes date axes.
   const selectableLines = useMemo(
-    () => (canBillLines ? lines.filter((l) => l.report_line_id && !l.billed_at) : []),
+    () => (canBillLines ? lines.filter((l) => lineKey(l) !== null && !l.billed_at) : []),
     [lines, canBillLines],
   )
   const selectedTotal = useMemo(
     () => lines
-      .filter((l) => l.report_line_id && selectedLines.has(l.report_line_id))
+      .filter((l) => {
+        const k = lineKey(l)
+        return k !== null && selectedLines.has(k)
+      })
       .reduce((s, l) => s + l.cost_total, 0),
     [lines, selectedLines],
   )
   const allSelectableChosen =
-    selectableLines.length > 0 && selectableLines.every((l) => selectedLines.has(l.report_line_id!))
+    selectableLines.length > 0 && selectableLines.every((l) => selectedLines.has(lineKey(l)!))
 
   function toggleAll() {
     setSelectedLines((prev) => {
       if (allSelectableChosen) return new Set()
       const next = new Set(prev)
-      selectableLines.forEach((l) => next.add(l.report_line_id!))
+      selectableLines.forEach((l) => next.add(lineKey(l)!))
       return next
     })
   }
@@ -415,16 +447,16 @@ export default function UEInvoiceBasisPage() {
         </div>
       )}
 
-      {/* Register invoice — #9/#10: dette er engangs-/EM-veien. Den merker
-          INGEN rapportlinjer som fakturert, så bruk den til endringsmeldinger
-          (EM kan ikke linje-faktureres) eller à konto / samlebeløp. For å
-          fakturere konkrete rapportlinjer presist, bruk «Fakturer valgte linjer»
-          i tabellen under — ellers kan samme arbeid bli fakturert to ganger. */}
+      {/* Register invoice — #9/#10: dette er engangs-/samlebeløp-veien. Den
+          merker INGEN linjer som fakturert, så bruk den til à konto / samlebeløp.
+          For å fakturere konkrete linjer presist — rapport- ELLER EM-/CO-linjer —
+          bruk «Fakturer valgte linjer» i tabellen under, så de merkes fakturert
+          og samme arbeid ikke kan faktureres to ganger. */}
       <Card className="p-5 space-y-4">
         <div className="space-y-1">
-          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Registrer faktura (engangsbeløp / EM)</h2>
+          <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Registrer faktura (samlebeløp / à konto)</h2>
           <p className="text-xs text-[var(--color-text-muted)]">
-            Et fritt beløp som ikke knyttes til enkeltlinjer — for endringsmeldinger eller à konto. Vil du fakturere bestemte rapportlinjer, bruk «Fakturer valgte linjer» i tabellen under, så de ikke kan faktureres på nytt.
+            Et fritt beløp som ikke knyttes til enkeltlinjer — for à konto eller samlefaktura. Vil du fakturere bestemte linjer (rapport eller EM), bruk «Fakturer valgte linjer» i tabellen under, så de ikke kan faktureres på nytt.
           </p>
         </div>
         <div className="grid grid-cols-2 md:grid-cols-4 gap-4 items-end">
@@ -563,9 +595,9 @@ export default function UEInvoiceBasisPage() {
               Skjul fakturerte
             </label>
             {/* #9/#10: «Fakturer valgte linjer» — den presise per-linje-veien for
-                rapportlinjer. Sender line_ids og merker dem fakturert, så samme
-                arbeid ikke kan faktureres på nytt. Vises kun når linje-valg er
-                tillatt (ett prosjekt, uten datofilter). */}
+                både rapport- og EM-/CO-linjer. Sender line_ids + co_ids og merker
+                dem fakturert, så samme arbeid ikke kan faktureres på nytt. Vises
+                kun når linje-valg er tillatt (ett prosjekt, uten datofilter). */}
             {canBillLines && selectedLines.size > 0 && (
               <Button
                 onClick={billSelected}
@@ -584,7 +616,7 @@ export default function UEInvoiceBasisPage() {
           <p className="px-5 py-2.5 text-xs text-[var(--color-text-secondary)] bg-muted/40 border-b border-border">
             {dateFilterActive
               ? 'Fjern datofilteret for å fakturere enkeltlinjer — med datofilter blander grunnlag og fakturaer ulike dato-akser.'
-              : 'Filtrer på ett prosjekt for å fakturere linjer. Da kan du krysse av rapportlinjer og fakturere dem presist uten å risikere å fakturere samme arbeid to ganger.'}
+              : 'Filtrer på ett prosjekt for å fakturere linjer. Da kan du krysse av rapport- og EM-linjer og fakturere dem presist uten å risikere å fakturere samme arbeid to ganger.'}
           </p>
         )}
         <table className="w-full text-sm">
@@ -629,9 +661,11 @@ export default function UEInvoiceBasisPage() {
               </tr>
             ) : (
               displayLines.map((l, i) => {
-                // Only unbilled report lines (with an id) are selectable.
-                const selectable = !!l.report_line_id && !l.billed_at
-                const checked = !!l.report_line_id && selectedLines.has(l.report_line_id)
+                // #10: any unbilled line with a selectable id (report line OR
+                // change-order line) can be picked.
+                const key = lineKey(l)
+                const selectable = key !== null && !l.billed_at
+                const checked = key !== null && selectedLines.has(key)
                 return (
                 <tr key={l.report_line_id ?? l.change_order_id ?? i} className="border-b border-border hover:bg-muted/40">
                   {/* #1: avkrysningscellen finnes kun når linje-fakturering er tillatt. */}
@@ -641,7 +675,7 @@ export default function UEInvoiceBasisPage() {
                         <input
                           type="checkbox"
                           checked={checked}
-                          onChange={() => toggleLine(l.report_line_id!)}
+                          onChange={() => toggleLine(key)}
                           aria-label={`Velg linje ${l.product_name}`}
                           className="rounded border-border"
                         />
@@ -662,19 +696,13 @@ export default function UEInvoiceBasisPage() {
                     </StatusPill>
                   </td>
                   <td className="px-4 py-2.5">
-                    {/* 4.7: per-linje fakturert-status for rapportlinjer.
-                        #10: EM-/CO-linjer kan ikke linje-faktureres — gjør det
-                        til en synlig, bevisst forklaring (ikke en skjult quirk):
-                        de faktureres via «Registrer faktura (engangsbeløp / EM)». */}
-                    {l.source === 'report' ? (
-                      <StatusPill tone={l.billed_at ? 'green' : 'gray'}>
-                        {l.billed_at ? 'Fakturert' : 'Ikke fakturert'}
-                      </StatusPill>
-                    ) : (
-                      <span className="text-xs text-[var(--color-text-muted)]" title="Endringsmeldinger faktureres som engangsbeløp via «Registrer faktura», ikke per linje.">
-                        Faktureres via engangsbeløp
-                      </span>
-                    )}
+                    {/* 4.7 / #10: per-linje fakturert-status for BÅDE rapport- og
+                        EM-/CO-linjer. CO-linjer bærer nå ekte billed_at (migrasjon
+                        0017) og kan linje-faktureres på lik linje, så de viser
+                        samme Fakturert/Ikke fakturert-pill som rapportlinjene. */}
+                    <StatusPill tone={l.billed_at ? 'green' : 'gray'}>
+                      {l.billed_at ? 'Fakturert' : 'Ikke fakturert'}
+                    </StatusPill>
                   </td>
                 </tr>
                 )

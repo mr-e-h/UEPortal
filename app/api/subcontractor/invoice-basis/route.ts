@@ -21,9 +21,11 @@ export async function GET(request: NextRequest) {
   const projectId = searchParams.get('project_id')
   const from = searchParams.get('from')
   const to = searchParams.get('to')
-  // NB: the basis always returns the full approved set; every line carries its
-  // own billed_at/ue_invoice_id status. «Skjul fakturerte» is a client-side
-  // display filter only — there is no server-side excludeBilled toggle here.
+  // NB: the basis always returns the full approved set; every line — report
+  // lines AND change orders (CO billed columns added in migration 0017) —
+  // carries its own billed_at/ue_invoice_id status. «Skjul fakturerte» is a
+  // client-side display filter only — there is no server-side excludeBilled
+  // toggle here, so no new query params are needed.
 
   const result = await getSubcontractorInvoiceBasis({
     subcontractorId: eff.subId,

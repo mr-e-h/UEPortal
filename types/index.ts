@@ -311,6 +311,11 @@ export interface ChangeOrder {
    * on revert/approve/reject so we never carry stale state.
    */
   sent_to_customer_at: string | null
+  /** Fakturert-status (migrasjon 0017). null = ikke fakturert. Speiler
+   *  weekly_report_lines.billed_at/ue_invoice_id, så en godkjent EM kan
+   *  linje-faktureres og avstemmes mot en ue_invoice. */
+  billed_at?: string | null
+  ue_invoice_id?: string | null
 }
 
 export interface ReportLine {

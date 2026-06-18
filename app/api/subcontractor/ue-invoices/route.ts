@@ -50,6 +50,7 @@ export async function POST(request: NextRequest) {
     invoice_date: string
     note?: string
     line_ids?: string[]
+    co_ids?: string[]
   }
 
   const amount = Number(body.amount)
@@ -62,6 +63,13 @@ export async function POST(request: NextRequest) {
   // UE can't mark another UE's lines as billed by passing foreign ids.
   const lineIds = Array.isArray(body.line_ids)
     ? body.line_ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
+    : []
+
+  // Optional: the change orders (CO/EM) this invoice covers. Same protection as
+  // lines, but ownership is read straight off change_orders.subcontractor_id —
+  // a UE can only ever bill its OWN COs.
+  const coIds = Array.isArray(body.co_ids)
+    ? body.co_ids.filter((id): id is string => typeof id === 'string' && id.length > 0)
     : []
 
   const sb = getSupabaseAdmin()
@@ -113,6 +121,22 @@ export async function POST(request: NextRequest) {
     }
   }
 
+  // Resolve which of the requested COs are actually this sub's own AND (when the
+  // invoice is project-scoped) belong to the invoice's project — same two guards
+  // as for report lines, so a project-A CO can't be billed under a project-B
+  // invoice. Ownership is the change_orders.subcontractor_id column itself.
+  let ownCoIds: string[] = []
+  if (coIds.length > 0) {
+    let coQ = sb
+      .from('change_orders')
+      .select('id, project_id')
+      .in('id', coIds)
+      .eq('subcontractor_id', eff.subId)
+    if (body.project_id) coQ = coQ.eq('project_id', body.project_id)
+    const { data: ownCOs } = await coQ
+    ownCoIds = (ownCOs ?? []).map((c) => c.id as string)
+  }
+
   const newInvoice: UEInvoice = {
     id: randomUUID(),
     subcontractor_id: eff.subId,
@@ -126,11 +150,21 @@ export async function POST(request: NextRequest) {
   if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
 
   // Mark the validated own lines billed + link them to this invoice.
+  const billedAt = new Date().toISOString()
   if (ownLineIds.length > 0) {
     await sb
       .from('weekly_report_lines')
-      .update({ billed_at: new Date().toISOString(), ue_invoice_id: newInvoice.id })
+      .update({ billed_at: billedAt, ue_invoice_id: newInvoice.id })
       .in('id', ownLineIds)
+  }
+
+  // Same for the validated own COs (mirrors the report-line marking; 0017 added
+  // billed_at + ue_invoice_id to change_orders).
+  if (ownCoIds.length > 0) {
+    await sb
+      .from('change_orders')
+      .update({ billed_at: billedAt, ue_invoice_id: newInvoice.id })
+      .in('id', ownCoIds)
   }
 
   return NextResponse.json(newInvoice)
@@ -164,6 +198,14 @@ export async function DELETE(request: NextRequest) {
   // invoice ids, so no foreign lines can be touched.
   await sb
     .from('weekly_report_lines')
+    .update({ billed_at: null, ue_invoice_id: null })
+    .eq('ue_invoice_id', id)
+
+  // Same un-billing for the COs this invoice covered — same ordering rationale
+  // (ON DELETE SET NULL on change_orders.ue_invoice_id) and same scoping
+  // (ue_invoice_id is only ever set to this sub's own invoice ids).
+  await sb
+    .from('change_orders')
     .update({ billed_at: null, ue_invoice_id: null })
     .eq('ue_invoice_id', id)
 

@@ -1,17 +1,16 @@
-'use client'
-
-import { useEffect, useState, useCallback, type ReactNode } from 'react'
+import { Suspense, type ReactNode } from 'react'
 import Link from 'next/link'
-import { useRouter } from 'next/navigation'
-import { CheckCircle2, Clock, Send, Plus, Mail, Wallet, FileText, PiggyBank, ChevronRight, AlertCircle } from 'lucide-react'
-import ProjectPickerModal from '@/components/subcontractor/ProjectPickerModal'
+import { CheckCircle2, Clock, Mail, Wallet, FileText, PiggyBank, ChevronRight, AlertCircle } from 'lucide-react'
+import { getSession } from '@/lib/auth'
+import { getEffectiveUser } from '@/lib/view-as'
+import { getSubcontractorDashboard, type DashboardPayload } from '@/lib/subcontractor-dashboard'
 import Card from '@/components/ui/Card'
 import EmptyState from '@/components/ui/EmptyState'
 import { fmtNOK as fmt, fmtDateLong as fmtDate, fmtDateTime, daysUntil } from '@/lib/format'
 import { changeOrderType, changeOrderStatus } from '@/lib/statuses'
-import { useMe } from '@/lib/useMe'
+import DashboardActions from './DashboardActions'
 
-interface ProjectManager { id: string; full_name: string; email: string }
+export const dynamic = 'force-dynamic'
 
 interface PickerProjectLite {
   id: string
@@ -19,73 +18,6 @@ interface PickerProjectLite {
   project_number: string
   pending_em_count: number
   pending_weekly_count: number
-}
-
-interface DashboardProject {
-  id: string
-  name: string
-  project_number: string
-  end_date: string | null
-  order_value: number
-  approved_value: number
-  progress_pct: number
-  pending_em_count: number
-  pending_weekly_count: number
-  project_managers: ProjectManager[]
-}
-
-interface DashboardPayload {
-  kpi: {
-    ordreverdi: number
-    fakturert: number
-    fakturerbart: number
-    gjenstaaende: number
-    produsertIkkeBedt: number
-  }
-  pendingChangeOrders: Array<{
-    id: string
-    project_id: string
-    project_name: string
-    project_number: string
-    em_title: string
-    change_order_number: number
-    em_type: string
-    total_cost: number
-    submitted_at: string | null
-    submitted_by: string | null
-    status: string
-    has_admin_edits: boolean
-    has_consequence_lines: boolean
-  }>
-  revisionChangeOrders: Array<{
-    id: string
-    project_id: string
-    project_name: string
-    project_number: string
-    em_title: string
-    change_order_number: number
-    em_type: string
-    total_cost: number
-    admin_comment: string
-    submitted_at: string | null
-    submitted_by: string | null
-    status: string
-    has_admin_edits: boolean
-    has_consequence_lines: boolean
-  }>
-  pendingWeeklyReports: Array<{
-    id: string
-    project_id: string
-    project_name: string
-    project_number: string
-    year: number
-    week_number: number
-    submission_number: number
-    line_count: number
-    total_cost: number
-    submitted_at: string | null
-  }>
-  projects: DashboardProject[]
 }
 
 const EMPTY_DASHBOARD: DashboardPayload = {
@@ -140,36 +72,71 @@ function KpiCard({ label, value, hint, icon, iconBg, href }: KpiCardProps) {
   return <div className="bg-card border border-border rounded-2xl p-5">{body}</div>
 }
 
-export default function SubcontractorPage() {
-  const router = useRouter()
-  const { me } = useMe()
-  const [dashboard, setDashboard] = useState<DashboardPayload>(EMPTY_DASHBOARD)
-  const [loading, setLoading] = useState(true)
-  const [picker, setPicker] = useState<'new-em' | 'weekly-report' | null>(null)
+/** Greeting block — shared by the live render and the skeleton so the header
+ *  doesn't pop in. revisionCount drives the "hva venter på meg"-line. */
+function Greeting({ userName, revisionCount }: { userName: string; revisionCount: number }) {
+  const today = new Date().toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' })
+  return (
+    <div>
+      <p className="text-xs text-[var(--color-text-muted)] capitalize">{today}</p>
+      <h1 className="text-xl font-bold text-[var(--color-text-primary)] mt-0.5">
+        {userName ? `Hei, ${userName.split(' ')[0]}` : 'Oversikt'}
+      </h1>
+      {revisionCount > 0 ? (
+        <p className="text-sm font-medium text-orange-700 mt-1 inline-flex items-center gap-1.5">
+          <AlertCircle size={15} strokeWidth={2} />
+          Du har {revisionCount} {revisionCount === 1 ? 'endringsmelding som må rettes' : 'endringsmeldinger som må rettes'}
+        </p>
+      ) : (
+        <p className="text-sm text-[var(--color-text-muted)] mt-1 inline-flex items-center gap-1.5">
+          <CheckCircle2 size={15} strokeWidth={2} className="text-green-600" />
+          Alt er à jour
+        </p>
+      )}
+    </div>
+  )
+}
 
-  const userName = me?.full_name ?? ''
+/** Skeleton shown while the dashboard aggregation runs server-side. Replaces
+ *  the old full-screen «Laster…» blank with a structural placeholder so the
+ *  KPI grid and lists don't collapse the layout on first paint. */
+function DashboardSkeleton({ userName }: { userName: string }) {
+  return (
+    <div className="p-6 space-y-6 animate-pulse">
+      <Greeting userName={userName} revisionCount={0} />
 
-  const fetchAll = useCallback(async (subId: string) => {
-    const res = await fetch(`/api/subcontractor/dashboard?subcontractor_id=${subId}`)
-    if (res.ok) {
-      const data = await res.json() as DashboardPayload
-      setDashboard(data)
-    }
-    setLoading(false)
-  }, [])
+      <div className="space-y-4">
+        <div className="h-3 w-28 rounded bg-muted" />
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+          {[0, 1, 2].map((i) => (
+            <div key={i} className="bg-card border border-border rounded-2xl p-5 h-28" />
+          ))}
+        </div>
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+          {[0, 1].map((i) => (
+            <div key={i} className="bg-card border border-border rounded-2xl p-5 h-28" />
+          ))}
+        </div>
+      </div>
 
-  useEffect(() => {
-    if (!me) return
-    // The server layout is the authoritative role gate. Don't redirect from
-    // here: when the super-admin exits view-as, `me.role` flips to 'main' for
-    // one render and a client redirect would race the ViewAsBar navigation
-    // (and used to bounce to /login). Just skip the sub-only data fetch.
-    if (me.role !== 'sub') return
-    // View-as preview without a sub_id — show empty state instead of bouncing.
-    if (!me.subcontractor_id) { setLoading(false); return }
-    fetchAll(me.subcontractor_id)
-  }, [me, router, fetchAll])
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+        {[0, 1].map((i) => (
+          <div key={i} className="space-y-3">
+            <div className="h-14 rounded-2xl bg-muted" />
+            <div className="bg-card border border-border rounded-2xl h-40" />
+          </div>
+        ))}
+      </div>
 
+      <div className="bg-card border border-border rounded-2xl h-48" />
+    </div>
+  )
+}
+
+/** Pure presentational dashboard — takes a resolved payload and renders the
+ *  full UE landing page. Reused by both the live RSC and the empty-state
+ *  (view-as-without-sub) path. */
+function DashboardView({ userName, dashboard }: { userName: string; dashboard: DashboardPayload }) {
   const pickerProjects: PickerProjectLite[] = dashboard.projects.map((p) => ({
     id: p.id,
     name: p.name,
@@ -178,12 +145,6 @@ export default function SubcontractorPage() {
     pending_weekly_count: p.pending_weekly_count,
   }))
 
-  if (loading) {
-    return <div className="flex items-center justify-center h-64 text-[var(--color-text-muted)]">Laster...</div>
-  }
-
-  const today = new Date().toLocaleDateString('nb-NO', { weekday: 'long', day: 'numeric', month: 'long' })
-
   // S.2 — «Hva venter på meg». Kun revisjon teller som UE-egen oppgave;
   // «til behandling»-boksene venter på admin og holdes utenfor.
   const revisionCount = dashboard.revisionChangeOrders.length
@@ -191,23 +152,7 @@ export default function SubcontractorPage() {
   return (
     <div className="p-6 space-y-6">
       {/* Greeting */}
-      <div>
-        <p className="text-xs text-[var(--color-text-muted)] capitalize">{today}</p>
-        <h1 className="text-xl font-bold text-[var(--color-text-primary)] mt-0.5">
-          {userName ? `Hei, ${userName.split(' ')[0]}` : 'Oversikt'}
-        </h1>
-        {revisionCount > 0 ? (
-          <p className="text-sm font-medium text-orange-700 mt-1 inline-flex items-center gap-1.5">
-            <AlertCircle size={15} strokeWidth={2} />
-            Du har {revisionCount} {revisionCount === 1 ? 'endringsmelding som må rettes' : 'endringsmeldinger som må rettes'}
-          </p>
-        ) : (
-          <p className="text-sm text-[var(--color-text-muted)] mt-1 inline-flex items-center gap-1.5">
-            <CheckCircle2 size={15} strokeWidth={2} className="text-green-600" />
-            Alt er à jour
-          </p>
-        )}
-      </div>
+      <Greeting userName={userName} revisionCount={revisionCount} />
 
       {/* KPI-er — alle 5 fra payloaden, gruppert i budsjett-status vs kontantstrøm. */}
       <div className="space-y-4">
@@ -269,14 +214,7 @@ export default function SubcontractorPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
         {/* LEFT: Ukesrapport */}
         <div className="space-y-3">
-          <button
-            type="button"
-            onClick={() => setPicker('weekly-report')}
-            disabled={pickerProjects.length === 0}
-            className="w-full inline-flex items-center justify-center gap-2 px-5 py-4 text-base font-semibold bg-primary text-white rounded-2xl hover:bg-primary-hover transition-all shadow-md hover:shadow-lg hover:-translate-y-0.5 active:translate-y-0 disabled:opacity-50 disabled:cursor-not-allowed disabled:transform-none"
-          >
-            <Send size={20} strokeWidth={2.25} /> Send ukesrapport
-          </button>
+          <DashboardActions projects={pickerProjects} variant="weekly-report" />
           <Card className="overflow-hidden">
             <div className="px-5 py-3 border-b border-border flex items-center gap-2">
               <h2 className="text-sm font-semibold text-[var(--color-text-primary)]">Ukesrapporter til behandling</h2>
@@ -321,14 +259,7 @@ export default function SubcontractorPage() {
 
         {/* RIGHT: Endringsmelding */}
         <div className="space-y-3">
-          <button
-            type="button"
-            onClick={() => setPicker('new-em')}
-            disabled={pickerProjects.length === 0}
-            className="w-full inline-flex items-center justify-center gap-2 px-5 py-4 text-base font-semibold bg-card border-2 border-primary text-primary rounded-2xl hover:bg-primary-soft transition-all shadow-sm hover:shadow disabled:opacity-50 disabled:cursor-not-allowed"
-          >
-            <Plus size={20} strokeWidth={2.5} /> Send endringsmelding
-          </button>
+          <DashboardActions projects={pickerProjects} variant="new-em" />
           {/* Trenger revisjon — admin har returnert EMer som UE må rette opp og
               sende inn på nytt. Skilles fra "til behandling" så denne
               oppgaveboksen tydelig sier "DU har jobb å gjøre". */}
@@ -516,14 +447,49 @@ export default function SubcontractorPage() {
           </ul>
         )}
       </Card>
-
-      {picker && (
-        <ProjectPickerModal
-          projects={pickerProjects}
-          action={picker}
-          onClose={() => setPicker(null)}
-        />
-      )}
     </div>
+  )
+}
+
+/** Async server component — does the actual dashboard aggregation. Suspended
+ *  on by the page so the skeleton shows while the queries run. subId comes from
+ *  the effective session, never the client. */
+async function DashboardBody({ subId, userName }: { subId: string; userName: string }) {
+  const dashboard = await getSubcontractorDashboard(subId)
+  return <DashboardView userName={userName} dashboard={dashboard} />
+}
+
+/**
+ * UE-dashbord — server-komponent (RSC). Sesjonen og view-as løses server-side
+ * (samme måte som layouten), og subId hentes fra den effektive brukeren —
+ * aldri fra klienten. De interaktive «Send EM»/«Send ukesrapport»-knappene er
+ * trukket ut som klient-øyer (DashboardActions). Dataspørringen kjøres i
+ * DashboardBody bak en Suspense-grense, så et skjelett vises i stedet for den
+ * gamle full-skjerm «Laster…»-blanken.
+ *
+ * Rollegaten ligger i subcontractor/layout.tsx (redirecter ikke-subs bort før
+ * siden lastes). Her håndteres bare view-as-uten-sub_id ved å vise et tomt
+ * dashbord i stedet for å hente data.
+ */
+export default async function SubcontractorPage() {
+  const realUser = await getSession()
+  // Layouten gater allerede ut alt som ikke er en effektiv sub; dette er bare
+  // en defensiv guard hvis siden rendres uten økt.
+  if (!realUser) {
+    return <DashboardView userName="" dashboard={EMPTY_DASHBOARD} />
+  }
+  const me = await getEffectiveUser(realUser)
+  const userName = me.full_name ?? ''
+
+  // View-as-preview uten sub_id — vis tomt dashbord i stedet for å hente data
+  // (speiler den gamle klient-oppførselen).
+  if (me.role !== 'sub' || !me.subcontractor_id) {
+    return <DashboardView userName={userName} dashboard={EMPTY_DASHBOARD} />
+  }
+
+  return (
+    <Suspense fallback={<DashboardSkeleton userName={userName} />}>
+      <DashboardBody subId={me.subcontractor_id} userName={userName} />
+    </Suspense>
   )
 }

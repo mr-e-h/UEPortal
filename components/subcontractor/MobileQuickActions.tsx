@@ -30,10 +30,14 @@ export default function MobileQuickActions() {
 
   useEffect(() => {
     if (!me?.subcontractor_id) return
-    fetch(`/api/subcontractor/dashboard?subcontractor_id=${me.subcontractor_id}`)
+    // Hent kun den lette prosjektlista (samme endepunkt prosjektsidene bruker),
+    // ikke hele dashboard-aggregeringen. Routen scoper UE fra sesjonen selv, så
+    // ingen ?subcontractor_id-param trengs. Retur-shapen er ett element per
+    // prosjekt med id/name/project_number + pending-tellerne pickeren viser.
+    fetch('/api/subcontractor/projects')
       .then((r) => (r.ok ? r.json() : null))
-      .then((data: { projects?: PickerProject[] } | null) => {
-        if (data?.projects) setProjects(data.projects)
+      .then((data: PickerProject[] | null) => {
+        if (Array.isArray(data)) setProjects(data)
       })
       .catch(() => {})
   }, [me?.subcontractor_id])

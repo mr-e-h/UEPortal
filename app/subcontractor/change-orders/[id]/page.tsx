@@ -70,7 +70,6 @@ export default function SubcontractorChangeOrderDetailPage() {
   const [lines, setLines] = useState<UELine[]>([])
   const [consequenceLines, setConsequenceLines] = useState<UEConsequenceLine[]>([])
   const [project, setProject] = useState<ProjectWithLines | null>(null)
-  const [projects, setProjects] = useState<ProjectWithLines[]>([])
   const [activity, setActivity] = useState<ActivityEntry[]>([])
   const [hasAdminEdits, setHasAdminEdits] = useState(false)
   const [loading, setLoading] = useState(true)
@@ -83,17 +82,12 @@ export default function SubcontractorChangeOrderDetailPage() {
 
   const load = useCallback(async () => {
     if (!me?.subcontractor_id) return
-    // YTELSE/NOTAT: vi henter HELE prosjekt-payloaden bare for å slå opp
-    // produktnavn (fra budsjettlinjene) + ett prosjekts metadata. GET
-    // /api/subcontractor/projects støtter IKKE per-prosjekt-filtrering — den
-    // ignorerer alle URL-params (inkl. subcontractor_id under) og utleder
-    // sub-en fra sesjonen, så et project_id-kall finnes ikke å bytte til uten
-    // å endre den ruten (utenfor denne filens eierskap). Lar kallet stå for å
-    // bevare produktnavn-oppslaget; et fremtidig per-prosjekt-endepunkt kan
-    // erstatte projRes uten å røre resten.
-    const [emRes, projRes, actRes] = await Promise.all([
+    // EM + aktivitet i parallell (begge kun på EM-id). Prosjektet hentes etter
+    // at vi vet EM-ens project_id — vi trenger bare DETTE ene prosjektet (for
+    // produktnavn + metadata), så vi slår opp GET /api/subcontractor/projects/
+    // [id] direkte i stedet for å dra hele porteføljen og .find()-e i den.
+    const [emRes, actRes] = await Promise.all([
       fetch(`/api/change-orders/${id}`),
-      fetch(`/api/subcontractor/projects?subcontractor_id=${me.subcontractor_id}`),
       fetch(`/api/activity?entity_id=${id}&entity_type=change_order`),
     ])
     if (!emRes.ok) {
@@ -106,18 +100,18 @@ export default function SubcontractorChangeOrderDetailPage() {
       lines: UELine[]
       consequence_lines: UEConsequenceLine[]
     }
-    const projData = (projRes.ok ? await projRes.json() : []) as ProjectWithLines[]
     const actData = (actRes.ok ? await actRes.json() : []) as ActivityEntry[]
+
+    // Ett prosjekt scopet til denne UE-en — samme rad-shape som ett listeelement
+    // (budget_lines med product_name m.m.). 404 = ikke tilknyttet/slettet; da
+    // står vi uten prosjekt-metadata, men EMen vises fortsatt (project = null).
+    const projRes = await fetch(`/api/subcontractor/projects/${emData.change_order.project_id}`)
+    const projData = (projRes.ok ? await projRes.json() : null) as ProjectWithLines | null
 
     setCo(emData.change_order)
     setLines(Array.isArray(emData.lines) ? emData.lines : [])
     setConsequenceLines(Array.isArray(emData.consequence_lines) ? emData.consequence_lines : [])
-    setProjects(Array.isArray(projData) ? projData : [])
-    setProject(
-      Array.isArray(projData)
-        ? projData.find((p) => p.id === emData.change_order.project_id) ?? null
-        : null,
-    )
+    setProject(projData && typeof projData === 'object' ? projData : null)
     const acts = Array.isArray(actData) ? actData : []
     setActivity(acts)
     // 'edited'-rader skrives kun av admin/PL — markerer at EMen er justert.
@@ -148,7 +142,7 @@ export default function SubcontractorChangeOrderDetailPage() {
   // listene/modalen). Faller tilbake til product_id når en linje peker på et
   // produkt som ikke ligger i UE-ens budsjett (sjelden).
   const productNameMap = new Map(
-    projects.flatMap((p) => p.budget_lines.map((bl) => [bl.product_id, bl.product_name] as const)),
+    (project?.budget_lines ?? []).map((bl) => [bl.product_id, bl.product_name] as const),
   )
   const productName = (productId: string) => productNameMap.get(productId) ?? '–'
 

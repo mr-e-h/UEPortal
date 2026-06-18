@@ -216,9 +216,18 @@ export default function SubcontractorProjectPage() {
     setExpandedConseqId(coId)
   }
 
-  const loadProject = useCallback(async (subId: string) => {
-    const projs = await fetch(`/api/subcontractor/projects?subcontractor_id=${subId}`).then((r) => r.json()) as ProjectWithLines[]
-    const found = projs.find((p) => p.id === id) ?? null
+  const loadProject = useCallback(async () => {
+    // S.5 — hent det aktive prosjektet fra den scopede ruten i stedet for å
+    // dra hele porteføljen og .find()-e ett. Ruten deriverer UE-en fra sesjonen
+    // (ignorerer evt. id i URL) og verifiserer tilknytning via
+    // project_subcontractors; 403/404 → prosjektet finnes ikke for denne UE-en.
+    // Retur-shapen er bit-for-bit identisk med ett listeelement.
+    const res = await fetch(`/api/subcontractor/projects/${id}`)
+    if (!res.ok) {
+      setProject(null)
+      return null
+    }
+    const found = (await res.json()) as ProjectWithLines
     setProject(found)
     return found
   }, [id])
@@ -284,7 +293,7 @@ export default function SubcontractorProjectPage() {
 
     const init = async () => {
       const [, reports] = await Promise.all([
-        loadProject(subId),
+        loadProject(),
         loadHistory(subId),
         loadChangeOrders(subId),
         loadMilestones(),

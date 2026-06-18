@@ -316,14 +316,26 @@ function emptyResult(): InvoiceBasisResult {
 // ue_invoice_id) so the frontend can render «Fakturert / Ikke fakturert» and
 // «Gjenstår» can become a real reconciliation. The basis always returns the
 // full approved set — «Skjul fakturerte» is a client-side display filter, not a
-// server toggle. Change orders have no billed concept yet — they always report
-// billed_at = null / ue_invoice_id = null (mirrors the documented admin quirk).
+// server toggle. Migration 0017 added billed_at + ue_invoice_id to
+// change_orders (mirroring 0016 on weekly_report_lines), so CO lines now carry
+// their REAL billed status too — the earlier «CO always null» quirk is gone.
 
 export type SubInvoiceBasisFilters = {
   subcontractorId: string
   projectId?: string | null
   from?: string | null // ISO date (YYYY-MM-DD)
   to?: string | null   // ISO date (YYYY-MM-DD)
+}
+
+/**
+ * change_orders rows now carry billed_at + ue_invoice_id (migration 0017). The
+ * shared ChangeOrder type does not yet model these additive columns, so we read
+ * them through this local extension — keeps the read honest without widening the
+ * cross-cutting type from inside this repo module.
+ */
+type BillableChangeOrder = ChangeOrder & {
+  billed_at: string | null
+  ue_invoice_id: string | null
 }
 
 export type SubInvoiceBasisLine = {
@@ -338,7 +350,8 @@ export type SubInvoiceBasisLine = {
   cost_total: number
   date: string
   source: 'report' | 'change_order'
-  /** Billed status (4.7). null = not yet invoiced. COs are always null. */
+  /** Billed status (4.7). null = not yet invoiced. Report lines AND COs both
+   *  carry their real status (CO billed columns added in migration 0017). */
   billed_at: string | null
   ue_invoice_id: string | null
 }
@@ -377,7 +390,7 @@ export async function getSubcontractorInvoiceBasis(
   if (projectId) cosQ = cosQ.eq('project_id', projectId)
   const { data: coData, error: coErr } = await cosQ
   if (coErr) throw new Error(`getSubcontractorInvoiceBasis change_orders: ${coErr.message}`)
-  let approvedCOs = (coData ?? []) as ChangeOrder[]
+  let approvedCOs = (coData ?? []) as BillableChangeOrder[]
 
   // --- Approved report lines for those reports ----------------------------
   const approvedReportIds = approvedReports.map((r) => r.id)
@@ -498,9 +511,11 @@ export async function getSubcontractorInvoiceBasis(
       cost_total: co.total_cost,
       date: (co.reviewed_at ?? co.submitted_at ?? '').split('T')[0],
       source: 'change_order',
-      // Change orders have no billed concept yet (mirrors admin quirk).
-      billed_at: null,
-      ue_invoice_id: null,
+      // Real billed status from change_orders (migration 0017) — no longer
+      // hardcoded null, so CO lines render «Fakturert / Ikke fakturert» and can
+      // be selected/reconciled just like report lines.
+      billed_at: co.billed_at,
+      ue_invoice_id: co.ue_invoice_id ?? null,
     })
   }
 
