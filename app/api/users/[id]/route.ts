@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
+import { revalidateTag } from 'next/cache'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { getSession, clearAllSessionsForUser } from '@/lib/auth'
 import { USER_ADMIN_ROLES } from '@/lib/api-guard'
@@ -98,5 +99,6 @@ export async function PATCH(req: NextRequest, { params }: { params: { id: string
     await clearAllSessionsForUser(params.id)
   }
 
+  revalidateTag('users')
   return NextResponse.json(data)
 }

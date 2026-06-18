@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { revalidateTag } from 'next/cache'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/api-guard'
 import type { Product } from '@/types'
@@ -36,6 +37,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     .maybeSingle<Product>()
   if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })
+  revalidateTag('products')
   return NextResponse.json(data)
 }
 
@@ -56,5 +58,8 @@ export async function DELETE(_request: NextRequest, { params }: { params: { id: 
   const { error: prodErr } = await sb.from('products').delete().eq('id', params.id)
   if (prodErr) return NextResponse.json({ error: 'Sletting feilet' }, { status: 500 })
 
+  // Evict both caches: the product row is gone and we already deleted its prices above.
+  revalidateTag('products')
+  revalidateTag('subcontractor_product_prices')
   return NextResponse.json({ ok: true })
 }

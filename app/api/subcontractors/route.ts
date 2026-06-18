@@ -1,32 +1,30 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
+import { revalidateTag } from 'next/cache'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin, requireAuth, isSub } from '@/lib/api-guard'
+import { getCachedSubcontractors } from '@/lib/cache'
 import type { Subcontractor } from '@/types'
 
 export async function GET() {
   const auth = await requireAuth()
   if (!auth.ok) return auth.response
 
-  const sb = getSupabaseAdmin()
   // Read-mostly catalog — change orders rarely. 30s fresh + 60s stale-while-
   // revalidate is plenty for the assignment dropdowns and admin lists.
   const headers = { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' }
 
   // UE only ever sees their own row (used by /account etc).
+  // Filter from the cached set so the full list never reaches a sub response.
   if (isSub(auth.user)) {
     if (!auth.user.subcontractor_id) return NextResponse.json([], { headers })
-    const { data, error } = await sb
-      .from('subcontractors')
-      .select('*')
-      .eq('id', auth.user.subcontractor_id)
-    if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-    return NextResponse.json((data ?? []) as Subcontractor[], { headers })
+    const all = await getCachedSubcontractors()
+    const own = all.filter((s) => s.id === auth.user.subcontractor_id)
+    return NextResponse.json(own as Subcontractor[], { headers })
   }
 
-  const { data, error } = await sb.from('subcontractors').select('*')
-  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-  return NextResponse.json((data ?? []) as Subcontractor[], { headers })
+  const all = await getCachedSubcontractors()
+  return NextResponse.json(all as Subcontractor[], { headers })
 }
 
 export async function POST(request: NextRequest) {
@@ -50,5 +48,6 @@ export async function POST(request: NextRequest) {
   }
   const { error } = await getSupabaseAdmin().from('subcontractors').insert(newSub)
   if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+  revalidateTag('subcontractors')
   return NextResponse.json(newSub, { status: 201 })
 }

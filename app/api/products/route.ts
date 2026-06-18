@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
+import { revalidateTag } from 'next/cache'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin, requireAuth, canSeeCustomerEconomics } from '@/lib/api-guard'
+import { getCachedProducts } from '@/lib/cache'
 import type { Product } from '@/types'
 
 export async function GET(req: NextRequest) {
@@ -12,14 +14,14 @@ export async function GET(req: NextRequest) {
   const county = searchParams.get('county')
   const includeInactive = searchParams.get('include_inactive') === 'true'
 
-  const sb = getSupabaseAdmin()
-  const query = sb.from('products').select('*')
-  if (!includeInactive) query.neq('active', false)
-  if (county) query.eq('county', county)
+  // Fetch from Vercel Data Cache (raw rows including customer_price).
+  // Per-request filtering + stripping applied below — cache never leaves server raw.
+  const allProducts = await getCachedProducts()
+  let products = allProducts
 
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-  const products = (data ?? []) as Product[]
+  // Apply the same filters the old direct query used.
+  if (!includeInactive) products = products.filter((p) => p.active !== false)
+  if (county) products = products.filter((p) => p.county === county)
 
   // Read-mostly catalog — let the browser cache for 30s and serve stale
   // for another 60s while it refetches in background. `private` because
@@ -60,5 +62,6 @@ export async function POST(request: NextRequest) {
   }
   const { error } = await getSupabaseAdmin().from('products').insert(newProduct)
   if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+  revalidateTag('products')
   return NextResponse.json(newProduct, { status: 201 })
 }

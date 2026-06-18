@@ -1,7 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
+import { revalidateTag } from 'next/cache'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin } from '@/lib/api-guard'
+import { getCachedSubcontractorPrices } from '@/lib/cache'
 import type { SubcontractorProductPrice } from '@/types'
 
 function validatePrice(value: unknown): { ok: true; price: number } | { ok: false; error: string } {
@@ -16,14 +18,17 @@ export async function GET(request: NextRequest) {
   if (!auth.ok) return auth.response
 
   const subcontractorId = new URL(request.url).searchParams.get('subcontractor_id')
-  const sb = getSupabaseAdmin()
-  const query = sb.from('subcontractor_product_prices').select('*')
-  if (subcontractorId) query.eq('subcontractor_id', subcontractorId)
-  const { data, error } = await query
-  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
+
+  // Fetch from Vercel Data Cache (all rows). Apply optional subcontractor_id
+  // filter in JS — same semantics as the old SQL .eq() filter.
+  const all = await getCachedSubcontractorPrices()
+  const prices = subcontractorId
+    ? all.filter((p) => p.subcontractor_id === subcontractorId)
+    : all
+
   // Read-mostly price catalog — 30s fresh + 60s stale-while-revalidate.
   // Cuts round-trips on every assignment dropdown.
-  return NextResponse.json((data ?? []) as SubcontractorProductPrice[], {
+  return NextResponse.json(prices as SubcontractorProductPrice[], {
     headers: { 'Cache-Control': 'private, max-age=30, stale-while-revalidate=60' },
   })
 }
@@ -57,6 +62,7 @@ export async function POST(request: NextRequest) {
       .select()
       .maybeSingle<SubcontractorProductPrice>()
     if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+    revalidateTag('subcontractor_product_prices')
     return NextResponse.json(data)
   }
 
@@ -68,6 +74,7 @@ export async function POST(request: NextRequest) {
   }
   const { error } = await sb.from('subcontractor_product_prices').insert(newPrice)
   if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+  revalidateTag('subcontractor_product_prices')
   return NextResponse.json(newPrice, { status: 201 })
 }
 
@@ -88,5 +95,6 @@ export async function PUT(request: NextRequest) {
     .maybeSingle<SubcontractorProductPrice>()
   if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
   if (!data) return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })
+  revalidateTag('subcontractor_product_prices')
   return NextResponse.json(data)
 }

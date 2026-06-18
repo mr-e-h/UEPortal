@@ -1,10 +1,12 @@
 import { NextRequest, NextResponse } from 'next/server'
 import bcrypt from 'bcryptjs'
 import { randomUUID } from 'crypto'
+import { revalidateTag } from 'next/cache'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { clearAllSessionsForUser } from '@/lib/auth'
 import { requireUserAdmin } from '@/lib/api-guard'
 import { SUPER_ADMIN_EMAIL } from '@/lib/view-as'
+import { getCachedUsers } from '@/lib/cache'
 import type { User } from '@/types'
 
 const BCRYPT_COST = 12
@@ -13,11 +15,8 @@ export async function GET() {
   const auth = await requireUserAdmin()
   if (!auth.ok) return auth.response
 
-  const { data, error } = await getSupabaseAdmin()
-    .from('users')
-    .select('id, email, role, full_name, subcontractor_id, active')
-  if (error) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-  return NextResponse.json((data ?? []) as Omit<User, 'password'>[])
+  const users = await getCachedUsers()
+  return NextResponse.json(users as Omit<User, 'password'>[])
 }
 
 export async function POST(request: NextRequest) {
@@ -63,6 +62,7 @@ export async function POST(request: NextRequest) {
 
   const { error } = await sb.from('users').insert(newUser)
   if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+  revalidateTag('users')
 
   const { password: _pw, ...safe } = newUser
   return NextResponse.json(safe, { status: 201 })
@@ -110,5 +110,6 @@ export async function DELETE(request: NextRequest) {
     .eq('id', id)
   if (error) return NextResponse.json({ error: 'Sletting feilet' }, { status: 500 })
   if (!count) return NextResponse.json({ error: 'Bruker ikke funnet' }, { status: 404 })
+  revalidateTag('users')
   return NextResponse.json({ ok: true, deleted: { id: target.id, email: target.email } })
 }

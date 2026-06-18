@@ -22,6 +22,7 @@ import type {
   WeeklyReportLine,
   ProjectInvoice,
 } from '@/types'
+import type { ProjectDetailData } from '@/lib/admin-project-detail'
 
 export type WRWithLines = WeeklyReport & { lines: WeeklyReportLine[] }
 
@@ -46,30 +47,35 @@ function safeArr<T>(val: unknown): T[] {
  *
  * Loading state stays inside; pages can render a spinner via `loading`.
  * On a 401 anywhere in the parallel fetch we boot to /login (cookie expired).
+ *
+ * Optional `initialData` seeds state from SSR so the page renders fully
+ * populated immediately (no blank-screen waterfall). fetchAll() still runs
+ * after every mutation to keep data fresh.
  */
-export function useProjectData(id: string) {
+export function useProjectData(id: string, initialData?: ProjectDetailData) {
   const router = useRouter()
   const { me } = useMe()
   const adminName = me?.full_name ?? 'Admin'
 
-  const [project, setProject] = useState<Project | null>(null)
-  const [allProducts, setAllProducts] = useState<Product[]>([])
-  const [budgetLines, setBudgetLines] = useState<ProjectBudgetLine[]>([])
-  const [reportLines, setReportLines] = useState<ReportLine[]>([])
-  const [projectSubs, setProjectSubs] = useState<ProjectSubcontractor[]>([])
-  const [allSubs, setAllSubs] = useState<Subcontractor[]>([])
-  const [changeOrders, setChangeOrders] = useState<ChangeOrder[]>([])
-  const [internalCosts, setInternalCosts] = useState<ProjectInternalCostEntry[]>([])
-  const [weeklyReportsWL, setWeeklyReportsWL] = useState<WRWithLines[]>([])
-  const [subPrices, setSubPrices] = useState<SubcontractorProductPrice[]>([])
-  const [milestones, setMilestones] = useState<GanttMilestone[]>([])
-  const [phases, setPhases] = useState<ProjectPhase[]>([])
-  const [phaseTypes, setPhaseTypes] = useState<PhaseType[]>([])
-  const [budgetVersions, setBudgetVersions] = useState<BudgetVersion[]>([])
-  const [monthPlans, setMonthPlans] = useState<ProjectMonthPlan[]>([])
-  const [projectManagers, setProjectManagers] = useState<ProjectManagerRow[]>([])
-  const [invoices, setInvoices] = useState<ProjectInvoice[]>([])
-  const [loading, setLoading] = useState(true)
+  const [project, setProject] = useState<Project | null>(initialData?.project ?? null)
+  const [allProducts, setAllProducts] = useState<Product[]>(initialData?.allProducts ?? [])
+  const [budgetLines, setBudgetLines] = useState<ProjectBudgetLine[]>(initialData?.budgetLines ?? [])
+  const [reportLines, setReportLines] = useState<ReportLine[]>(initialData?.reportLines ?? [])
+  const [projectSubs, setProjectSubs] = useState<ProjectSubcontractor[]>(initialData?.projectSubs ?? [])
+  const [allSubs, setAllSubs] = useState<Subcontractor[]>(initialData?.allSubs ?? [])
+  const [changeOrders, setChangeOrders] = useState<ChangeOrder[]>(initialData?.changeOrders ?? [])
+  const [internalCosts, setInternalCosts] = useState<ProjectInternalCostEntry[]>(initialData?.internalCosts ?? [])
+  const [weeklyReportsWL, setWeeklyReportsWL] = useState<WRWithLines[]>(initialData?.weeklyReportsWL ?? [])
+  const [subPrices, setSubPrices] = useState<SubcontractorProductPrice[]>(initialData?.subPrices ?? [])
+  const [milestones, setMilestones] = useState<GanttMilestone[]>(initialData?.milestones ?? [])
+  const [phases, setPhases] = useState<ProjectPhase[]>(initialData?.phases ?? [])
+  const [phaseTypes, setPhaseTypes] = useState<PhaseType[]>(initialData?.phaseTypes ?? [])
+  const [budgetVersions, setBudgetVersions] = useState<BudgetVersion[]>(initialData?.budgetVersions ?? [])
+  const [monthPlans, setMonthPlans] = useState<ProjectMonthPlan[]>(initialData?.monthPlans ?? [])
+  const [projectManagers, setProjectManagers] = useState<ProjectManagerRow[]>(initialData?.projectManagers ?? [])
+  const [invoices, setInvoices] = useState<ProjectInvoice[]>(initialData?.invoices ?? [])
+  // If we have SSR data, the page is immediately populated — no loading spinner.
+  const [loading, setLoading] = useState(!initialData)
 
   const fetchAll = useCallback(async () => {
     const responses = await Promise.all([
