@@ -102,6 +102,11 @@ export interface Project {
    * /api/projects/[id]/allocated-hours). Satt = admin har dratt det opp/ned.
    */
   planned_hours: number | null
+  /**
+   * Avstemmingsstatus mot kunde før lukking (migrasjon 0018). Default
+   * 'not_started' i DB; valgfri her så historiske/uberørte rader er bakoverkompatible.
+   */
+  reconciliation_status?: ReconciliationStatus
 }
 
 /**
@@ -206,6 +211,66 @@ export interface ProjectBudgetLineSubcontractor {
   quantity: number
   cost_price_snapshot: number
   created_at: string
+}
+
+/** Hvem som faktisk utførte produksjonen. 'subcontractor' = UE (tilskrives via
+ *  subcontractor_id); 'internal'/'other' = egenprod/intern og vises ALDRI som
+ *  UEs produksjon. */
+export type ProductionExecutedBy = 'subcontractor' | 'internal' | 'other'
+
+/**
+ * Registrert utført produksjon (migrasjon 0018). Føres opptjent STRAKS mot kunde
+ * via budsjettlinjas customer_price_snapshot (se lib/project-economy.ts) — rører
+ * IKKE fakturerings-laget (ue_invoices/billed_at) og auto-fakturerer ikke
+ * (opptjent ≠ fakturert). cost lagres alltid (v1: 0 kr = ordinær UE-kost); cost>0
+ * flyter IKKE inn i ueReportedCost i v1 (deferred v2). Eksponeres ALDRI UE-side.
+ */
+export interface ProductionEntry {
+  id: string
+  project_id: string
+  project_budget_line_id: string | null
+  product_id: string
+  quantity: number
+  unit: string
+  executed_by: ProductionExecutedBy
+  subcontractor_id: string | null
+  cost: number
+  comment: string
+  created_by: string | null
+  created_at: string
+}
+
+/**
+ * Status på avstemmingen mot kunde før prosjektavslutning (migrasjon 0018, kolonne
+ * på projects). Lukk-gate KUN på 'completed'-prosjektstatus i app-laget.
+ */
+export type ReconciliationStatus =
+  | 'not_started'
+  | 'in_progress'
+  | 'ready_for_final_check'
+  | 'reconciled'
+  | 'closed'
+
+/**
+ * Avstemmingslinje (migrasjon 0018) — én rad per budsjettlinje (nøkkel
+ * project_budget_line_id): snapshot av planlagt vs faktisk utført (UE-rapportert
+ * vs no-cost) + diff i mengde/kundeverdi, pluss saksbehandling før lukking.
+ * planned_quantity/diff_customer_value strippes for ikke-admin i app-laget.
+ */
+export interface ReconciliationLine {
+  id: string
+  project_id: string
+  project_budget_line_id: string | null
+  product_id: string
+  planned_quantity: number | null
+  executed_ue_quantity: number | null
+  executed_no_cost_quantity: number | null
+  diff_quantity: number | null
+  diff_customer_value: number | null
+  resolution: string
+  handled: boolean
+  handled_by: string | null
+  handled_at: string | null
 }
 
 /**
@@ -619,6 +684,43 @@ export interface ProjectPhaseVersion {
   taken_by: string | null
   taken_by_name: string | null
   snapshot: ProjectPhaseSnapshot
+  created_at: string
+}
+
+// ─── Egenproduksjon — batch-snapshot-historikk (migrasjon 0019) ──────────────
+
+/**
+ * Rå celle-snapshot for én budsjettlinje i en produksjonsversjon.
+ * INGEN kundeverdi/kr — kun egenprod-mengde + saksbehandlingsfelt.
+ */
+export interface ProductionSnapshotLine {
+  project_budget_line_id: string
+  product_id: string
+  executed_no_cost_quantity: number | null
+  resolution: string
+  handled: boolean
+}
+
+/**
+ * Snapshot-innholdet lagret i project_production_versions.snapshot (jsonb).
+ * Speil av ProjectPhaseSnapshot-formen: ett felt med en liste av linjer.
+ */
+export interface ProductionSnapshot {
+  lines: ProductionSnapshotLine[]
+}
+
+/**
+ * Én arkivert versjon av egenproduksjonstilstanden per prosjekt (migrasjon 0019).
+ * Lagres etter batch-PUT /api/production-entries/batch når noe faktisk endret seg
+ * (dedup mot siste versjon — no-op hopper over insert). Speiler ProjectPhaseVersion.
+ */
+export interface ProductionVersion {
+  id: string
+  project_id: string
+  taken_at: string
+  taken_by: string | null
+  taken_by_name: string
+  snapshot: ProductionSnapshot
   created_at: string
 }
 

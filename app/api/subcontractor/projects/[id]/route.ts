@@ -3,8 +3,11 @@ import { getSupabaseAdmin } from '@/lib/supabase'
 import { resolveEffectiveSub } from '@/lib/tender'
 import { fmtProductLabel } from '@/lib/format'
 import { emNeedsAction, wrNeedsAction, emNeedsRevision } from '@/lib/attention'
+import {
+  SUBCONTRACTOR_PROJECT_FIELDS,
+  type SubcontractorProjectFields,
+} from '@/lib/subcontractor-project-detail'
 import type {
-  Project,
   ProjectSubcontractor,
   ProjectBudgetLine,
   Product,
@@ -66,13 +69,15 @@ export async function GET(
     return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })
   }
 
-  // Hent prosjektet — utelat slettede slik som lista (neq deleted).
+  // Hent prosjektet — eksplisitt felt-liste (aldri select('*'), se
+  // SUBCONTRACTOR_PROJECT_FIELDS): holder reconciliation_status og andre interne
+  // kolonner UTE av UE-laget. Utelat slettede slik som lista (neq deleted).
   const projectRes = await sb
     .from('projects')
-    .select('*')
+    .select(SUBCONTRACTOR_PROJECT_FIELDS)
     .eq('id', projectId)
     .neq('deleted', true)
-    .maybeSingle<Project>()
+    .maybeSingle<SubcontractorProjectFields>()
 
   if (!projectRes.data) {
     return NextResponse.json({ error: 'Ikke funnet' }, { status: 404 })

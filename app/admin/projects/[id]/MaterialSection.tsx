@@ -171,6 +171,9 @@ export default function MaterialSection({
             expandedRowId={chartLineId}
             onRowExpand={(rowId) => setChartLineId(rowId)}
             expandedRowRender={expandedRowRender}
+            searchable
+            searchPlaceholder="Søk i materiell …"
+            getSearchText={(row) => `${row.product_code} ${row.product_name}`}
           />
         </div>
       )}

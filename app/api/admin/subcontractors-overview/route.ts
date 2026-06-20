@@ -1,7 +1,6 @@
 import { NextResponse } from 'next/server'
 import { requireAdmin } from '@/lib/api-guard'
 import { getCachedSubcontractors, getCachedProducts, getCachedSubcontractorPrices } from '@/lib/cache'
-import type { Subcontractor, Product, SubcontractorProductPrice } from '@/types'
 
 /**
  * Single-call endpoint for /admin/subcontractors. Returns everything the
@@ -24,11 +23,6 @@ export async function GET() {
     getCachedProducts(),
     getCachedSubcontractorPrices(),
   ])
-
-  // Types satisfied by the cached getters — cast for downstream use.
-  const subsTyped = subs as Subcontractor[]
-  const productsTyped = products as Product[]
-  const pricesTyped = prices as Pick<SubcontractorProductPrice, 'subcontractor_id' | 'product_id'>[]
 
   // Compute missing-price counts server-side so the page can render without
   // any heavy aggregation work. Saves the price-array round-trip too.

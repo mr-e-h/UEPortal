@@ -41,6 +41,8 @@ import type {
   ProjectInvoice,
   WeeklyReport,
   WeeklyReportLine,
+  ProductionEntry,
+  ReconciliationLine,
 } from '@/types'
 import type { WRWithLines, ProjectManagerRow } from '@/app/admin/projects/[id]/useProjectData'
 
@@ -62,6 +64,16 @@ export interface ProjectDetailData {
   monthPlans: ProjectMonthPlan[]
   projectManagers: ProjectManagerRow[]
   invoices: ProjectInvoice[]
+  /**
+   * Produksjonsføringer (migrasjon 0018). Intern-modul — eksponeres ALDRI
+   * UE-side. cost strippes for byggeleder (ikke-admin), som i API-ruten.
+   */
+  productionEntries: ProductionEntry[]
+  /**
+   * Avstemmingslinjer (migrasjon 0018). ADMIN/PL-only — byggeleder får tom
+   * liste her (linjene bærer kundeverdi). Seedes kun for canEconomy-roller.
+   */
+  reconciliationLines: ReconciliationLine[]
 }
 
 function safeArr<T>(val: unknown): T[] {
@@ -108,6 +120,8 @@ export async function loadProjectDetail(
     phRes,
     ptRes,
     invRes,
+    peRes,
+    rcRes,
     // Cached global tables — resolved in parallel with the DB queries above.
     allProductsRaw,
     allSubs,
@@ -142,6 +156,11 @@ export async function loadProjectDetail(
     sb.from('phase_types').select('*'),
     // 14. invoices for project
     sb.from('project_invoices').select('*').eq('project_id', projectId),
+    // 15. produksjonsføringer (migrasjon 0018) — intern-modul, aldri UE-side.
+    sb.from('project_production_entries').select('*').eq('project_id', projectId),
+    // 16. avstemmingslinjer (migrasjon 0018) — admin/PL-only, hentes alltid men
+    //      nullstilles til [] for byggeleder under (de bærer kundeverdi).
+    sb.from('project_reconciliation_lines').select('*').eq('project_id', projectId),
     // Cached global tables (Vercel Data Cache, no transatlantic hop on hit):
     getCachedProducts(),       // raw rows incl. customer_price — stripped below
     getCachedSubcontractors(), // all subcontractors
@@ -170,6 +189,8 @@ export async function loadProjectDetail(
       monthPlans: [],
       projectManagers: [],
       invoices: [],
+      productionEntries: [],
+      reconciliationLines: [],
     }
   }
 
@@ -242,6 +263,34 @@ export async function loadProjectDetail(
     }))
   }
 
+  // ── Produksjonsføringer — strip cost for byggeleder (ikke-admin) ──────────
+  // Mirrorer /api/production-entries GET: cost (verdien per føring) nullstilles
+  // for ikke-økonomi-roller.
+  let productionEntries = safeArr<ProductionEntry>(peRes.data)
+  if (!canEconomy) {
+    productionEntries = productionEntries.map((e) => ({ ...e, cost: 0 }))
+  }
+
+  // ── Avstemmingslinjer — ADMIN/PL-only ────────────────────────────────────
+  // Linjene bærer kundeverdi (planned_quantity/diff_customer_value), så de
+  // eksponeres aldri for byggeleder. Mirrorer /api/reconciliation-lines som
+  // 403'er for byggeleder; her tømmer vi bare lista.
+  const reconciliationLines = canEconomy ? safeArr<ReconciliationLine>(rcRes.data) : []
+
+  // ── Kundeøkonomi-datasett — KUN for økonomi-roller (mirrorer API-rutene) ──
+  // budget_versions: /api/budget-versions GET nullstiller total_sales_value for
+  // ikke-økonomi-roller — vi gjør det samme her (byggeleder må aldri se kundens
+  // salgssum). month-plans / internal-costs / invoices: GET-rutene krever
+  // requireAdmin og 403'er for byggeleder, så vi tømmer listene (de tabbene er
+  // uansett ikke synlige for byggeleder).
+  let budgetVersions = safeArr<BudgetVersion>(bvRes.data)
+  if (!canEconomy) {
+    budgetVersions = budgetVersions.map((v) => ({ ...v, total_sales_value: 0 }))
+  }
+  const monthPlans = canEconomy ? safeArr<ProjectMonthPlan>(mpRes.data) : []
+  const internalCosts = canEconomy ? safeArr<ProjectInternalCostEntry>(icsRes.data) : []
+  const invoices = canEconomy ? safeArr<ProjectInvoice>(invRes.data) : []
+
   return {
     project,
     allProducts,
@@ -250,15 +299,17 @@ export async function loadProjectDetail(
     projectSubs: safeArr<ProjectSubcontractor>(pSubsRes.data),
     allSubs,
     changeOrders,
-    internalCosts: safeArr<ProjectInternalCostEntry>(icsRes.data),
+    internalCosts,
     weeklyReportsWL,
     subPrices,
     milestones: safeArr<GanttMilestone>(msRes.data),
     phases: safeArr<ProjectPhase>(phRes.data),
     phaseTypes: safeArr<PhaseType>(ptRes.data),
-    budgetVersions: safeArr<BudgetVersion>(bvRes.data),
-    monthPlans: safeArr<ProjectMonthPlan>(mpRes.data),
+    budgetVersions,
+    monthPlans,
     projectManagers,
-    invoices: safeArr<ProjectInvoice>(invRes.data),
+    invoices,
+    productionEntries,
+    reconciliationLines,
   }
 }

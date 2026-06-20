@@ -1,5 +1,6 @@
 'use client'
 
+import { useState } from 'react'
 import SortableTable from '@/components/SortableTable'
 import { reportLineStatus } from '@/lib/statuses'
 import type { ReportLine, ProjectBudgetLine, Product, Subcontractor } from '@/types'
@@ -28,7 +29,14 @@ type RLRow = {
  * Pulled out of the 1.2k-line parent page so its UI is editable in isolation.
  */
 export default function ReportingsSection({ reportLines, budgetLines, allProducts, allSubs, onUpdateStatus }: Props) {
-  const rlRows: RLRow[] = reportLines.map((rl) => {
+  const [statusFilter, setStatusFilter] = useState('all')
+
+  const filteredLines = reportLines.filter((rl) => {
+    if (statusFilter !== 'all' && rl.status !== statusFilter) return false
+    return true
+  })
+
+  const rlRows: RLRow[] = filteredLines.map((rl) => {
     const bl = budgetLines.find((b) => b.id === rl.project_budget_line_id)
     const product = allProducts.find((p) => p.id === bl?.product_id)
     const sub = allSubs.find((s) => s.id === rl.subcontractor_id)
@@ -70,11 +78,33 @@ export default function ReportingsSection({ reportLines, budgetLines, allProduct
     },
   ]
 
+  const statusToolbar = (
+    <select
+      value={statusFilter}
+      onChange={(e) => setStatusFilter(e.target.value)}
+      className="text-sm text-[var(--color-text-primary)] border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-1 focus:ring-blue-500"
+    >
+      <option value="all">Alle statuser</option>
+      <option value="draft">Utkast</option>
+      <option value="submitted">Innsendt</option>
+      <option value="approved">Godkjent</option>
+      <option value="rejected">Avvist</option>
+    </select>
+  )
+
   return (
     <section className="space-y-4">
       <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Rapporteringer</h2>
-      <div className="bg-white rounded-lg shadow">
-        <SortableTable columns={rlColumns} data={rlRows} emptyText="Ingen rapporteringer ennå" />
+      <div className="bg-white rounded-lg shadow px-3 pt-3">
+        <SortableTable
+          columns={rlColumns}
+          data={rlRows}
+          emptyText="Ingen rapporteringer ennå"
+          searchable
+          searchPlaceholder="Søk i rapporteringer …"
+          getSearchText={(row) => `${row.product_code} ${row.product_name} ${row.sub_name}`}
+          toolbar={statusToolbar}
+        />
       </div>
     </section>
   )

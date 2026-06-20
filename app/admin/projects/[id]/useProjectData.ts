@@ -21,6 +21,10 @@ import type {
   WeeklyReport,
   WeeklyReportLine,
   ProjectInvoice,
+  ProductionEntry,
+  ReconciliationLine,
+  ReconciliationStatus,
+  ProductionVersion,
 } from '@/types'
 import type { ProjectDetailData } from '@/lib/admin-project-detail'
 
@@ -74,6 +78,9 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
   const [monthPlans, setMonthPlans] = useState<ProjectMonthPlan[]>(initialData?.monthPlans ?? [])
   const [projectManagers, setProjectManagers] = useState<ProjectManagerRow[]>(initialData?.projectManagers ?? [])
   const [invoices, setInvoices] = useState<ProjectInvoice[]>(initialData?.invoices ?? [])
+  const [productionEntries, setProductionEntries] = useState<ProductionEntry[]>(initialData?.productionEntries ?? [])
+  const [reconciliationLines, setReconciliationLines] = useState<ReconciliationLine[]>(initialData?.reconciliationLines ?? [])
+  const [productionVersions, setProductionVersions] = useState<ProductionVersion[]>([])
   // If we have SSR data, the page is immediately populated — no loading spinner.
   const [loading, setLoading] = useState(!initialData)
 
@@ -99,6 +106,9 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
       fetch(`/api/project-phases?project_id=${id}`),
       fetch('/api/phase-types'),
       fetch(`/api/invoices?project_id=${id}`),
+      fetch(`/api/production-entries?project_id=${id}`),
+      fetch(`/api/reconciliation-lines?project_id=${id}`),
+      fetch(`/api/production-entries/batch?project_id=${id}`),
     ])
 
     if (responses.some((r) => r.status === 401)) {
@@ -106,7 +116,7 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
       return
     }
 
-    const [proj, prods, bls, rls, pSubs, subs, cos, ics, wrls, sps, ms, bv, mp, pms, ph, pt, inv] = await Promise.all(
+    const [proj, prods, bls, rls, pSubs, subs, cos, ics, wrls, sps, ms, bv, mp, pms, ph, pt, inv, pe, rc, pv] = await Promise.all(
       responses.map((r) => r.json())
     )
 
@@ -129,6 +139,12 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
     setMonthPlans(safeArr(mp))
     setProjectManagers(safeArr(pms))
     setInvoices(safeArr(inv))
+    // production-entries: byggeleder får cost=0 strippet server-side; sub → [].
+    // reconciliation-lines: 403 for byggeleder/sub ⇒ { error } ⇒ safeArr → [].
+    // production-versions: 403 for byggeleder/sub (requireAdmin) ⇒ safeArr → [].
+    setProductionEntries(safeArr(pe))
+    setReconciliationLines(safeArr(rc))
+    setProductionVersions(safeArr(pv))
     setLoading(false)
   }, [id, router])
 
@@ -190,6 +206,115 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
     await fetchAll()
   }, [fetchAll])
 
+  // ── Produksjonsføringer (migrasjon 0018) ──────────────────────────────────
+  // Registrer utført produksjon uten UE-kost (egenprod/intern), eller med
+  // ordinær UE-kost. created_by settes server-side fra sesjon. Returnerer
+  // res.ok så skjemaet kan vise serverfeil (400/403) i banneret.
+  const addProductionEntry = useCallback(async (input: {
+    product_id: string
+    quantity: number
+    project_budget_line_id?: string | null
+    unit?: string
+    executed_by: 'subcontractor' | 'internal' | 'other'
+    subcontractor_id?: string | null
+    cost?: number
+    comment?: string
+  }): Promise<{ ok: boolean; error?: string }> => {
+    const res = await fetch('/api/production-entries', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: id, ...input }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({} as { error?: string }))
+      return { ok: false, error: d.error ?? 'Lagring feilet' }
+    }
+    await fetchAll()
+    return { ok: true }
+  }, [id, fetchAll])
+
+  const deleteProductionEntry = useCallback(async (entryId: string) => {
+    await fetch(`/api/production-entries?id=${entryId}`, { method: 'DELETE' })
+    await fetchAll()
+  }, [fetchAll])
+
+  // Avstemmingslinje — UPSERT (PUT) på (project_id, project_budget_line_id).
+  // Raden opprettes ved første lagring (kommentar/«behandlet») og oppdateres
+  // senere — ingen forutgående POST. Klienten sender hele snapshot-bildet
+  // (planlagt/utført/diff) som alt er regnet i tabellen. handled=true stempler
+  // handled_by/handled_at server-side.
+  const saveReconciliationLine = useCallback(async (input: {
+    project_budget_line_id: string
+    product_id: string
+    planned_quantity?: number | null
+    executed_ue_quantity?: number | null
+    executed_no_cost_quantity?: number | null
+    diff_quantity?: number | null
+    diff_customer_value?: number | null
+    resolution?: string
+    handled?: boolean
+  }): Promise<{ ok: boolean; error?: string }> => {
+    const res = await fetch('/api/reconciliation-lines', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: id, ...input }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({} as { error?: string }))
+      return { ok: false, error: d.error ?? 'Lagring feilet' }
+    }
+    await fetchAll()
+    return { ok: true }
+  }, [id, fetchAll])
+
+  // ── Batch-lagring av egenproduksjon (migrasjon 0019) ─────────────────────
+  // Skriver hele regneark-Avstemming med én PUT. requireAdmin server-side
+  // (byggeleder kan IKKE masseredigere her). executed_by/subcontractor_id/cost
+  // hardkodes server-side — klienten sender kun mengder + saksbehandlingsfelt.
+  // Returnerer { ok, upserted, deleted } eller { ok: false, error }.
+  const saveProductionBatch = useCallback(async (rows: Array<{
+    project_budget_line_id: string
+    product_id: string
+    unit?: string
+    quantity: number
+    resolution?: string
+    handled?: boolean
+  }>): Promise<{ ok: boolean; upserted?: number; deleted?: number; error?: string }> => {
+    const res = await fetch('/api/production-entries/batch', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: id, rows }),
+    })
+    const d = await res.json().catch(() => ({} as Record<string, unknown>))
+    if (!res.ok) {
+      // Batchen er ikke transaksjonell server-side, så den kan ha skrevet noen
+      // rader før den feilet. Re-synk UI mot faktisk DB-tilstand i stedet for å
+      // beholde draft-state som ikke lenger stemmer.
+      await fetchAll()
+      return { ok: false, error: (d as { error?: string }).error ?? 'Batch-lagring feilet' }
+    }
+    await fetchAll()
+    const typed = d as { ok: boolean; upserted?: number; deleted?: number }
+    return { ok: true, upserted: typed.upserted, deleted: typed.deleted }
+  }, [id, fetchAll])
+
+  // Avstemmingsstatus på prosjektet (status-arbeidsflyt). PUT projects/[id].
+  const setReconciliationStatus = useCallback(async (
+    status: ReconciliationStatus,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const res = await fetch(`/api/projects/${id}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ reconciliation_status: status }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({} as { error?: string }))
+      return { ok: false, error: d.error ?? 'Kunne ikke endre avstemmingsstatus' }
+    }
+    await fetchAll()
+    return { ok: true }
+  }, [id, fetchAll])
+
   return {
     // raw data
     project,
@@ -209,6 +334,9 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
     monthPlans,
     projectManagers,
     invoices,
+    productionEntries,
+    reconciliationLines,
+    productionVersions,
     // state
     loading,
     adminName,
@@ -220,5 +348,10 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
     updateReportStatus,
     updateChangeOrderStatus,
     deleteInternalCost,
+    addProductionEntry,
+    deleteProductionEntry,
+    saveProductionBatch,
+    saveReconciliationLine,
+    setReconciliationStatus,
   }
 }

@@ -4,6 +4,7 @@ import { randomUUID } from 'crypto'
 import { generateToken, hashToken, safeCompareHash } from './tokens'
 import { getSupabaseAdmin } from './supabase'
 import { isProd } from './env'
+import { VIEW_AS_COOKIE } from './view-as'
 import type { User } from '@/types'
 
 const SESSION_COOKIE = 'session'
@@ -95,6 +96,10 @@ export async function clearSession(): Promise<void> {
     await sb.from('sessions').delete().eq('token_hash', hashToken(token))
   }
   cookieStore.delete(SESSION_COOKIE)
+  // Also clear the "view as" cookie. Otherwise impersonation survives a
+  // logout/login cycle: the cookie has a 12h maxAge and was never bound to the
+  // session that created it, so a fresh login would silently re-impersonate.
+  cookieStore.delete(VIEW_AS_COOKIE)
 }
 
 /**

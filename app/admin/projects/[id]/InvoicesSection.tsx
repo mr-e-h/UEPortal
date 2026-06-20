@@ -7,6 +7,70 @@ import NumberInput from '@/components/NumberInput'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import { fmtNOK as fmt } from '@/lib/format'
 import { useMe } from '@/lib/useMe'
+import SortableTable, { type Column } from '@/components/SortableTable'
+
+function INVOICE_COLUMNS(
+  canUndo: boolean,
+  deleting: string | null,
+  onDelete: (id: string) => void,
+): Column<ProjectInvoice>[] {
+  return [
+    {
+      key: 'invoice_date',
+      label: 'Dato',
+      sortable: true,
+      getValue: (inv) => inv.invoice_date,
+      render: (inv) => (
+        <span className="text-[var(--color-text-secondary)]">{inv.invoice_date}</span>
+      ),
+    },
+    {
+      key: 'amount',
+      label: 'Beløp',
+      sortable: true,
+      getValue: (inv) => inv.amount,
+      tdClassName: 'text-right',
+      render: (inv) => (
+        <span className="font-medium text-[var(--color-text-primary)]">{fmt(inv.amount)}</span>
+      ),
+    },
+    {
+      key: 'comment',
+      label: 'Kommentar',
+      sortable: true,
+      getValue: (inv) => inv.comment ?? '',
+      render: (inv) => (
+        <span className="text-[var(--color-text-muted)]">{inv.comment || '–'}</span>
+      ),
+    },
+    {
+      key: 'created_by',
+      label: 'Registrert av',
+      sortable: true,
+      getValue: (inv) => inv.created_by ?? '',
+      render: (inv) => (
+        <span className="text-[var(--color-text-muted)] text-xs">{inv.created_by}</span>
+      ),
+    },
+    {
+      key: '_actions',
+      label: '',
+      tdClassName: 'text-right',
+      render: (inv) =>
+        canUndo ? (
+          <button
+            onClick={(e) => { e.stopPropagation(); onDelete(inv.id) }}
+            disabled={deleting === inv.id}
+            title="Angre fakturering"
+            aria-label="Angre fakturering"
+            className="text-[var(--color-text-muted)] hover:text-red-500 transition-colors disabled:opacity-40"
+          >
+            <Trash2 size={14} />
+          </button>
+        ) : null,
+    },
+  ]
+}
 
 export default function InvoicesSection({ projectId }: { projectId: string }) {
   const { me } = useMe()
@@ -24,9 +88,24 @@ export default function InvoicesSection({ projectId }: { projectId: string }) {
   const [form, setForm] = useState({ amount: '', invoice_date: '', comment: '' })
 
   const load = useCallback(async () => {
-    const data = await fetch(`/api/invoices?project_id=${projectId}`).then((r) => r.json())
-    setInvoices(data)
-    setLoading(false)
+    try {
+      const res = await fetch(`/api/invoices?project_id=${projectId}`)
+      const data = await res.json().catch(() => null)
+      // GET returns an array on success but { error } with status 500 on failure.
+      // Never put a non-array into state — invoices.reduce(...) in render would
+      // throw and, with no ErrorBoundary in the tree, blank the whole route.
+      if (!res.ok || !Array.isArray(data)) {
+        setError('Kunne ikke laste fakturaer')
+        setInvoices([])
+      } else {
+        setInvoices(data)
+      }
+    } catch {
+      setError('Kunne ikke laste fakturaer')
+      setInvoices([])
+    } finally {
+      setLoading(false)
+    }
   }, [projectId])
 
   useEffect(() => { load() }, [load])
@@ -34,15 +113,28 @@ export default function InvoicesSection({ projectId }: { projectId: string }) {
   async function handleAdd(e: React.FormEvent) {
     e.preventDefault()
     setSaving(true)
-    await fetch('/api/invoices', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: projectId, amount: Number(form.amount), invoice_date: form.invoice_date, comment: form.comment }),
-    })
-    setForm({ amount: '', invoice_date: '', comment: '' })
-    setShowForm(false)
-    setSaving(false)
-    load()
+    setError(null)
+    try {
+      const res = await fetch('/api/invoices', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ project_id: projectId, amount: Number(form.amount), invoice_date: form.invoice_date, comment: form.comment }),
+      })
+      // On 403/500/400 the form must NOT clear/close silently — surface the error
+      // so the user knows the invoice was never created.
+      if (!res.ok) {
+        const d = await res.json().catch(() => ({} as { error?: string }))
+        setError(d.error ?? 'Kunne ikke lagre fakturaen')
+        return
+      }
+      setForm({ amount: '', invoice_date: '', comment: '' })
+      setShowForm(false)
+      await load()
+    } catch {
+      setError('Kunne ikke lagre fakturaen')
+    } finally {
+      setSaving(false)
+    }
   }
 
   async function handleDelete(id: string) {
@@ -126,46 +218,19 @@ export default function InvoicesSection({ projectId }: { projectId: string }) {
       ) : invoices.length === 0 ? (
         <p className="text-sm text-[var(--color-text-muted)]">Ingen fakturaer registrert ennå.</p>
       ) : (
-        <div className="overflow-x-auto">
-          <table className="w-full text-sm">
-            <thead>
-              <tr className="border-b border-border">
-                {['Dato', 'Beløp', 'Kommentar', 'Registrert av', ''].map((h) => (
-                  <th key={h} className={`py-2 px-3 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide ${h === 'Beløp' ? 'text-right' : ''}`}>
-                    {h}
-                  </th>
-                ))}
-              </tr>
-            </thead>
-            <tbody>
-              {invoices.map((inv) => (
-                <tr key={inv.id} className="border-b border-gray-50 last:border-0 hover:bg-muted">
-                  <td className="py-2 px-3 text-[var(--color-text-secondary)]">{inv.invoice_date}</td>
-                  <td className="py-2 px-3 text-right font-medium text-[var(--color-text-primary)]">{fmt(inv.amount)}</td>
-                  <td className="py-2 px-3 text-[var(--color-text-muted)]">{inv.comment || '–'}</td>
-                  <td className="py-2 px-3 text-[var(--color-text-muted)] text-xs">{inv.created_by}</td>
-                  <td className="py-2 px-3 text-right">
-                    {canUndo && (
-                      <button
-                        onClick={() => setConfirmDeleteId(inv.id)}
-                        disabled={deleting === inv.id}
-                        title="Angre fakturering"
-                        aria-label="Angre fakturering"
-                        className="text-[var(--color-text-muted)] hover:text-red-500 transition-colors disabled:opacity-40"
-                      >
-                        <Trash2 size={14} />
-                      </button>
-                    )}
-                  </td>
-                </tr>
-              ))}
-              <tr className="bg-muted">
-                <td colSpan={2} className="py-2 px-3 text-right text-sm font-bold text-[var(--color-text-primary)]">Totalt: {fmt(total)}</td>
-                <td colSpan={3} />
-              </tr>
-            </tbody>
-          </table>
-        </div>
+        <>
+          <SortableTable<ProjectInvoice>
+            searchable
+            searchPlaceholder="Søk i fakturaer …"
+            getSearchText={(inv) => `${inv.comment ?? ''} ${inv.created_by ?? ''}`}
+            columns={INVOICE_COLUMNS(canUndo, deleting, setConfirmDeleteId)}
+            data={invoices}
+            emptyText="Ingen fakturaer matcher søket."
+          />
+          <div className="flex justify-end border-t border-border pt-2">
+            <span className="text-sm font-bold text-[var(--color-text-primary)]">Totalt: {fmt(total)}</span>
+          </div>
+        </>
       )}
       {confirmDeleteId && (
         <ConfirmDialog

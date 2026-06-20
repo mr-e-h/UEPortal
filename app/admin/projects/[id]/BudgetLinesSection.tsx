@@ -477,19 +477,6 @@ export default function BudgetLinesSection({
             </button>
           </>
         )}
-        <div className="ml-auto flex items-center gap-2">
-          <span className="text-xs text-[var(--color-text-muted)]">Filtrer type:</span>
-          <select
-            value={lineTypeFilter}
-            onChange={(e) => setLineTypeFilter(e.target.value)}
-            className="text-sm border border-border rounded px-2 py-1"
-          >
-            <option value="all">Alle</option>
-            <option value="subcontractor_work">UE-arbeid</option>
-            <option value="internal_cost">Intern</option>
-            <option value="material">Materiell</option>
-          </select>
-        </div>
       </div>
 
       <div className="bg-white rounded-lg shadow">
@@ -505,6 +492,24 @@ export default function BudgetLinesSection({
           expandedRowId={chartLineId}
           onRowExpand={(rowId) => setChartLineId(rowId)}
           expandedRowRender={expandedRowRenderFn}
+          searchable
+          searchPlaceholder="Søk i budsjettlinjer …"
+          getSearchText={(row) => `${row.product_code} ${row.product_name}`}
+          toolbar={
+            <div className="flex items-center gap-2">
+              <span className="text-xs text-[var(--color-text-muted)]">Filtrer type:</span>
+              <select
+                value={lineTypeFilter}
+                onChange={(e) => setLineTypeFilter(e.target.value)}
+                className="text-sm border border-border rounded px-2 py-1"
+              >
+                <option value="all">Alle</option>
+                <option value="subcontractor_work">UE-arbeid</option>
+                <option value="internal_cost">Intern</option>
+                <option value="material">Materiell</option>
+              </select>
+            </div>
+          }
         />
       </div>
     </section>

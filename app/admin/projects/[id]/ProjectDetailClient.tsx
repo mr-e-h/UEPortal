@@ -28,6 +28,7 @@ import BudgetLinesSection from './BudgetLinesSection'
 import FremdriftsplanSection from './FremdriftsplanSection'
 import ProjectStatusHero from './ProjectStatusHero'
 import ChecklistSection from './ChecklistSection'
+import ReconciliationSection from './ReconciliationSection'
 
 const TABS = [
   { id: 'oversikt', label: 'Oversikt' },
@@ -41,6 +42,7 @@ const TABS = [
   { id: 'rapporteringer', label: 'Rapporteringer' },
   { id: 'endringsmeldinger', label: 'Endringsmeldinger' },
   { id: 'fakturagrunnlag', label: 'Fakturagrunnlag' },
+  { id: 'avstemming', label: 'Avstemming' },
 ] as const
 type ActiveTab = (typeof TABS)[number]['id']
 
@@ -65,10 +67,12 @@ export default function ProjectDetailClient({ initialData }: Props) {
   const {
     project, allProducts, budgetLines, reportLines, projectSubs, allSubs,
     changeOrders, internalCosts, weeklyReportsWL, subPrices, milestones, phases, phaseTypes,
-    budgetVersions, monthPlans, projectManagers, invoices, loading, adminName,
+    budgetVersions, monthPlans, projectManagers, invoices, productionEntries, reconciliationLines,
+    productionVersions,
+    loading, adminName,
     fetchAll, addBudgetLine: addBudgetLineHandler, addSubToProject: addSubHandler,
     removeSubFromProject, updateReportStatus, updateChangeOrderStatus: updateCOStatus,
-    deleteInternalCost,
+    deleteInternalCost, addProductionEntry, saveProductionBatch, saveReconciliationLine, setReconciliationStatus,
   } = useProjectData(id, initialData)
 
   const { me } = useMe()
@@ -307,6 +311,41 @@ export default function ProjectDetailClient({ initialData }: Props) {
   // in parent so it survives across activeTab switches.
   const toggleRow = (rowId: string) => setSelected((prev) => prev.includes(rowId) ? prev.filter((x) => x !== rowId) : [...prev, rowId])
 
+  // ── Lukk-gating (avstemming) ──────────────────────────────────────────────
+  // Serveren håndhever lukk-gaten uansett (409 hvis reconciliation_status ∉
+  // {reconciled, closed}); her gir vi forhåndsvarsel slik at admin ikke trenger
+  // å trykke «Lukk» for å oppdage problemet.
+  const reconStatus = project.reconciliation_status ?? 'not_started'
+  const reconReady = reconStatus === 'reconciled' || reconStatus === 'closed'
+
+  // Ubehandlede differanser: budsjettlinjer der totalt utført ≠ planlagt og
+  // avstemmingslinja ikke er huket «behandlet». Samme aggregering som
+  // ReconciliationSection (godkjente WR-linjer + produksjonsføringer).
+  const unresolvedReconDiffs = (() => {
+    const approvedWRLines = weeklyReportsWL
+      .filter((wr) => wr.status === 'approved' || wr.status === 'partially_approved')
+      .flatMap((wr) => wr.lines.filter((l) => l.status === 'approved'))
+    const ueQtyByLine = new Map<string, number>()
+    for (const l of approvedWRLines) {
+      ueQtyByLine.set(l.project_budget_line_id, (ueQtyByLine.get(l.project_budget_line_id) ?? 0) + l.reported_quantity)
+    }
+    // Samme uten-kost-definisjon som ReconciliationSection: KUN egenprod/intern
+    // (executed_by ∈ internal/other), så lukk-gatens diff-telling matcher tabellen.
+    const noCostQtyByLine = new Map<string, number>()
+    for (const e of productionEntries) {
+      if (!e.project_budget_line_id) continue
+      if (e.executed_by !== 'internal' && e.executed_by !== 'other') continue
+      noCostQtyByLine.set(e.project_budget_line_id, (noCostQtyByLine.get(e.project_budget_line_id) ?? 0) + e.quantity)
+    }
+    const reconByLineId = new Map(reconciliationLines.map((r) => [r.project_budget_line_id, r]))
+    return budgetLines.filter((bl) => {
+      const totalExecuted = (ueQtyByLine.get(bl.id) ?? 0) + (noCostQtyByLine.get(bl.id) ?? 0)
+      const diff = totalExecuted - bl.budget_quantity
+      if (Math.abs(diff) <= 1e-9) return false
+      return !(reconByLineId.get(bl.id)?.handled ?? false)
+    }).length
+  })()
+
   return (
     <main className="px-4 sm:px-6 py-8 space-y-6">
       {confirmDialog}
@@ -368,14 +407,37 @@ export default function ProjectDetailClient({ initialData }: Props) {
           onClick={async () => {
             const closing = project.status === 'active'
             const next = closing ? 'completed' : 'active'
+            // Lukk-gating: SERVEREN er sannheten — den 409'er hvis avstemmingen ikke
+            // er ferdig (reconciliation_status ∉ {reconciled, closed}). Her gir vi
+            // bare forhåndsvarsel; statusen settes via Avstemming-fanens arbeidsflyt,
+            // så vi sender admin dit i stedet for å la serveren avvise i blinde.
+            if (closing && !reconReady) {
+              setStatusError('Prosjektet kan ikke lukkes før avstemmingen er markert «Avstemt». Gå til Avstemming-fanen.')
+              setActiveTab('avstemming')
+              return
+            }
+            // Ubehandlede differanser er IKKE en server-gate — det er en kvalitets-
+            // advarsel. Vis en (rød) bekreftelse admin kan overstyre, så lukking
+            // aldri blokkeres permanent når statusen først er «Avstemt».
+            if (closing && unresolvedReconDiffs > 0) {
+              const proceed = await confirmAction({
+                title: 'Lukke med ubehandlede differanser?',
+                message: `Avstemmingen har ${unresolvedReconDiffs} ubehandlet${unresolvedReconDiffs === 1 ? '' : 'e'} differanse${unresolvedReconDiffs === 1 ? '' : 'r'} (utført ≠ planlagt, ikke merket behandlet). Du kan lukke likevel, men bør helst kommentere dem i Avstemming-fanen først.`,
+                confirmLabel: 'Lukk likevel',
+              })
+              if (!proceed) { setActiveTab('avstemming'); return }
+            }
             const ok = await confirmAction(closing
               ? { title: 'Lukk prosjektet?', message: 'UE-er kan ikke sende nye ukesrapporter eller endringsmeldinger på det. Du kan åpne det igjen når som helst.', confirmLabel: 'Lukk prosjekt' }
               : { title: 'Åpne prosjektet på nytt?', message: 'UE-er får tilbake muligheten til å sende rapporter og EMer.', confirmLabel: 'Åpne på nytt' })
             if (!ok) return
+            // Send KUN status — serveren utleder avstemmingsstatus (→ 'closed' ved
+            // lukking, → 'reconciled' ved gjenåpning). Å sende hele prosjektet ville
+            // tatt med dagens reconciliation_status og dermed slått av den utledningen.
             const res = await fetch(`/api/projects/${id}`, {
               method: 'PUT',
               headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({ ...project, status: next }),
+              body: JSON.stringify({ status: next }),
             })
             if (!res.ok) {
               const d = await res.json().catch(() => ({}))
@@ -409,6 +471,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
           weeklyReportsWL={weeklyReportsWL}
           changeOrders={changeOrders}
           internalCosts={internalCosts}
+          productionEntries={productionEntries}
           invoices={invoices}
           periodEnd={planEnd}
           projectManagers={projectManagers}
@@ -455,6 +518,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
           allSubs={allSubs}
           projectSubs={projectSubs}
           weeklyReportsWL={weeklyReportsWL}
+          productionEntries={productionEntries}
           onAddSub={addSubToProject}
           onRequestRemoveSub={setConfirmRemoveSubId}
           onProjectUpdated={fetchAll}
@@ -512,6 +576,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
           weeklyReportsWL={weeklyReportsWL}
           phases={phases}
           phaseTypes={phaseTypes}
+          productionEntries={productionEntries}
         />
       )}
 
@@ -606,6 +671,27 @@ export default function ProjectDetailClient({ initialData }: Props) {
       {/* ── FAKTURAGRUNNLAG ──────────────────────────────────────────── */}
       {activeTab === 'fakturagrunnlag' && (
         <InvoicesSection projectId={id} />
+      )}
+
+      {/* ── AVSTEMMING ───────────────────────────────────────────────── */}
+      {/* Skjult for byggeleder (utelatt fra SITE_MANAGER_TABS); verdi-kolonner
+          kun for admin/PL (canSeeValue = !isSiteManager). */}
+      {activeTab === 'avstemming' && (
+        <ReconciliationSection
+          budgetLines={budgetLines}
+          allProducts={allProducts}
+          allSubs={allSubs}
+          productionEntries={productionEntries}
+          reconciliationLines={reconciliationLines}
+          weeklyReportsWL={weeklyReportsWL}
+          productionVersions={productionVersions}
+          reconciliationStatusValue={reconStatus}
+          canSeeValue={!isSiteManager}
+          onAddProductionEntry={addProductionEntry}
+          onSaveReconciliationLine={saveReconciliationLine}
+          onSetReconciliationStatus={setReconciliationStatus}
+          saveProductionBatch={saveProductionBatch}
+        />
       )}
 
       {confirmRemoveSubId && (

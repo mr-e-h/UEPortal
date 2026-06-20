@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { isAdmin, isSub } from '@/lib/api-guard'
+import { isAdmin, isSub, getProjectScope, canSeeCustomerEconomics } from '@/lib/api-guard'
 import { stripCustomerEconomicsLines } from '@/lib/economy-isolation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import type { ChangeOrderLine } from '@/types'
@@ -16,15 +16,27 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   const sb = getSupabaseAdmin()
 
-  // For subs: verify EM ownership before returning anything.
+  // Non-admin access: a UE may only see EMs it owns; a byggeleder may see EMs on
+  // projects in their scope. Mirrors the main GET /api/change-orders/[id] gate
+  // (byggeleder was previously 403'd here, so the admin EM-detail lost its
+  // multi-line table + "Konsekvens ved avslag" block for site managers).
   if (!isAdmin(session)) {
-    if (!isSub(session)) return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
     const { data: owner } = await sb
       .from('change_orders')
-      .select('subcontractor_id')
+      .select('subcontractor_id, project_id')
       .eq('id', params.id)
-      .maybeSingle<{ subcontractor_id: string }>()
-    if (!owner || owner.subcontractor_id !== session.subcontractor_id) {
+      .maybeSingle<{ subcontractor_id: string; project_id: string }>()
+    if (!owner) return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+    if (isSub(session)) {
+      if (owner.subcontractor_id !== session.subcontractor_id) {
+        return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+      }
+    } else if (session.role === 'byggeleder') {
+      const scope = await getProjectScope(session)
+      if (!scope || !scope.has(owner.project_id)) {
+        return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+      }
+    } else {
       return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
     }
   }
@@ -39,9 +51,9 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   let lines = (data ?? []) as ChangeOrderLine[]
 
-  // UE strip: hide customer-side prices. They still see qty, product, unit
-  // and their own cost snapshot.
-  if (isSub(session)) {
+  // Strip customer-side prices for every non-economy role (UE + byggeleder).
+  // They still see qty, product, unit and the cost snapshot. Matches the main GET.
+  if (!canSeeCustomerEconomics(session)) {
     lines = stripCustomerEconomicsLines(lines) as ChangeOrderLine[]
   }
 

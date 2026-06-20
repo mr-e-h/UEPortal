@@ -1,5 +1,5 @@
 'use client'
-import React, { useState } from 'react'
+import React, { useMemo, useState } from 'react'
 
 type SortDirection = 'asc' | 'desc' | null
 
@@ -23,11 +23,42 @@ interface Props<T extends { id: string }> {
   expandedRowId?: string | null
   onRowExpand?: (id: string | null) => void
   expandedRowRender?: (row: T) => React.ReactNode
+  /** Vis et innebygd søkefelt over tabellen som filtrerer radene (substring). */
+  searchable?: boolean
+  /** Placeholder i søkefeltet (default «Søk …»). */
+  searchPlaceholder?: string
+  /**
+   * Teksten en rad matches mot ved søk. Default: konkatener alle kolonners
+   * getValue / render-string / row[key]. Gi denne for å styre nøyaktig hva
+   * det søkes i (f.eks. bare produktnavn + kode).
+   */
+  getSearchText?: (row: T) => string
+  /**
+   * Egendefinerte filter-kontroller (f.eks. status-dropdowns) som rendres i
+   * samme rad som søkefeltet, til høyre. Seksjonen eier filtrerings-logikken
+   * og sender inn allerede-filtrert `data`; dette er kun plassering av UI.
+   */
+  toolbar?: React.ReactNode
 }
 
-export default function SortableTable<T extends { id: string }>({ columns, data, emptyText, tableClassName, colWidths, rowClassName, onRowClick, expandedRowId, onRowExpand, expandedRowRender }: Props<T>) {
+/** Fallback-søketekst: slå sammen alle kolonneverdier til én streng. */
+function defaultSearchText<T extends { id: string }>(row: T, columns: Column<T>[]): string {
+  return columns
+    .map((col) => {
+      if (col.getValue) {
+        const v = col.getValue(row)
+        return v instanceof Date ? v.toISOString() : String(v ?? '')
+      }
+      const raw = (row as Record<string, unknown>)[col.key]
+      return raw == null ? '' : String(raw)
+    })
+    .join(' ')
+}
+
+export default function SortableTable<T extends { id: string }>({ columns, data, emptyText, tableClassName, colWidths, rowClassName, onRowClick, expandedRowId, onRowExpand, expandedRowRender, searchable, searchPlaceholder, getSearchText, toolbar }: Props<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDirection>(null)
+  const [query, setQuery] = useState('')
 
   function handleSort(key: string) {
     if (sortKey === key) {
@@ -39,7 +70,17 @@ export default function SortableTable<T extends { id: string }>({ columns, data,
     }
   }
 
-  const sorted = [...data].sort((a, b) => {
+  // Søk filtrerer FØR sortering. Tom spørring = alle rader.
+  const filtered = useMemo(() => {
+    const q = query.trim().toLowerCase()
+    if (!searchable || !q) return data
+    return data.filter((row) => {
+      const text = getSearchText ? getSearchText(row) : defaultSearchText(row, columns)
+      return text.toLowerCase().includes(q)
+    })
+  }, [data, query, searchable, getSearchText, columns])
+
+  const sorted = [...filtered].sort((a, b) => {
     if (!sortKey || !sortDir) return 0
     const col = columns.find((c) => c.key === sortKey)
     const av = col?.getValue ? col.getValue(a) : (a as Record<string, unknown>)[sortKey]
@@ -50,8 +91,25 @@ export default function SortableTable<T extends { id: string }>({ columns, data,
     return 0
   })
 
+  const showToolbarRow = searchable || toolbar
+
   return (
-    <div className="overflow-x-auto">
+    <>
+      {showToolbarRow && (
+        <div className="mb-3 flex flex-wrap items-center gap-2">
+          {searchable && (
+            <input
+              type="search"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+              placeholder={searchPlaceholder ?? 'Søk …'}
+              className="w-full max-w-xs px-3 py-1.5 text-sm border border-border rounded-md focus:outline-none focus:ring-1 focus:ring-blue-500 text-[var(--color-text-primary)]"
+            />
+          )}
+          {toolbar && <div className="flex flex-wrap items-center gap-2 sm:ml-auto">{toolbar}</div>}
+        </div>
+      )}
+      <div className="overflow-x-auto">
       <table className={`w-full text-sm${tableClassName ? ` ${tableClassName}` : ''}`}>
         {colWidths && (
           <colgroup>
@@ -117,6 +175,7 @@ export default function SortableTable<T extends { id: string }>({ columns, data,
           })}
         </tbody>
       </table>
-    </div>
+      </div>
+    </>
   )
 }

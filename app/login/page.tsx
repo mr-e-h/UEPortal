@@ -7,9 +7,14 @@ import Image from 'next/image'
 import Field from '@/components/ui/Field'
 import ErrorBox from '@/components/ui/ErrorBox'
 import Button from '@/components/ui/Button'
+import { PROJECT_STAFF_ROLES } from '@/lib/roles'
+import type { UserRole } from '@/types'
 
+// Role typed as the canonical UserRole (not a hand-maintained union) so the
+// client contract can't silently drift from the DB — that drift is exactly what
+// let 'byggeleder' fall through the roleHome ternary into /subcontractor.
 type LoginResponse =
-  | { id: string; role: 'company' | 'project_manager' | 'main' | 'sub'; full_name: string; subcontractor_id: string | null }
+  | { id: string; role: UserRole; full_name: string; subcontractor_id: string | null }
   | { error: string }
 
 // useSearchParams() forces a CSR bailout under static prerender (Next 14).
@@ -67,10 +72,10 @@ function LoginForm() {
 
     // Resolve destination — honor ?redirect= only when it points at an internal
     // path (open-redirect prevention) and matches the user's role tree.
-    // company → /admin until the dedicated /company portal exists.
-    const roleHome = (data.role === 'project_manager' || data.role === 'main' || data.role === 'company') ? '/admin'
-      : data.role === 'sub' ? '/subcontractor'
-      : '/subcontractor'
+    // Project staff (admin roles + byggeleder) live in the /admin shell; everyone
+    // else (sub) goes to the subcontractor portal. Mirrors app/page.tsx and the
+    // admin/subcontractor layouts so the four routing sites stay in sync.
+    const roleHome = PROJECT_STAFF_ROLES.includes(data.role) ? '/admin' : '/subcontractor'
 
     const safeRedirect = requestedRedirect && requestedRedirect.startsWith('/')
       && !requestedRedirect.startsWith('//')

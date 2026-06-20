@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSession } from '@/lib/auth'
-import { isAdmin, isSub } from '@/lib/api-guard'
+import { isAdmin, isSub, getProjectScope, canSeeCustomerEconomics } from '@/lib/api-guard'
 import { stripCustomerEconomicsLines } from '@/lib/economy-isolation'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import type { ChangeOrderConsequenceLine } from '@/types'
@@ -23,15 +23,26 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   const sb = getSupabaseAdmin()
 
-  // UE: sjekk eierskap først.
+  // Tilgang: admin alle; UE bare egne EM-er; byggeleder EM-er på prosjekter i
+  // sin scope. Speiler hoved-GET /api/change-orders/[id] (byggeleder ble før
+  // 403'et her, så «Konsekvens ved avslag» forsvant for byggeleder).
   if (!isAdmin(session)) {
-    if (!isSub(session)) return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
     const { data: owner } = await sb
       .from('change_orders')
-      .select('subcontractor_id')
+      .select('subcontractor_id, project_id')
       .eq('id', params.id)
-      .maybeSingle<{ subcontractor_id: string }>()
-    if (!owner || owner.subcontractor_id !== session.subcontractor_id) {
+      .maybeSingle<{ subcontractor_id: string; project_id: string }>()
+    if (!owner) return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+    if (isSub(session)) {
+      if (owner.subcontractor_id !== session.subcontractor_id) {
+        return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+      }
+    } else if (session.role === 'byggeleder') {
+      const scope = await getProjectScope(session)
+      if (!scope || !scope.has(owner.project_id)) {
+        return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
+      }
+    } else {
       return NextResponse.json({ error: 'Ingen tilgang' }, { status: 403 })
     }
   }
@@ -46,8 +57,8 @@ export async function GET(_req: NextRequest, { params }: { params: { id: string 
 
   let lines = (data ?? []) as ChangeOrderConsequenceLine[]
 
-  // UE-strip kundepris (samme regel som /lines).
-  if (isSub(session)) {
+  // Strip kundepris for alle ikke-økonomi-roller (UE + byggeleder), som hoved-GET.
+  if (!canSeeCustomerEconomics(session)) {
     lines = stripCustomerEconomicsLines(lines) as ChangeOrderConsequenceLine[]
   }
 

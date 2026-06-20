@@ -12,6 +12,7 @@ import type {
   WeeklyReportLine,
   ProjectPhase,
   PhaseType,
+  ProductionEntry,
 } from '@/types'
 
 type WRWithLines = WeeklyReport & { lines: WeeklyReportLine[] }
@@ -24,6 +25,8 @@ interface Props {
   weeklyReportsWL: WRWithLines[]
   phases: ProjectPhase[]
   phaseTypes: PhaseType[]
+  /** Produksjonsføringer (migrasjon 0018) — gir «utført uten kost»-mengde per linje. */
+  productionEntries: ProductionEntry[]
 }
 
 const barTone = (pct: number) => (pct > 100 ? 'bg-red-500' : pct > 90 ? 'bg-orange-400' : 'bg-green-500')
@@ -36,7 +39,7 @@ const pctText = (pct: number) => (pct > 90 ? 'text-red-600' : pct > 70 ? 'text-o
  * finnes fra før: budsjettlinjer, ukesrapporter og fremdriftsplan-faser.
  */
 export default function SubcontractorsSection({
-  budgetLines, projectSubs, allSubs, allProducts, weeklyReportsWL, phases, phaseTypes,
+  budgetLines, projectSubs, allSubs, allProducts, weeklyReportsWL, phases, phaseTypes, productionEntries,
 }: Props) {
   const typeById = useMemo(() => new Map(phaseTypes.map((t) => [t.id, t])), [phaseTypes])
 
@@ -46,6 +49,19 @@ export default function SubcontractorsSection({
     const approvedLines = weeklyReportsWL
       .filter((wr) => wr.status === 'approved' || wr.status === 'partially_approved')
       .flatMap((wr) => wr.lines.filter((l) => l.status === 'approved'))
+
+    // UE-isolasjon i per-UE-tabellen: «Uten kost» tilskrives KUN føringer denne
+    // UE-en faktisk utførte (executed_by='subcontractor' && subcontractor_id===
+    // sub.id). En intern/other-føring (egenprod) skal ALDRI dukke opp i en UEs
+    // nedbrytning — derfor nøkles uten-kost-summen per (UE, budsjettlinje), ikke
+    // bare per budsjettlinje.
+    const noCostBySubLine = new Map<string, number>()
+    for (const e of productionEntries) {
+      if (!e.project_budget_line_id) continue
+      if (e.executed_by !== 'subcontractor' || !e.subcontractor_id) continue
+      const key = `${e.subcontractor_id}::${e.project_budget_line_id}`
+      noCostBySubLine.set(key, (noCostBySubLine.get(key) ?? 0) + e.quantity)
+    }
 
     return subs.map((sub) => {
       const lines = budgetLines.filter((bl) => bl.assigned_subcontractor_id === sub.id)
@@ -69,6 +85,7 @@ export default function SubcontractorsSection({
           unit: product?.unit ?? '–',
           budgetQty: bl.budget_quantity,
           reportedQty,
+          noCostQty: noCostBySubLine.get(`${sub.id}::${bl.id}`) ?? 0,
           budgetCost: bl.budget_quantity * bl.subcontractor_cost_price_snapshot,
           pct: bl.budget_quantity > 0 ? Math.round((reportedQty / bl.budget_quantity) * 100) : 0,
         }
@@ -101,7 +118,7 @@ export default function SubcontractorsSection({
         phases: uePhases,
       }
     })
-  }, [budgetLines, projectSubs, allSubs, allProducts, weeklyReportsWL, phases, typeById])
+  }, [budgetLines, projectSubs, allSubs, allProducts, weeklyReportsWL, phases, typeById, productionEntries])
 
   const totalBudget = flows.reduce((s, f) => s + f.budgetCost, 0)
   const totalReported = flows.reduce((s, f) => s + f.reportedCost, 0)
@@ -195,6 +212,7 @@ export default function SubcontractorsSection({
                       <th className="px-4 py-2 text-left font-medium text-[var(--color-text-muted)]">Produkt</th>
                       <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">Budsjett</th>
                       <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">Rapportert</th>
+                      <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">Uten kost</th>
                       <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">Budsjettkost</th>
                       <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">%</th>
                     </tr>
@@ -207,13 +225,14 @@ export default function SubcontractorsSection({
                         </td>
                         <td className="px-3 py-2 text-right tabular-nums text-[var(--color-text-secondary)]">{pr.budgetQty}</td>
                         <td className="px-3 py-2 text-right tabular-nums text-[var(--color-text-secondary)]">{pr.reportedQty}</td>
+                        <td className="px-3 py-2 text-right tabular-nums text-[var(--color-text-secondary)]">{pr.noCostQty || '–'}</td>
                         <td className="px-3 py-2 text-right tabular-nums text-[var(--color-text-secondary)]">{fmt(pr.budgetCost)}</td>
                         <td className={`px-3 py-2 text-right font-semibold tabular-nums ${pctText(pr.pct)}`}>{pr.pct}%</td>
                       </tr>
                     ))}
                     <tr className="bg-muted/50 border-t border-border">
                       <td className="px-4 py-2 text-[10px] font-semibold uppercase text-[var(--color-text-secondary)]">Total UE-kost</td>
-                      <td className="px-3 py-2" /><td className="px-3 py-2" />
+                      <td className="px-3 py-2" /><td className="px-3 py-2" /><td className="px-3 py-2" />
                       <td className="px-3 py-2 text-right font-bold tabular-nums text-[var(--color-text-primary)]">{fmt(ue.budgetCost)}</td>
                       <td className={`px-3 py-2 text-right font-bold tabular-nums ${pctText(ue.pct)}`}>{ue.pct}%</td>
                     </tr>

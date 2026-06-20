@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, AlertCircle, Mail } from 'lucide-react'
-import type { Project, ProjectBudgetLine, ChangeOrder, ProjectInternalCostEntry, ProjectInvoice } from '@/types'
+import type { Project, ProjectBudgetLine, ChangeOrder, ProjectInternalCostEntry, ProjectInvoice, ProductionEntry } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
 import { computeProjectEconomy } from '@/lib/project-economy'
 import { internalCostTotal as sumInternalCosts, fallbackEndMonthIndex, internalCostToDate, currentMonthIndex } from '@/lib/internal-costs'
@@ -34,6 +34,10 @@ interface Props {
   weeklyReportsWL: WRWithLines[]
   changeOrders: ChangeOrder[]
   internalCosts: ProjectInternalCostEntry[]
+  /** Produksjonsføringer (migrasjon 0018) — knyttet til en budsjettlinje teller
+   *  mengden opptjent STRAKS mot kunde (× kundepris-snapshot). Uten denne ble
+   *  produksjon aldri synlig i økonomi-heroen. */
+  productionEntries: ProductionEntry[]
   /** Fakturaer (delt kilde med fakturerings-kortet) — gir «Fakturert»-linja. */
   invoices: ProjectInvoice[]
   /** Periodens slutt for løpende interne kostnader — følger fremdriftsplanen. */
@@ -73,6 +77,7 @@ export default function ProjectStatusHero({
   weeklyReportsWL,
   changeOrders,
   internalCosts,
+  productionEntries,
   invoices,
   periodEnd,
   projectManagers,
@@ -88,8 +93,10 @@ export default function ProjectStatusHero({
       // PROGNOSE: løpende interne kostnader regnes over HELE fremdriftsplanen
       // (periodEnd), ikke prosjektets statiske sluttdato.
       internalCostTotal: sumInternalCosts(internalCosts, fallbackEndMonthIndex(periodEnd, new Date())),
+      // Produksjonsføringer øker opptjent straks (× budsjettlinjas kundepris).
+      productionEntries,
     }),
-    [budgetLines, changeOrders, weeklyReportsWL, internalCosts, periodEnd],
+    [budgetLines, changeOrders, weeklyReportsWL, internalCosts, periodEnd, productionEntries],
   )
 
   // RESULTAT (per i dag): internkost PÅLØPT t.o.m. inneværende måned — det

@@ -16,6 +16,7 @@ import type {
   WeeklyReport,
   WeeklyReportLine,
   ProjectInvoice,
+  ProductionEntry,
 } from '@/types'
 
 type WRWithLines = WeeklyReport & { lines: WeeklyReportLine[] }
@@ -43,6 +44,8 @@ interface Props {
   allSubs: Subcontractor[]
   projectSubs: ProjectSubcontractor[]
   weeklyReportsWL: WRWithLines[]
+  /** Produksjonsføringer (migrasjon 0018) — gir «utført uten kost»-mengde per linje. */
+  productionEntries: ProductionEntry[]
   /** Legg til UE (ett-klikks, id direkte) + fjern via bekreftelse — fra forelder. */
   onAddSub: (subId: string) => Promise<void> | void
   onRequestRemoveSub: (linkId: string) => void
@@ -74,6 +77,7 @@ export default function OverviewSection({
   allSubs,
   projectSubs,
   weeklyReportsWL,
+  productionEntries,
   onAddSub,
   onRequestRemoveSub,
   onProjectUpdated,
@@ -89,6 +93,19 @@ export default function OverviewSection({
     const approvedWRLines = weeklyReportsWL
       .filter((wr) => wr.status === 'approved' || wr.status === 'partially_approved')
       .flatMap((wr) => wr.lines.filter((l) => l.status === 'approved'))
+
+    // UE-isolasjon i per-UE-nedbrytningen (samme regel som SubcontractorsSection):
+    // «Uten kost» tilskrives KUN føringer denne UE-en faktisk utførte
+    // (executed_by='subcontractor' && subcontractor_id===sub.id). En intern/other-
+    // føring (egenprod) skal ALDRI dukke opp i en UEs nedbrytning — derfor nøkles
+    // uten-kost-summen per (UE, budsjettlinje), ikke bare per budsjettlinje.
+    const noCostBySubLine = new Map<string, number>()
+    for (const e of productionEntries) {
+      if (!e.project_budget_line_id) continue
+      if (e.executed_by !== 'subcontractor' || !e.subcontractor_id) continue
+      const key = `${e.subcontractor_id}::${e.project_budget_line_id}`
+      noCostBySubLine.set(key, (noCostBySubLine.get(key) ?? 0) + e.quantity)
+    }
 
     const subFlowData = projectSubDetails.map((sub) => {
       const subBudgetLines = budgetLines.filter((bl) => bl.assigned_subcontractor_id === sub.id)
@@ -115,6 +132,7 @@ export default function OverviewSection({
           unit: product?.unit ?? '–',
           budgetQty: bl.budget_quantity,
           reportedQty: reportedForLine,
+          noCostQty: noCostBySubLine.get(`${sub.id}::${bl.id}`) ?? 0,
           budgetCost: bl.budget_quantity * bl.subcontractor_cost_price_snapshot,
           reportedCost: reportedForLine * bl.subcontractor_cost_price_snapshot,
           pct: bl.budget_quantity > 0 ? Math.round((reportedForLine / bl.budget_quantity) * 100) : 0,
@@ -140,7 +158,7 @@ export default function OverviewSection({
     const internPct = internBudgetSales > 0 ? Math.round((totalInternalCost / internBudgetSales) * 100) : 0
 
     return { subFlowData, internLines, internBudgetSales, internPct }
-  }, [budgetLines, projectSubs, allSubs, weeklyReportsWL, allProducts, totalInternalCost])
+  }, [budgetLines, projectSubs, allSubs, weeklyReportsWL, allProducts, totalInternalCost, productionEntries])
 
   return (
     <div className="space-y-8">
@@ -246,6 +264,7 @@ export default function OverviewSection({
                         <th className="px-3 py-2 text-left font-medium text-[var(--color-text-muted)]">Produkt</th>
                         <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">Budsjett</th>
                         <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">Rapportert</th>
+                        <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">Uten kost</th>
                         <th className="px-3 py-2 text-right font-medium text-[var(--color-text-muted)]">%</th>
                       </tr>
                     </thead>
@@ -255,6 +274,7 @@ export default function OverviewSection({
                           <td className="px-3 py-2 text-[var(--color-text-primary)] max-w-[140px] truncate" title={prod.name}>{prod.name}<span className="text-[var(--color-text-muted)] ml-1">({prod.unit})</span></td>
                           <td className="px-3 py-2 text-right text-[var(--color-text-secondary)]">{prod.budgetQty}</td>
                           <td className="px-3 py-2 text-right text-[var(--color-text-secondary)]">{prod.reportedQty}</td>
+                          <td className="px-3 py-2 text-right text-[var(--color-text-secondary)]">{prod.noCostQty || '–'}</td>
                           <td className={`px-3 py-2 text-right font-semibold ${prod.pct > 90 ? 'text-red-600' : prod.pct > 70 ? 'text-orange-500' : 'text-green-600'}`}>{prod.pct}%</td>
                         </tr>
                       ))}
@@ -262,6 +282,7 @@ export default function OverviewSection({
                         <td className="px-3 py-2 text-xs font-semibold text-[var(--color-text-secondary)] uppercase">Totalt kostnad</td>
                         <td className="px-3 py-2 text-right font-semibold text-[var(--color-text-primary)]">{fmt(sf.budgetCost)}</td>
                         <td className="px-3 py-2 text-right font-semibold text-[var(--color-text-primary)]">{fmt(sf.reportedCost)}</td>
+                        <td className="px-3 py-2" />
                         <td className={`px-3 py-2 text-right font-bold ${sf.pct > 90 ? 'text-red-600' : sf.pct > 70 ? 'text-orange-500' : 'text-green-600'}`}>{sf.pct}%</td>
                       </tr>
                     </tbody>

@@ -6,6 +6,7 @@ import type {
   ForecastStatus,
   ForecastPeriodStatus,
   ProjectStatus,
+  ReconciliationStatus,
   ReportStatus,
   TenderStatus,
   TenderInvitationStatus,
@@ -123,6 +124,20 @@ export const PROJECT_STATUSES: Record<ProjectStatus, StatusMeta> = {
 
 export function projectStatus(status: string): StatusMeta {
   return PROJECT_STATUSES[status as ProjectStatus] ?? { ...FALLBACK, label: status }
+}
+
+// ─── Reconciliation (avstemming mot kunde før lukking) ───────────────────────────
+
+export const RECONCILIATION_STATUSES: Record<ReconciliationStatus, StatusMeta> = {
+  not_started:           { label: 'Ikke startet',        cls: 'bg-gray-100 text-gray-500' },
+  in_progress:           { label: 'Under avstemming',    cls: 'bg-blue-50 text-blue-600' },
+  ready_for_final_check: { label: 'Klar for sluttsjekk', cls: 'bg-yellow-100 text-yellow-700' },
+  reconciled:            { label: 'Avstemt',             cls: 'bg-green-100 text-green-700' },
+  closed:                { label: 'Lukket',              cls: 'bg-gray-200 text-gray-600' },
+}
+
+export function reconciliationStatus(status: string): StatusMeta {
+  return RECONCILIATION_STATUSES[status as ReconciliationStatus] ?? { ...FALLBACK, label: status }
 }
 
 // ─── Legacy ReportLine status ──────────────────────────────────────────────────

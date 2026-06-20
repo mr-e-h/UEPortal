@@ -2,6 +2,7 @@
 
 import { useState } from 'react'
 import NumberInput from '@/components/NumberInput'
+import SortableTable, { Column } from '@/components/SortableTable'
 import { fmtNOK as fmt } from '@/lib/format'
 import { internalCostMonths, expandedInternalCost, fallbackEndMonthIndex } from '@/lib/internal-costs'
 import type { ProjectInternalCostEntry } from '@/types'
@@ -85,12 +86,81 @@ export default function InternalCostsSection({
     onAdded()
   }
 
-  const sorted = [...internalCosts].sort((a, b) =>
-    a.year !== b.year ? a.year - b.year : a.month - b.month
-  )
-
   const labelCls = 'block text-xs font-medium text-[var(--color-text-secondary)] mb-1'
   const inputCls = 'px-2 py-1.5 text-sm text-[var(--color-text-primary)] border border-border rounded focus:outline-none focus:ring-blue-500'
+
+  const columns: Column<ProjectInternalCostEntry>[] = [
+    {
+      key: 'recurrence',
+      label: 'Type',
+      sortable: true,
+      getValue: (c) => c.recurrence,
+      render: (c) => (
+        <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${c.recurrence === 'monthly' ? 'bg-indigo-100 text-indigo-700' : 'bg-muted text-[var(--color-text-secondary)]'}`}>
+          {c.recurrence === 'monthly' ? 'Løpende' : 'Engang'}
+        </span>
+      ),
+    },
+    {
+      key: 'period',
+      label: 'Periode',
+      sortable: true,
+      getValue: (c) => c.year * 100 + c.month,
+      render: (c) => {
+        const monthly = c.recurrence === 'monthly'
+        const months = internalCostMonths(c, fallbackEndMi)
+        return (
+          <span className="font-medium text-[var(--color-text-primary)]">
+            {periodLabel(c)}
+            {monthly && <span className="text-[var(--color-text-muted)] font-normal ml-1.5 text-xs">({months} mnd)</span>}
+          </span>
+        )
+      },
+    },
+    {
+      key: 'amount',
+      label: 'Beløp',
+      sortable: true,
+      getValue: (c) => c.amount,
+      tdClassName: 'text-right',
+      render: (c) => (
+        <span className="text-[var(--color-text-primary)]">
+          {fmt(c.amount)}
+          {c.recurrence === 'monthly' && <span className="text-[var(--color-text-muted)] text-xs">/mnd</span>}
+        </span>
+      ),
+    },
+    {
+      key: 'sum',
+      label: 'Sum',
+      sortable: true,
+      getValue: (c) => expandedInternalCost(c, fallbackEndMi),
+      tdClassName: 'text-right',
+      render: (c) => (
+        <span className="font-medium text-[var(--color-text-primary)]">
+          {fmt(expandedInternalCost(c, fallbackEndMi))}
+        </span>
+      ),
+    },
+    {
+      key: 'comment',
+      label: 'Kommentar',
+      sortable: true,
+      getValue: (c) => c.comment,
+      render: (c) => <span className="text-[var(--color-text-muted)] text-xs">{c.comment}</span>,
+    },
+    {
+      key: '_delete',
+      label: '',
+      sortable: false,
+      tdClassName: 'text-right',
+      render: (c) => (
+        <button onClick={(e) => { e.stopPropagation(); onRequestDelete(c.id) }} className="text-xs text-red-500 hover:text-red-700">
+          Slett
+        </button>
+      ),
+    },
+  ]
 
   return (
     <section className="space-y-4">
@@ -153,59 +223,24 @@ export default function InternalCostsSection({
       </form>
 
       <div className="bg-white rounded-lg shadow overflow-hidden">
-        <table className="w-full text-sm">
-          <thead>
-            <tr className="bg-muted border-b border-border">
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)]">Type</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)]">Periode</th>
-              <th className="px-4 py-2.5 text-right text-xs font-medium text-[var(--color-text-muted)]">Beløp</th>
-              <th className="px-4 py-2.5 text-right text-xs font-medium text-[var(--color-text-muted)]">Sum</th>
-              <th className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)]">Kommentar</th>
-              <th className="px-4 py-2.5" />
-            </tr>
-          </thead>
-          <tbody>
-            {sorted.length === 0 ? (
-              <tr>
-                <td colSpan={6} className="px-4 py-6 text-center text-sm text-[var(--color-text-muted)]">
-                  Ingen interne kostnader registrert
-                </td>
-              </tr>
-            ) : (
-              sorted.map((c) => {
-                const monthly = c.recurrence === 'monthly'
-                const months = internalCostMonths(c, fallbackEndMi)
-                return (
-                  <tr key={c.id} className="border-b border-border last:border-0 hover:bg-muted">
-                    <td className="px-4 py-2.5">
-                      <span className={`text-[11px] font-medium px-1.5 py-0.5 rounded ${monthly ? 'bg-indigo-100 text-indigo-700' : 'bg-muted text-[var(--color-text-secondary)]'}`}>
-                        {monthly ? 'Løpende' : 'Engang'}
-                      </span>
-                    </td>
-                    <td className="px-4 py-2.5 font-medium text-[var(--color-text-primary)]">
-                      {periodLabel(c)}{monthly && <span className="text-[var(--color-text-muted)] font-normal ml-1.5 text-xs">({months} mnd)</span>}
-                    </td>
-                    <td className="px-4 py-2.5 text-right text-[var(--color-text-primary)]">{fmt(c.amount)}{monthly && <span className="text-[var(--color-text-muted)] text-xs">/mnd</span>}</td>
-                    <td className="px-4 py-2.5 text-right font-medium text-[var(--color-text-primary)]">{fmt(expandedInternalCost(c, fallbackEndMi))}</td>
-                    <td className="px-4 py-2.5 text-[var(--color-text-muted)] text-xs">{c.comment}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <button onClick={() => onRequestDelete(c.id)} className="text-xs text-red-500 hover:text-red-700">Slett</button>
-                    </td>
-                  </tr>
-                )
-              })
-            )}
-          </tbody>
-          {sorted.length > 0 && (
-            <tfoot>
-              <tr className="bg-muted border-t border-border">
-                <td colSpan={3} className="px-4 py-2.5 text-xs font-semibold text-[var(--color-text-secondary)] uppercase">Totalt (utvidet)</td>
-                <td className="px-4 py-2.5 text-right font-bold text-[var(--color-text-primary)]">{fmt(totalInternalCost)}</td>
-                <td colSpan={2} />
-              </tr>
-            </tfoot>
-          )}
-        </table>
+        <SortableTable
+          columns={columns}
+          data={internalCosts}
+          emptyText="Ingen interne kostnader registrert"
+          searchable
+          searchPlaceholder="Søk i interne kostnader …"
+          getSearchText={(c) => [
+            c.comment,
+            c.recurrence === 'monthly' ? 'løpende' : 'engang',
+            periodLabel(c),
+          ].join(' ')}
+        />
+        {internalCosts.length > 0 && (
+          <div className="border-t border-border bg-muted px-3 py-2.5 flex items-center gap-4">
+            <span className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase">Totalt (utvidet)</span>
+            <span className="ml-auto font-bold text-sm text-[var(--color-text-primary)]">{fmt(totalInternalCost)}</span>
+          </div>
+        )}
       </div>
     </section>
   )

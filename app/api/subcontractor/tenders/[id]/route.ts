@@ -181,6 +181,18 @@ export async function PUT(
     .maybeSingle<TenderBid>()
 
   const wasSubmitted = existing?.status === 'submitted'
+
+  // Et allerede innsendt (bindende) bud skal ikke kunne overskrives stille via
+  // «Lagre som kladd» — det ville endret priser/totalsum mens budet fortsatt
+  // fremstår som innsendt i admin-sammenligning og kan bli tildelt. En endring
+  // av et innsendt bud må gå via «Send inn» (revidert tilbud).
+  if (wasSubmitted && !body.submit) {
+    return NextResponse.json(
+      { error: 'Tilbudet er allerede sendt inn. Bruk «Send inn» for å sende et revidert tilbud.' },
+      { status: 409 },
+    )
+  }
+
   const nextStatus = body.submit ? 'submitted' : (existing?.status ?? 'draft')
 
   if (existing) {

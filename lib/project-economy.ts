@@ -44,6 +44,17 @@ export interface ReportWithLines {
   }>
 }
 
+/**
+ * Strukturelt minimum av en produksjonsføring (migrasjon 0018) for
+ * økonomiberegning. Knyttet til en budsjettlinje teller mengden opptjent STRAKS
+ * mot kunde via linjas customer_price_snapshot. cost/UE-kost holdes adskilt og
+ * rører IKKE ueReportedCost i v1.
+ */
+export interface ProductionEntryForEconomy {
+  project_budget_line_id: string | null
+  quantity: number
+}
+
 export interface ProjectEconomySummary {
   originalBudget: number
   totalContract: number
@@ -80,12 +91,20 @@ export function computeProjectEconomy({
   weeklyReports,
   changeOrders,
   internalCostTotal,
+  productionEntries = [],
 }: {
   budgetLines: ProjectBudgetLine[]
   weeklyReports: ReportWithLines[]
   changeOrders: ChangeOrder[]
   /** Ferdig utvidet internkost (engang + løpende månedlig) — se lib/internal-costs.ts. */
   internalCostTotal: number
+  /**
+   * Registrerte produksjonsføringer (migrasjon 0018). Knyttet til en
+   * budsjettlinje teller mengden opptjent STRAKS mot kunde (× linjas
+   * customer_price_snapshot). Valgfri (default []) ⇒ tall UENDRET når ingen
+   * føringer finnes. cost/UE-kost rører IKKE ueReportedCost i v1.
+   */
+  productionEntries?: ProductionEntryForEconomy[]
 }): ProjectEconomySummary {
   // Opprinnelig ordrebok (salgsverdi mot kunde — det er kontrakten).
   const originalBudget = budgetSalesValue(budgetLines)
@@ -115,6 +134,17 @@ export function computeProjectEconomy({
         pendingDeliveryValue += lineValue
       }
     }
+  }
+
+  // Produksjonsføringer (migrasjon 0018): knyttet til en budsjettlinje teller
+  // mengden opptjent STRAKS mot kunde via linjas customer_price_snapshot — 0 kr
+  // UE-kost ⇒ bedre margin. Tom default ⇒ ingen endring i tallene. Føringer uten
+  // budsjettlinje (project_budget_line_id = null) ignoreres her, da de ikke har
+  // en kundepris å verdsette mot.
+  for (const entry of productionEntries) {
+    if (!entry.project_budget_line_id) continue
+    const price = blPriceMap.get(entry.project_budget_line_id) ?? 0
+    deliveredValue += (entry.quantity ?? 0) * price
   }
 
   // Ventende rapporter telles på rapportnivå — banneret trenger et tall et

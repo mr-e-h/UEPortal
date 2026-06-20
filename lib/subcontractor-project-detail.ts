@@ -52,8 +52,31 @@ export type BudgetLineWithProduct = {
 
 export type ProjectManager = { id: string; full_name: string; email: string }
 
+/**
+ * Eksplisitt felt-liste fra projects som UE-detaljsiden faktisk leser. ALDRI
+ * select('*') her: det ville dratt med felt som reconciliation_status (en intern
+ * avstemmings-/kundeøkonomi-kolonne) inn i UE-laget. UE-PRIS-ISOLASJON er
+ * absolutt — kun disse rene prosjektfeltene eksponeres.
+ */
+export type SubcontractorProjectFields = Pick<
+  Project,
+  | 'id'
+  | 'name'
+  | 'project_number'
+  | 'status'
+  | 'start_date'
+  | 'end_date'
+  | 'customer'
+  | 'county'
+  | 'order_number'
+  | 'project_type_id'
+  | 'planned_hours'
+>
+
+export const SUBCONTRACTOR_PROJECT_FIELDS = 'id, name, project_number, status, start_date, end_date, customer, county, order_number, project_type_id, planned_hours'
+
 /** Shape returned to the client island — identical to the API route response */
-export type SubcontractorProjectData = Omit<Project, never> & {
+export type SubcontractorProjectData = SubcontractorProjectFields & {
   budget_lines: BudgetLineWithProduct[]
   project_managers: ProjectManager[]
   budget_value: number
@@ -124,13 +147,15 @@ export async function loadSubcontractorProjectDetail(
 
   if (!linkRes.data) return null
 
-  // Fetch project
+  // Fetch project — eksplisitt felt-liste (aldri select('*'), se
+  // SUBCONTRACTOR_PROJECT_FIELDS): holder reconciliation_status og andre interne
+  // kolonner UTE av UE-laget.
   const projectRes = await sb
     .from('projects')
-    .select('*')
+    .select(SUBCONTRACTOR_PROJECT_FIELDS)
     .eq('id', projectId)
     .neq('deleted', true)
-    .maybeSingle<Project>()
+    .maybeSingle<SubcontractorProjectFields>()
 
   if (!projectRes.data) return null
   const project = projectRes.data

@@ -1,7 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin, ensureProjectWritable, getProjectScope } from '@/lib/api-guard'
-import type { Project } from '@/types'
+import type { Project, ReconciliationStatus } from '@/types'
 
 /**
  * Whitelist of fields admins are allowed to set via PUT. Without this guard
@@ -10,8 +10,22 @@ import type { Project } from '@/types'
  */
 const EDITABLE_FIELDS: (keyof Project)[] = [
   'name', 'project_number', 'order_number', 'customer', 'county',
-  'status', 'start_date', 'end_date', 'planned_hours',
+  'status', 'start_date', 'end_date', 'planned_hours', 'reconciliation_status',
 ]
+
+/**
+ * Tillatte avstemmingsstatuser (migrasjon 0018). Speiler CHECK-en i DB så et
+ * ugyldig steg avvises med 400 i stedet for en rå 500 fra Postgres.
+ */
+const RECONCILIATION_STATUS_VALUES: ReconciliationStatus[] = [
+  'not_started', 'in_progress', 'ready_for_final_check', 'reconciled', 'closed',
+]
+
+/**
+ * Avstemmingsstatuser som regnes som «ferdig avstemt». Et prosjekt kan KUN
+ * settes til 'completed' (lukkes mot kunde) når avstemmingen er i én av disse.
+ */
+const CLOSE_READY_RECONCILIATION: ReconciliationStatus[] = ['reconciled', 'closed']
 
 /**
  * Fetch one project by id. Used by the admin project detail page so it
@@ -58,6 +72,12 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   if (body.status && !['active', 'completed', 'archived'].includes(body.status)) {
     return NextResponse.json({ error: 'Ugyldig status' }, { status: 400 })
   }
+  if (
+    'reconciliation_status' in updates &&
+    !RECONCILIATION_STATUS_VALUES.includes(updates.reconciliation_status as ReconciliationStatus)
+  ) {
+    return NextResponse.json({ error: 'Ugyldig avstemmingsstatus' }, { status: 400 })
+  }
   // planned_hours er en overstyring: null = bruk beregnet, ellers ikke-negativt tall.
   if ('planned_hours' in updates && updates.planned_hours != null) {
     const h = Number(updates.planned_hours)
@@ -68,6 +88,46 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
   }
   if (Object.keys(updates).length === 0) {
     return NextResponse.json({ error: 'Ingen felter å oppdatere' }, { status: 400 })
+  }
+
+  // Lukk-gate mot kunde: et prosjekt kan KUN settes 'completed' når avstemmingen
+  // er ferdig (reconciliation_status ∈ {reconciled, closed}). Gjelder uansett om
+  // avstemmingsstatusen settes i samme PUT eller allerede er lagret.
+  if (body.status === 'completed') {
+    let effectiveReconciliation = updates.reconciliation_status as ReconciliationStatus | undefined
+    if (!effectiveReconciliation) {
+      const { data: existing } = await getSupabaseAdmin()
+        .from('projects')
+        .select('reconciliation_status')
+        .eq('id', params.id)
+        .maybeSingle<Pick<Project, 'reconciliation_status'>>()
+      effectiveReconciliation = existing?.reconciliation_status ?? 'not_started'
+    }
+    if (!CLOSE_READY_RECONCILIATION.includes(effectiveReconciliation)) {
+      return NextResponse.json(
+        { error: 'Prosjektet kan ikke fullføres før avstemmingen er ferdig (avstemt eller lukket).' },
+        { status: 409 },
+      )
+    }
+    // Lukking mot kunde låser avstemmingen: status → 'closed'. (Med mindre en
+    // eksplisitt avstemmingsstatus allerede ble sendt i samme PUT.)
+    if (!('reconciliation_status' in updates)) {
+      updates.reconciliation_status = 'closed'
+    }
+  }
+
+  // Gjenåpning til 'active': slipp avstemmingen tilbake fra 'closed' → 'reconciled'
+  // så den ikke står låst etter at prosjektet åpnes igjen. Lar en eksplisitt
+  // avstemmingsstatus i samme PUT vinne. Andre lagrede statuser røres ikke.
+  if (body.status === 'active' && !('reconciliation_status' in updates)) {
+    const { data: existing } = await getSupabaseAdmin()
+      .from('projects')
+      .select('reconciliation_status')
+      .eq('id', params.id)
+      .maybeSingle<Pick<Project, 'reconciliation_status'>>()
+    if ((existing?.reconciliation_status ?? 'not_started') === 'closed') {
+      updates.reconciliation_status = 'reconciled'
+    }
   }
 
   const { data, error } = await getSupabaseAdmin()
