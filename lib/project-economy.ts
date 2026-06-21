@@ -75,6 +75,8 @@ export interface ProjectEconomySummary {
   ueBudgetCost: number
   ueReportedCost: number
   internCost: number
+  /** Materiell-linjenes kost (line_type='material'). Trekkes fra forventet fortjeneste. */
+  materialCost: number
   expectedProfit: number
 }
 
@@ -169,7 +171,16 @@ export function computeProjectEconomy({
     }
   }
   const internCost = internalCostTotal
-  const expectedProfit = totalContract - ueBudgetCost - internCost
+
+  // Materiell-linjer (line_type='material') er pass-through: kosten ligger i
+  // subcontractor_cost_price_snapshot (= salgsprisen ⇒ 0 margin). De fanges IKKE
+  // av ueBudgetCost (ikke UE-tildelt), så de trekkes fra eksplisitt her — ellers
+  // ville materiell vist som ren fortjeneste.
+  const materialCost = budgetLines
+    .filter((bl) => bl.line_type === 'material')
+    .reduce((s, bl) => s + (bl.budget_quantity ?? 0) * (bl.subcontractor_cost_price_snapshot ?? 0), 0)
+
+  const expectedProfit = totalContract - ueBudgetCost - internCost - materialCost
 
   // Bar-segmenter (klemt til en fornuftig stabling).
   const delivered = Math.min(deliveredValue, totalContract)
@@ -196,6 +207,7 @@ export function computeProjectEconomy({
     ueBudgetCost,
     ueReportedCost,
     internCost,
+    materialCost,
     expectedProfit,
   }
 }

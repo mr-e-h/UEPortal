@@ -7,7 +7,12 @@ function norm(name: string): string {
   return name.trim().toLowerCase().replace(/\s+/g, ' ')
 }
 
-export async function importExcelLines(projectId: string, county: string, rawLines: ParsedExcelLine[]) {
+export async function importExcelLines(
+  projectId: string,
+  county: string,
+  rawLines: ParsedExcelLine[],
+  opts: { lineType?: ProjectBudgetLine['line_type']; costEqualsPrice?: boolean } = {},
+) {
   const products = await readJson<Product>('products.json')
   const budgetLines = await readJson<ProjectBudgetLine>('project_budget_lines.json')
 
@@ -86,6 +91,8 @@ export async function importExcelLines(projectId: string, county: string, rawLin
         ...budgetLines[bestIdx],
         budget_quantity: line.budget_quantity ?? 1,
         customer_price_snapshot: line.unit_price,
+        ...(opts.costEqualsPrice ? { subcontractor_cost_price_snapshot: line.unit_price } : {}),
+        ...(opts.lineType ? { line_type: opts.lineType } : {}),
       }
       updatedIds.add(budgetLines[bestIdx].id)
 
@@ -106,8 +113,10 @@ export async function importExcelLines(projectId: string, county: string, rawLin
         budget_quantity: line.budget_quantity ?? 1,
         customer_price_snapshot: line.unit_price,
         assigned_subcontractor_id: null,
-        subcontractor_cost_price_snapshot: 0,
+        // Materiell (pass-through): kost = pris ⇒ 0 margin. Ellers 0 (UE-kost settes ved tildeling).
+        subcontractor_cost_price_snapshot: opts.costEqualsPrice ? line.unit_price : 0,
         source: 'manual',
+        ...(opts.lineType ? { line_type: opts.lineType } : {}),
       }
       budgetLines.push(newLine)
       updatedIds.add(newLine.id)

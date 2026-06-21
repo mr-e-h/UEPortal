@@ -20,6 +20,15 @@ export const DEFAULT_IMPORT_MAP: ImportColumnMap = {
   startRow: 6, code: 1, name: 2, price: 5, qty: 6, fixedPrice: 7,
 }
 
+/**
+ * Materielliste-oppsett: Kategori(A) | Materiellkode(B) | Materiellnavn(C) |
+ * Pris(D) | Antall(E) | Sum(F) | Leverandør(G) … Ingen fastpris-kolonne — materiell
+ * er ren pris × antall.
+ */
+export const MATERIAL_IMPORT_MAP: ImportColumnMap = {
+  startRow: 6, code: 1, name: 2, price: 3, qty: 4, fixedPrice: null,
+}
+
 export const IMPORT_FIELDS = ['code', 'name', 'price', 'qty', 'fixedPrice'] as const
 export type ImportField = (typeof IMPORT_FIELDS)[number]
 
