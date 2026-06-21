@@ -39,6 +39,9 @@ interface Props<T extends { id: string }> {
    * og sender inn allerede-filtrert `data`; dette er kun plassering av UI.
    */
   toolbar?: React.ReactNode
+  /** Valgfri sum-fot: får de filtrerte+sorterte radene og returnerer en <tr> som
+   *  rendres i <tfoot> — f.eks. for å summere salgsverdi for søketreffene. */
+  renderSummary?: (rows: T[]) => React.ReactNode
 }
 
 /** Fallback-søketekst: slå sammen alle kolonneverdier til én streng. */
@@ -55,7 +58,7 @@ function defaultSearchText<T extends { id: string }>(row: T, columns: Column<T>[
     .join(' ')
 }
 
-export default function SortableTable<T extends { id: string }>({ columns, data, emptyText, tableClassName, colWidths, rowClassName, onRowClick, expandedRowId, onRowExpand, expandedRowRender, searchable, searchPlaceholder, getSearchText, toolbar }: Props<T>) {
+export default function SortableTable<T extends { id: string }>({ columns, data, emptyText, tableClassName, colWidths, rowClassName, onRowClick, expandedRowId, onRowExpand, expandedRowRender, searchable, searchPlaceholder, getSearchText, toolbar, renderSummary }: Props<T>) {
   const [sortKey, setSortKey] = useState<string | null>(null)
   const [sortDir, setSortDir] = useState<SortDirection>(null)
   const [query, setQuery] = useState('')
@@ -174,6 +177,9 @@ export default function SortableTable<T extends { id: string }>({ columns, data,
             )
           })}
         </tbody>
+        {renderSummary && sorted.length > 0 && (
+          <tfoot>{renderSummary(sorted)}</tfoot>
+        )}
       </table>
       </div>
     </>

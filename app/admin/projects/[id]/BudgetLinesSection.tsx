@@ -376,6 +376,33 @@ export default function BudgetLinesSection({
     ? allRows
     : allRows.filter((r) => r.line_type === lineTypeFilter)
 
+  // Sum-fot: summerer de SØKE-/filtrerte radene (SortableTable sender inn de
+  // synlige radene). Lar deg slå opp f.eks. «UPFA2303» og se total salgsverdi +
+  // mengde på tvers av flere poster og prisendringer. Justert under riktig kolonne.
+  const renderBudgetSummary = (rows: BLRow[]) => {
+    const sumQty = rows.reduce((s, r) => s + r.budget_quantity, 0)
+    const sumSales = rows.reduce((s, r) => s + r.sales_value, 0)
+    const sumCost = rows.reduce((s, r) => s + r.cost_value, 0)
+    const sumProfit = rows.reduce((s, r) => s + (r.assigned_subcontractor_id ? r.profit : 0), 0)
+    return (
+      <tr className="border-t-2 border-border bg-muted/60 font-medium text-[var(--color-text-primary)]">
+        <td className="px-3 py-2" />
+        <td className="px-3 py-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)] whitespace-nowrap" colSpan={2}>
+          Sum · {rows.length} {rows.length === 1 ? 'post' : 'poster'}
+        </td>
+        <td />
+        <td />
+        <td className="px-3 py-2 tabular-nums">{sumQty.toLocaleString('nb-NO')}</td>
+        <td />
+        <td className="px-3 py-2 tabular-nums font-semibold">{fmt(sumSales)}</td>
+        <td />
+        <td />
+        <td className="px-3 py-2 tabular-nums">{fmt(sumCost)}</td>
+        <td className="px-3 py-2 tabular-nums">{fmt(sumProfit)}</td>
+      </tr>
+    )
+  }
+
   return (
     <section className="space-y-6">
       {/* Budsjettversjonhistorikk + drag/drop Excel-import — moved here from
@@ -617,6 +644,7 @@ export default function BudgetLinesSection({
           searchable
           searchPlaceholder="Søk i budsjettlinjer …"
           getSearchText={(row) => `${row.product_code} ${row.product_name}`}
+          renderSummary={renderBudgetSummary}
           toolbar={
             <div className="flex items-center gap-2">
               <span className="text-xs text-[var(--color-text-muted)]">Filtrer type:</span>
