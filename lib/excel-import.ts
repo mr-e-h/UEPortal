@@ -23,7 +23,8 @@ export async function importExcelLines(projectId: string, county: string, rawLin
   // beholdes som egne linjer.
   const mergedMap = new Map<string, ParsedExcelLine>()
   for (const line of rawLines) {
-    if (!line.product_name || line.unit_price <= 0) continue
+    // Behold negative linjer (fradrag/korreksjon); kun navnløse eller pris = 0 hoppes over.
+    if (!line.product_name || line.unit_price === 0) continue
     const lumpSumDiscriminator = isLumpSumCode(line.product_code) ? `__ls${line.budget_quantity}` : ''
     const key = `${norm(line.product_name)}__${line.unit_price}${lumpSumDiscriminator}`
     const existing = mergedMap.get(key)
@@ -55,7 +56,9 @@ export async function importExcelLines(projectId: string, county: string, rawLin
         description: line.product_code,
         unit: 'stk',
         county,
-        customer_price: line.unit_price,
+        // Katalogprisen skal være positiv selv om første treff er en fradragslinje
+        // (linja beholder sitt eget negative snapshot lenger ned).
+        customer_price: Math.abs(line.unit_price),
         active: true,
       }
       products.push(product as Product)

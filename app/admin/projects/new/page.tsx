@@ -168,6 +168,18 @@ export default function NewProjectPage() {
             </ErrorBox>
           </div>
         )}
+        {excelData && excelData.skipped.length > 0 && (
+          <div className="mt-3 rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
+            <p className="text-sm font-medium text-amber-800">
+              {excelData.skipped.length} {excelData.skipped.length === 1 ? 'rad ble hoppet over' : 'rader ble hoppet over'} — kontroller at ingen av disse skulle vært med:
+            </p>
+            <ul className="mt-1.5 space-y-0.5 text-xs text-amber-800 max-h-40 overflow-auto">
+              {excelData.skipped.map((s, i) => (
+                <li key={i}>Rad {s.row}: {s.name || s.code || '(uten navn)'} — {s.reason}</li>
+              ))}
+            </ul>
+          </div>
+        )}
         {excelError && (
           <p className="mt-2 text-sm text-red-600">{excelError}</p>
         )}

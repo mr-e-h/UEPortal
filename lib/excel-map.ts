@@ -78,10 +78,12 @@ export function parseRows(rows: unknown[][], map: ImportColumnMap): ParseRowsRes
 
     let unit_price: number
     let budget_quantity: number
-    if (fastpris > 0) {
+    // Fastpris ≠ 0 (også NEGATIV = fradrag/rabatt) → beløpet er fastprisen, antall 1.
+    if (fastpris !== 0) {
       unit_price = fastpris
       budget_quantity = 1
-    } else if (pris2 === 1 && antall2 > 1) {
+    } else if (pris2 === 1 && Math.abs(antall2) > 1) {
+      // «Beløp i antall-kolonnen» (pris = 1) — tål negativt beløp (= fradrag).
       unit_price = antall2
       budget_quantity = 1
     } else {
@@ -93,7 +95,10 @@ export function parseRows(rows: unknown[][], map: ImportColumnMap): ParseRowsRes
       unit_price = 1
     }
 
-    if (unit_price <= 0) {
+    // Behold fradrags-/korreksjonslinjer (negativ verdi). Hopp KUN over rader uten
+    // noen pris å verdsette. Den gamle regelen `<= 0` droppet også ALLE negative
+    // linjer — det var nettopp det som lot fradrag (f.eks. −65 000) forsvinne stille.
+    if (unit_price === 0) {
       skipped.push({ row: i + 1, code: product_code, name: product_name, reason: 'Mangler pris' })
       continue
     }
