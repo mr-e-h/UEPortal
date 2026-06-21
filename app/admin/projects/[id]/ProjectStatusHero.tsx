@@ -88,12 +88,23 @@ export default function ProjectStatusHero({
 }: Props) {
   // All formler bor i økonomi-modulen (lib/project-economy.ts) — endres
   // de der, følger hero, API-ruter og alle andre visninger med.
-  // Materiellbudsjettets totalverdi (Σ planlagt antall × pris) — teller som kost
-  // i prognosen (men ikke i ordreverdi/salgsverdi — materiell faktureres ikke kunde).
-  const materialBudgetTotal = useMemo(
-    () => materials.reduce((s, m) => s + (m.planned_quantity || 0) * (m.unit_price || 0), 0),
-    [materials],
-  )
+  // Materiell i økonomien:
+  //  - ordreverdi   = Σ planlagt × pris (HELE budsjettet)      → legges til ordreverdi
+  //  - avstemt verdi = Σ planlagt × pris for AVSTEMTE linjer    → teller som opptjent
+  //  - avstemt kost  = Σ faktisk × pris for AVSTEMTE linjer     → kosten påløper FØRST nå
+  const { materialOrderValue, materialReconciledValue, materialReconciledCost } = useMemo(() => {
+    let order = 0, recVal = 0, recCost = 0
+    for (const m of materials) {
+      const price = Number(m.unit_price) || 0
+      const planned = Number(m.planned_quantity) || 0
+      order += planned * price
+      if (m.reconciled) {
+        recVal += planned * price
+        recCost += (Number(m.actual_quantity) || 0) * price
+      }
+    }
+    return { materialOrderValue: order, materialReconciledValue: recVal, materialReconciledCost: recCost }
+  }, [materials])
   const summary = useMemo(
     () => computeProjectEconomy({
       budgetLines,
@@ -104,10 +115,13 @@ export default function ProjectStatusHero({
       internalCostTotal: sumInternalCosts(internalCosts, fallbackEndMonthIndex(periodEnd, new Date())),
       // Produksjonsføringer øker opptjent straks (× budsjettlinjas kundepris).
       productionEntries,
-      // Materiellbudsjettet trekkes fra forventet fortjeneste (ikke i ordreverdi).
-      materialBudgetTotal,
+      // Materiell: budsjettet legges til ordreverdi; avstemt materiell teller som
+      // opptjent, og kosten påløper FØRST ved avstemming.
+      materialOrderValue,
+      materialReconciledValue,
+      materialReconciledCost,
     }),
-    [budgetLines, changeOrders, weeklyReportsWL, internalCosts, periodEnd, productionEntries, materialBudgetTotal],
+    [budgetLines, changeOrders, weeklyReportsWL, internalCosts, periodEnd, productionEntries, materialOrderValue, materialReconciledValue, materialReconciledCost],
   )
 
   // RESULTAT (per i dag): internkost PÅLØPT t.o.m. inneværende måned — det
@@ -120,7 +134,7 @@ export default function ProjectStatusHero({
   const invoiced = useMemo(() => invoices.reduce((s, i) => s + (i.amount ?? 0), 0), [invoices])
   // Resultat hittil = opptjent − påløpte kostnader. Opptjent og UE-kost påløpt
   // bygger på SAMME godkjente rapportlinjer, så marginen er sammenlignbar.
-  const actualResult = summary.opptjent - summary.ueReportedCost - internCostToDateVal
+  const actualResult = summary.opptjent - summary.ueReportedCost - internCostToDateVal - summary.materialReconciledCost
   const invoicedPct = summary.totalContract > 0 ? Math.round((invoiced / summary.totalContract) * 100) : 0
 
   // Bar widths as % of totalContract (or zeroed if no contract yet)
@@ -224,13 +238,13 @@ export default function ProjectStatusHero({
             <ResultRow
               label="Ordreverdi"
               value={fmt(summary.totalContract)}
-              sub={`original ${fmt(summary.originalBudget)} + EM ${fmt(summary.approvedEMValue)}`}
+              sub={`original ${fmt(summary.originalBudget)} + EM ${fmt(summary.approvedEMValue)}${summary.materialOrderValue > 0 ? ` + materiell ${fmt(summary.materialOrderValue)}` : ''}`}
               tone="muted"
             />
             <ResultRow sign="−" label="UE-kost (budsjett)" value={fmt(summary.ueBudgetCost)} tone="muted" />
             <ResultRow sign="−" label="Internkost (hele perioden)" value={fmt(summary.internCost)} tone="muted" />
-            {summary.materialCost > 0 && (
-              <ResultRow sign="−" label="Materiellkost (budsjett)" value={fmt(summary.materialCost)} tone="muted" />
+            {summary.materialReconciledCost > 0 && (
+              <ResultRow sign="−" label="Materiellkost (avstemt)" value={fmt(summary.materialReconciledCost)} tone="muted" />
             )}
             <div className="border-t border-border pt-1.5 mt-0.5">
               <ResultRow

@@ -75,8 +75,10 @@ export interface ProjectEconomySummary {
   ueBudgetCost: number
   ueReportedCost: number
   internCost: number
-  /** Materiellbudsjettets kost (Σ antall × pris) — trekkes fra forventet fortjeneste. */
-  materialCost: number
+  /** Materiellbudsjettets ordreverdi (Σ planlagt × pris) — inngår i totalContract. */
+  materialOrderValue: number
+  /** Faktisk materiellkost så langt (Σ avstemt faktisk × pris) — påløper ved avstemming. */
+  materialReconciledCost: number
   expectedProfit: number
 }
 
@@ -94,7 +96,9 @@ export function computeProjectEconomy({
   changeOrders,
   internalCostTotal,
   productionEntries = [],
-  materialBudgetTotal = 0,
+  materialOrderValue = 0,
+  materialReconciledValue = 0,
+  materialReconciledCost = 0,
 }: {
   budgetLines: ProjectBudgetLine[]
   weeklyReports: ReportWithLines[]
@@ -108,9 +112,13 @@ export function computeProjectEconomy({
    * føringer finnes. cost/UE-kost rører IKKE ueReportedCost i v1.
    */
   productionEntries?: ProductionEntryForEconomy[]
-  /** Materiellbudsjettets totalverdi (Σ planlagt antall × pris, fra project_materials).
-   *  Trekkes fra forventet fortjeneste som egen kost — materiell er IKKE i ordreverdi. */
-  materialBudgetTotal?: number
+  /** Materiellbudsjettets ordreverdi (Σ planlagt antall × pris) — LEGGES TIL ordreverdi. */
+  materialOrderValue?: number
+  /** Ordreverdien til AVSTEMTE materiell-linjer (Σ planlagt × pris der reconciled) —
+   *  teller som opptjent (levert) når materiellet er avstemt. */
+  materialReconciledValue?: number
+  /** Faktisk materiellkost (Σ avstemt faktisk antall × pris) — påløper FØRST ved avstemming. */
+  materialReconciledCost?: number
 }): ProjectEconomySummary {
   // Opprinnelig ordrebok (salgsverdi mot kunde — det er kontrakten).
   const originalBudget = budgetSalesValue(budgetLines)
@@ -122,7 +130,9 @@ export function computeProjectEconomy({
   const approvedEMValue = emCustomerValue(approvedEMs)
   const pendingEMValue = emCustomerValue(pendingEMs)
 
-  const totalContract = originalBudget + approvedEMValue
+  // Ordreverdi = arbeid (ordrebok) + godkjente EM + materiellbudsjett. Materiellet
+  // legges til kontrakten; kosten realiseres FØRST når materiellet avstemmes.
+  const totalContract = originalBudget + approvedEMValue + materialOrderValue
 
   // Levert = godkjente rapportlinjer × kundepris-snapshot (samme enhet som
   // ordreverdien, så fremdriftsbaren viser omsetningsverdi).
@@ -153,6 +163,10 @@ export function computeProjectEconomy({
     deliveredValue += (entry.quantity ?? 0) * price
   }
 
+  // Avstemt materiell teller som opptjent (levert) — ordreverdien til de avstemte
+  // linjene realiseres. Den faktiske kosten kommer via materialReconciledCost.
+  deliveredValue += materialReconciledValue
+
   // Ventende rapporter telles på rapportnivå — banneret trenger et tall et
   // menneske kan skanne, ikke «47 linjer venter». Samme «krever handling»-
   // definisjon som dashbordet og prosjektkortene (lib/attention.ts).
@@ -175,7 +189,7 @@ export function computeProjectEconomy({
     }
   }
   const internCost = internalCostTotal
-  const expectedProfit = totalContract - ueBudgetCost - internCost - materialBudgetTotal
+  const expectedProfit = totalContract - ueBudgetCost - internCost - materialReconciledCost
 
   // Bar-segmenter (klemt til en fornuftig stabling).
   const delivered = Math.min(deliveredValue, totalContract)
@@ -202,7 +216,8 @@ export function computeProjectEconomy({
     ueBudgetCost,
     ueReportedCost,
     internCost,
-    materialCost: materialBudgetTotal,
+    materialOrderValue,
+    materialReconciledCost,
     expectedProfit,
   }
 }
