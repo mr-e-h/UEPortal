@@ -8,7 +8,7 @@ const inter = Inter({
 });
 
 export const metadata: Metadata = {
-  title: "MinUE",
+  title: "MinUE Portal",
   description: "Underentreprenør-rapportering",
 };
 
