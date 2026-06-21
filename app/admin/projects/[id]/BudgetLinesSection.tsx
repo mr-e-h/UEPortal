@@ -8,6 +8,7 @@ import NumberInput from '@/components/NumberInput'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 import { lineTypeLabel } from '@/lib/line-types'
+import { budgetSalesValue, budgetCostValue } from '@/lib/project-economy'
 import type { ProjectBudgetLine, Product, Subcontractor, ChangeOrder, Project, BudgetVersion, ProjectPhase, PhaseType } from '@/types'
 
 // BudgetLineChart is lazy-loaded — only mounts when a row is expanded.
@@ -416,6 +417,12 @@ export default function BudgetLinesSection({
     ? allRows
     : allRows.filter((r) => r.line_type === lineTypeFilter)
 
+  // Gjeldende budsjett LIVE fra budsjettlinjene. Versjonshistorikkens lagrede
+  // snapshot endres bare ved Excel-opplasting, men «Gjeldende»-raden skal alltid
+  // speile tabellen — oppdateres straks man legger til / sletter / endrer linjer.
+  const liveBudgetSales = budgetSalesValue(budgetLines)
+  const liveBudgetCost = budgetCostValue(budgetLines)
+
   // Sum-fot: summerer de SØKE-/filtrerte radene (SortableTable sender inn de
   // synlige radene). Lar deg slå opp f.eks. «UPFA2303» og se total salgsverdi +
   // mengde på tvers av flere poster og prisendringer. Justert under riktig kolonne.
@@ -472,9 +479,13 @@ export default function BudgetLinesSection({
                 <tbody>
                   {budgetVersions.map((bver, idx) => {
                     const prev = idx > 0 ? budgetVersions[idx - 1] : null
-                    const delta = prev != null ? bver.total_sales_value - prev.total_sales_value : null
-                    const profit = bver.total_sales_value - bver.total_cost_value
                     const isLatest = idx === budgetVersions.length - 1
+                    // «Gjeldende» versjon vises LIVE fra budsjettlinjene; eldre
+                    // versjoner beholder sitt historiske opplastings-snapshot.
+                    const salesValue = isLatest ? liveBudgetSales : bver.total_sales_value
+                    const costValue = isLatest ? liveBudgetCost : bver.total_cost_value
+                    const delta = prev != null ? salesValue - prev.total_sales_value : null
+                    const profit = salesValue - costValue
                     const label = bver.version === 0 ? 'Originalbudsjett' : `V${bver.version}`
                     const dateStr = new Date(bver.uploaded_at).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
                     const timeStr = new Date(bver.uploaded_at).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
@@ -484,8 +495,8 @@ export default function BudgetLinesSection({
                           <span className={`font-medium ${isLatest ? 'text-blue-700' : 'text-[var(--color-text-primary)]'}`}>{label}</span>
                           {isLatest && <span className="ml-2 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-medium">Gjeldende</span>}
                         </td>
-                        <td className="px-5 py-3 text-right text-[var(--color-text-secondary)]">{fmt(bver.total_sales_value)}</td>
-                        <td className="px-5 py-3 text-right text-[var(--color-text-secondary)]">{fmt(bver.total_cost_value)}</td>
+                        <td className="px-5 py-3 text-right text-[var(--color-text-secondary)]" title={isLatest ? 'Beregnet live fra gjeldende budsjettlinjer' : undefined}>{fmt(salesValue)}</td>
+                        <td className="px-5 py-3 text-right text-[var(--color-text-secondary)]" title={isLatest ? 'Beregnet live fra gjeldende budsjettlinjer' : undefined}>{fmt(costValue)}</td>
                         <td className={`px-5 py-3 text-right font-medium ${profit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(profit)}</td>
                         <td className="px-5 py-3 text-right">
                           {delta == null ? (
