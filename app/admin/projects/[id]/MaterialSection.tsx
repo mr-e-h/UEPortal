@@ -1,7 +1,7 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { History } from 'lucide-react'
+import { Download } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import ErrorBox from '@/components/ui/ErrorBox'
@@ -21,13 +21,12 @@ interface Props {
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
 
-function fmtDate(iso: string): string {
+function fmtDateTime(iso: string): { date: string; time: string } {
   const d = new Date(iso)
-  return (
-    d.toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: '2-digit' }) +
-    ' · ' +
-    d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
-  )
+  return {
+    date: d.toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' }),
+    time: d.toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' }),
+  }
 }
 
 // ── Draft types ───────────────────────────────────────────────────────────────
@@ -99,34 +98,64 @@ function UploadZone({
   )
 
   return (
-    <div className="space-y-3">
-      <div
-        className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
-          dragging ? 'border-blue-400 bg-blue-50' : 'border-border hover:border-blue-400 hover:bg-muted'
-        }`}
-        onClick={() => fileRef.current?.click()}
-        onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={(e) => {
-          e.preventDefault()
-          setDragging(false)
-          const file = e.dataTransfer.files[0]
-          if (file) handleFile(file)
-        }}
-      >
-        {uploading ? (
-          <p className="text-sm text-blue-600">Laster opp og importerer…</p>
-        ) : (
-          <>
-            <p className="text-sm text-[var(--color-text-muted)]">
-              Dra og slipp .xlsx-fil hit, eller klikk for å velge
-            </p>
-            <p className="text-xs text-[var(--color-text-muted)] mt-1">
-              Ny opplasting erstatter listen — forrige logges i historikk.
-            </p>
-          </>
-        )}
+    <div
+      onClick={() => !uploading && fileRef.current?.click()}
+      onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
+      onDragEnter={(e) => { e.preventDefault(); setDragging(true) }}
+      onDragLeave={() => setDragging(false)}
+      onDrop={(e) => {
+        e.preventDefault()
+        setDragging(false)
+        const file = e.dataTransfer.files?.[0]
+        if (file) handleFile(file)
+      }}
+      className={`rounded-xl p-6 flex flex-col items-center justify-center text-center gap-4 cursor-pointer transition-colors border-2 border-dashed select-none ${
+        dragging
+          ? 'bg-blue-100 border-blue-500'
+          : uploading
+          ? 'bg-blue-50 border-blue-200 cursor-default'
+          : 'bg-blue-50 border-blue-300 hover:bg-blue-100 hover:border-blue-400'
+      }`}
+    >
+      <div className={`w-14 h-14 rounded-full flex items-center justify-center transition-colors ${dragging ? 'bg-blue-200' : 'bg-blue-100'}`}>
+        <svg xmlns="http://www.w3.org/2000/svg" className={`w-7 h-7 transition-colors ${dragging ? 'text-blue-700' : 'text-blue-600'}`} fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
+          <path strokeLinecap="round" strokeLinejoin="round" d="M4 16v2a2 2 0 002 2h12a2 2 0 002-2v-2M12 12V4m0 0L8 8m4-4l4 4" />
+        </svg>
       </div>
+      <div>
+        <p className="font-semibold text-blue-900 text-base">
+          {uploading ? 'Importerer...' : dragging ? 'Slipp filen her' : 'Last inn oppdatert materielliste'}
+        </p>
+        <p className="text-sm text-blue-700 mt-1 max-w-xs">
+          {uploading ? 'Behandler Excel-filen…' : 'Dra og slipp en .xlsx-fil hit, eller klikk for å velge'}
+        </p>
+      </div>
+      {!uploading && (
+        <span className="px-5 py-2 bg-blue-600 text-white text-sm font-semibold rounded-lg shadow-sm pointer-events-none">
+          Velg fil
+        </span>
+      )}
+
+      {successMsg && (
+        <p className="text-xs font-medium text-green-600">{successMsg}</p>
+      )}
+      {uploadError && (
+        <p className="text-xs font-medium text-red-600">{uploadError}</p>
+      )}
+
+      {skipped.length > 0 && (
+        <div className="w-full rounded border border-amber-300 bg-amber-50 px-3 py-2 text-left" onClick={(e) => e.stopPropagation()}>
+          <p className="text-xs font-medium text-amber-800">
+            {skipped.length} {skipped.length === 1 ? 'rad hoppet over' : 'rader hoppet over'}
+          </p>
+          <ul className="mt-1 space-y-0.5 text-[11px] text-amber-800 max-h-32 overflow-auto">
+            {skipped.map((s, i) => (
+              <li key={i}>Rad {s.row}: {s.name || s.code || '(uten navn)'} — {s.reason}</li>
+            ))}
+          </ul>
+        </div>
+      )}
+
       <input
         ref={fileRef}
         type="file"
@@ -138,96 +167,101 @@ function UploadZone({
           e.target.value = ''
         }}
       />
-
-      {successMsg && (
-        <ErrorBox variant="success">
-          <span className="mr-1">✓</span>
-          {successMsg}
-        </ErrorBox>
-      )}
-
-      {skipped.length > 0 && (
-        <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
-          <p className="text-sm font-medium text-amber-800">
-            {skipped.length} {skipped.length === 1 ? 'rad ble hoppet over' : 'rader ble hoppet over'} — kontroller at
-            ingen av disse skulle vært med:
-          </p>
-          <ul className="mt-1.5 space-y-0.5 text-xs text-amber-800 max-h-40 overflow-auto">
-            {skipped.map((s, i) => (
-              <li key={i}>
-                Rad {s.row}: {s.name || s.code || '(uten navn)'} — {s.reason}
-              </li>
-            ))}
-          </ul>
-        </div>
-      )}
-
-      {uploadError && <ErrorBox>{uploadError}</ErrorBox>}
     </div>
   )
 }
 
-// ── VersionHistory sub-component ─────────────────────────────────────────────
+// ── VersionHistoryPanel — budsjett-stil: tabell til venstre, upload til høyre ──
 
-function VersionHistory({ versions }: { versions: ProjectMaterialVersion[] }) {
-  if (versions.length === 0) {
-    return (
-      <section className="bg-card border border-border rounded-xl p-4">
-        <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2 mb-1">
-          <History size={15} /> Historikk
-        </h3>
-        <p className="text-xs text-[var(--color-text-muted)]">
-          Ingen tidligere opplastinger. Historikk logges automatisk ved ny import.
-        </p>
-      </section>
-    )
-  }
-
+function VersionHistoryPanel({
+  projectId,
+  versions,
+  onImported,
+}: {
+  projectId?: string
+  versions: ProjectMaterialVersion[]
+  onImported: () => void
+}) {
   return (
-    <section className="bg-card border border-border rounded-xl p-4 space-y-3">
-      <div className="flex items-center gap-2">
-        <h3 className="text-sm font-semibold text-[var(--color-text-primary)] flex items-center gap-2">
-          <History size={15} /> Historikk
-        </h3>
-        <span className="text-xs text-[var(--color-text-muted)]">{versions.length} versjoner</span>
+    <div className="grid grid-cols-3 gap-4">
+      {/* VENSTRE col-span-2: versjonstabell */}
+      <div className="col-span-2 bg-white rounded-xl shadow border border-border overflow-hidden">
+        <div className="px-5 py-3 border-b border-border bg-muted">
+          <h3 className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide">
+            Materiellversjonhistorikk
+          </h3>
+        </div>
+        {versions.length === 0 ? (
+          <div className="px-5 py-6 text-sm text-[var(--color-text-muted)] text-center">
+            Ingen materielliste lastet opp ennå.
+          </div>
+        ) : (
+          <div className="overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="border-b border-border">
+                  <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-left">Versjon</th>
+                  <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-right">Antall linjer</th>
+                  <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-left">Lastet opp</th>
+                  <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-center">Fil</th>
+                </tr>
+              </thead>
+              <tbody>
+                {/* versions from API come newest-first (order by version desc) */}
+                {versions.map((ver, idx) => {
+                  const isLatest = idx === 0
+                  const label = ver.version === 0 ? 'Original' : `V${ver.version}`
+                  const lineCount = ver.snapshot?.materials?.length ?? 0
+                  const { date, time } = fmtDateTime(ver.uploaded_at)
+                  return (
+                    <tr
+                      key={ver.id}
+                      className={`border-b border-border ${isLatest ? 'bg-blue-50' : 'hover:bg-muted'}`}
+                    >
+                      <td className="px-5 py-3">
+                        <span className={`font-medium ${isLatest ? 'text-blue-700' : 'text-[var(--color-text-primary)]'}`}>
+                          {label}
+                        </span>
+                        {isLatest && (
+                          <span className="ml-2 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-medium">
+                            Gjeldende
+                          </span>
+                        )}
+                      </td>
+                      <td className="px-5 py-3 text-right text-[var(--color-text-secondary)]">
+                        {lineCount}
+                      </td>
+                      <td className="px-5 py-3">
+                        <div className="text-[var(--color-text-secondary)]">{ver.uploaded_by}</div>
+                        <div className="text-xs text-[var(--color-text-muted)]">{date} {time}</div>
+                      </td>
+                      <td className="px-5 py-3 text-center">
+                        {ver.file_name && ver.file_name.includes('/') ? (
+                          <a
+                            href={`/api/projects/${projectId}/materials/versions/${ver.id}/file`}
+                            download
+                            title="Last ned Excel-fil"
+                            className="inline-flex items-center justify-center w-7 h-7 rounded hover:bg-green-100 text-green-600 hover:text-green-700 transition-colors"
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <Download size={14} />
+                          </a>
+                        ) : (
+                          <span className="text-gray-300 text-xs">–</span>
+                        )}
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        )}
       </div>
-      <ol className="space-y-1 max-h-80 overflow-y-auto pr-1">
-        {versions.map((v, i) => {
-          const count = v.snapshot?.materials?.length ?? 0
-          return (
-            <li key={v.id}>
-              <div
-                className={`rounded-lg border px-3 py-2 ${
-                  i === 0 ? 'border-primary bg-primary-soft' : 'border-border'
-                }`}
-              >
-                <div className="flex items-center justify-between gap-2">
-                  <span className="text-xs font-medium text-[var(--color-text-primary)]">
-                    {fmtDate(v.uploaded_at)}
-                  </span>
-                  {i === 0 && (
-                    <span className="text-[9px] uppercase tracking-wide text-green-700 bg-green-50 border border-green-200 rounded px-1">
-                      Nå
-                    </span>
-                  )}
-                </div>
-                <div className="flex items-center gap-2 mt-0.5 text-[11px] text-[var(--color-text-muted)]">
-                  <span>{v.uploaded_by}</span>
-                  <span>·</span>
-                  <span>{count} linjer</span>
-                  {v.file_name && (
-                    <>
-                      <span>·</span>
-                      <span className="truncate max-w-[14rem]">{v.file_name}</span>
-                    </>
-                  )}
-                </div>
-              </div>
-            </li>
-          )
-        })}
-      </ol>
-    </section>
+
+      {/* HØYRE col-span-1: drag-drop opplastingskort */}
+      <UploadZone projectId={projectId} onImported={onImported} />
+    </div>
   )
 }
 
@@ -240,9 +274,9 @@ function VersionHistory({ versions }: { versions: ProjectMaterialVersion[] }) {
  * Ingen kr/salgsverdi vises — kun mengder og differanser.
  *
  * Tre deler:
- *   (a) Opplastingssone for ny materielliste (.xlsx)
+ *   (a) Versjonhistorikk-grid: VENSTRE = versjons-tabell med nedlasting,
+ *       HØYRE = drag-drop opplastingskort (budsjett-stil)
  *   (b) Regneark: Kategori · Kode · Materiell · Enhet · Planlagt · Faktisk · Diff · Kommentar · Avstemt
- *   (c) Versjonshistorikk (toggle)
  */
 export default function MaterialSection({
   materials,
@@ -303,15 +337,10 @@ export default function MaterialSection({
     setSaveError(null)
   }
 
-  // ── Version history toggle ─────────────────────────────────────────────────
-  const [showHistory, setShowHistory] = useState(false)
-
-  // ── Derived: extract projectId from first material ─────────────────────────
-  const projectId = materials[0]?.project_id
+  // ── Derived: extract projectId from first material or first version ────────
+  const projectId = materials[0]?.project_id ?? materialVersions[0]?.project_id
 
   // ── Group by category for display ─────────────────────────────────────────
-  // Keep insertion order; sort_order respected via server ordering.
-  // Must be above the early return so hook call order is stable.
   const categories = useMemo(() => {
     const seen = new Map<string, ProjectMaterial[]>()
     for (const m of materials) {
@@ -322,8 +351,7 @@ export default function MaterialSection({
     return seen
   }, [materials])
 
-  // Unresolved count (faktisk differs from planlagt, not reconciled) — badge
-  // Must be above the early return so hook call order is stable.
+  // Unresolved count — badge
   const unreconciledCount = useMemo(() => {
     return materials.filter((m) => {
       const d = draft[m.id]
@@ -335,51 +363,38 @@ export default function MaterialSection({
     }).length
   }, [materials, draft])
 
-  // ── Empty state ───────────────────────────────────────────────────────────
+  // ── Empty state — show version panel (upload card) + empty message ─────────
   if (materials.length === 0) {
     return (
-      <section className="space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Materiell</h2>
-        </div>
-        <Card className="p-8 text-center border-dashed">
-          <p className="text-sm text-[var(--color-text-muted)] mb-4">Ingen materielliste lastet opp ennå.</p>
-          <div className="max-w-md mx-auto">
-            <UploadZone projectId={projectId} onImported={onImported} />
-          </div>
-        </Card>
+      <section className="space-y-6">
+        <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Materiell</h2>
+        <VersionHistoryPanel
+          projectId={projectId}
+          versions={materialVersions}
+          onImported={onImported}
+        />
       </section>
     )
   }
 
   return (
-    <section className="space-y-4">
+    <section className="space-y-6">
       {/* Header */}
-      <div className="flex items-center justify-between gap-3 flex-wrap">
-        <div className="flex items-center gap-3">
-          <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Materiell</h2>
-          {unreconciledCount > 0 && (
-            <span className="text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200 rounded-full px-2 py-0.5">
-              {unreconciledCount} avvik ikke avstemt
-            </span>
-          )}
-        </div>
-        <button
-          type="button"
-          onClick={() => setShowHistory((v) => !v)}
-          className="text-xs text-primary hover:underline"
-        >
-          {showHistory ? 'Skjul historikk' : 'Vis historikk'}
-        </button>
+      <div className="flex items-center gap-3 flex-wrap">
+        <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Materiell</h2>
+        {unreconciledCount > 0 && (
+          <span className="text-xs font-medium bg-amber-100 text-amber-800 border border-amber-200 rounded-full px-2 py-0.5">
+            {unreconciledCount} avvik ikke avstemt
+          </span>
+        )}
       </div>
 
-      {/* Upload zone (always visible for replacement) */}
-      <Card className="p-4">
-        <p className="text-xs font-medium text-[var(--color-text-secondary)] mb-3">
-          Last opp materielliste (.xlsx)
-        </p>
-        <UploadZone projectId={projectId} onImported={onImported} />
-      </Card>
+      {/* Versjonhistorikk — budsjett-stil grid */}
+      <VersionHistoryPanel
+        projectId={projectId}
+        versions={materialVersions}
+        onImported={onImported}
+      />
 
       {/* Dirty warning */}
       {dirty && (
@@ -571,7 +586,7 @@ export default function MaterialSection({
                 </td>
                 {/* Enhet */}
                 <td />
-                {/* Planlagt sum — kun meningsfylt når alle er samme enhet, vis antall linjer */}
+                {/* Planlagt sum */}
                 <td className="px-3 py-2 text-right tabular-nums text-xs font-semibold text-[var(--color-text-primary)]">
                   –
                 </td>
@@ -616,9 +631,6 @@ export default function MaterialSection({
         Fyll inn faktisk forbruk per materiell-linje og huk av «Avstemt» når linjen er kontrollert.
         Differansen er faktisk minus planlagt mengde.
       </p>
-
-      {/* Version history panel (toggle) */}
-      {showHistory && <VersionHistory versions={materialVersions} />}
     </section>
   )
 }

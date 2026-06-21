@@ -11,14 +11,19 @@ const EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.
 // ─── POST /api/projects/[id]/materials/import ─────────────────────────────────
 // Multipart: field 'file' = xlsx.
 //
+// Model A — budsjett-stil: HVER opplasting lager en ny project_material_versions-rad.
+//   version = (max eksisterende version) + 1, eller 0 dersom ingen finnes.
+//   snapshot = den NYE parsede materiellisten.
+//   file_name = budget-files-stien til den opplastede filen.
+//
 // Flyt:
 //   (a) parse Excel med parseMaterialBuffer
-//   (b) hvis prosjektet har eksisterende rader → snapshot dem til project_material_versions
-//   (c) last opp .xlsx til budget-files-bucket under <project_id>/materials/<uuid>_<name>
-//   (d) ERSTATT: slett gamle rader, sett inn ny liste
+//   (b) last opp .xlsx til budget-files-bucket under <project_id>/materials/<uuid>_<name>
+//   (c) beregn neste versjonsnummer
+//   (d) sett inn versjon-rad med snapshot = DEN NYE lista + file_name = objektstien
+//   (e) ERSTATT project_materials med den nye lista
 //
 // Returnerer { ok, imported, skipped, version }
-// version = versjonsnummeret som ble opprettet i (b), eller null om ingen fantes.
 
 export async function POST(
   request: NextRequest,
@@ -46,57 +51,7 @@ export async function POST(
   const sb = getSupabaseAdmin()
   const projectId = params.id
 
-  // (b) Snapshot eksisterende rader hvis de finnes
-  const { data: existing, error: fetchErr } = await sb
-    .from('project_materials')
-    .select('*')
-    .eq('project_id', projectId)
-    .order('sort_order', { ascending: true })
-
-  if (fetchErr) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-
-  const existingRows = (existing ?? []) as ProjectMaterial[]
-  let nextVersion: number | null = null
-
-  if (existingRows.length > 0) {
-    // Finn høyeste versjonsnummer
-    const { data: versionRows } = await sb
-      .from('project_material_versions')
-      .select('version')
-      .eq('project_id', projectId)
-
-    const versions = ((versionRows ?? []) as Pick<ProjectMaterialVersion, 'version'>[])
-    const maxVersion = versions.length === 0 ? -1 : Math.max(...versions.map((v) => v.version))
-    nextVersion = maxVersion + 1
-
-    // Bygg snapshot — kun felter definert i ProjectMaterialVersion.snapshot
-    const snapshot: ProjectMaterialVersion['snapshot'] = {
-      materials: existingRows.map((r) => ({
-        material_code: r.material_code,
-        material_name: r.material_name,
-        category: r.category,
-        unit: r.unit,
-        planned_quantity: r.planned_quantity,
-        unit_price: r.unit_price,
-        supplier: r.supplier,
-      })),
-    }
-
-    const versionRow: Omit<ProjectMaterialVersion, 'created_at'> = {
-      id: randomUUID(),
-      project_id: projectId,
-      version: nextVersion,
-      file_name: file.name ?? null,
-      snapshot,
-      uploaded_by: auth.user.full_name,
-      uploaded_at: new Date().toISOString(),
-    }
-
-    const { error: snapErr } = await sb.from('project_material_versions').insert(versionRow)
-    if (snapErr) return NextResponse.json({ error: 'Snapshot-lagring feilet' }, { status: 500 })
-  }
-
-  // (c) Last opp Excel til budget-files-bucket
+  // (b) Last opp Excel til budget-files-bucket
   const originalName = file.name || 'materiell.xlsx'
   const safeName = originalName.replace(/[^a-zA-Z0-9._-]/g, '_')
   const fileId = randomUUID()
@@ -109,8 +64,49 @@ export async function POST(
     return NextResponse.json({ error: 'Kunne ikke lagre Excel-fil' }, { status: 500 })
   }
 
-  // (d) ERSTATT: slett eksisterende, sett inn ny liste
-  if (existingRows.length > 0) {
+  // (c) Beregn neste versjonsnummer
+  const { data: versionRows } = await sb
+    .from('project_material_versions')
+    .select('version')
+    .eq('project_id', projectId)
+
+  const versions = ((versionRows ?? []) as Pick<ProjectMaterialVersion, 'version'>[])
+  const maxVersion = versions.length === 0 ? -1 : Math.max(...versions.map((v) => v.version))
+  const nextVersion = maxVersion + 1
+
+  // (d) Bygg versjon-rad — snapshot = DEN NYE parsede lista
+  const snapshot: ProjectMaterialVersion['snapshot'] = {
+    materials: parsed.materials.map((m) => ({
+      material_code: m.material_code,
+      material_name: m.material_name,
+      category: m.category,
+      unit: '',
+      planned_quantity: m.planned_quantity,
+      unit_price: m.unit_price,
+      supplier: m.supplier,
+    })),
+  }
+
+  const versionRow: Omit<ProjectMaterialVersion, 'created_at'> = {
+    id: randomUUID(),
+    project_id: projectId,
+    version: nextVersion,
+    file_name: objectPath,
+    snapshot,
+    uploaded_by: auth.user.full_name,
+    uploaded_at: new Date().toISOString(),
+  }
+
+  const { error: snapErr } = await sb.from('project_material_versions').insert(versionRow)
+  if (snapErr) return NextResponse.json({ error: 'Versjon-lagring feilet' }, { status: 500 })
+
+  // (e) ERSTATT: slett eksisterende rader, sett inn ny liste
+  const { data: existing } = await sb
+    .from('project_materials')
+    .select('id')
+    .eq('project_id', projectId)
+
+  if ((existing ?? []).length > 0) {
     const { error: delErr } = await sb
       .from('project_materials')
       .delete()
