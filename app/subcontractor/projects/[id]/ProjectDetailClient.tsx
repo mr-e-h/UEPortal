@@ -547,6 +547,41 @@ export default function ProjectDetailClient({ initialData }: Props) {
   const totalApprovedThisWeek = weeklySummaryRows.reduce((s, r) => s + r.approvedValue, 0)
 
   const productNameMap = new Map(project.budget_lines.map((bl) => [bl.product_id, bl.product_name]))
+
+  // UE ser KUN antall per produkt: slå sammen budsjettlinjer på samme produkt
+  // (prisperioder fra indeksregulering har samme UE-pris) til én rad med total
+  // mengde + summert forbruk. UE ganger opp med sin egen pris.
+  const budgetGroups = (() => {
+    const map = new Map<string, Array<(typeof project.budget_lines)[number]>>()
+    for (const bl of project.budget_lines) {
+      const arr = map.get(bl.product_id) ?? []
+      arr.push(bl)
+      map.set(bl.product_id, arr)
+    }
+    return Array.from(map.entries()).map(([pid, lines]) => {
+      const first = lines[0]
+      const totalQty = lines.reduce((s, l) => s + l.budget_quantity, 0)
+      let approved = 0
+      let pending = 0
+      for (const l of lines) {
+        const u = calculateBudgetUsage(l.id, l.budget_quantity, allLinesWithStatus)
+        approved += u.approved
+        pending += u.pending
+      }
+      return {
+        key: pid,
+        product_id: pid,
+        product_name: first.product_name,
+        product_description: first.product_description,
+        unit: first.unit,
+        totalQty,
+        approved,
+        pending,
+        remaining: totalQty - approved,
+        price: first.subcontractor_cost_price_snapshot,
+      }
+    })
+  })()
   const uniqueProductOptions: BudgetLineOption[] = Array.from(
     new Map(
       project.budget_lines.map((bl) => [bl.product_id, {
@@ -836,59 +871,59 @@ export default function ProjectDetailClient({ initialData }: Props) {
                 </tr>
               </thead>
               <tbody>
-                {[...project.budget_lines]
+                {budgetGroups
+                  .slice()
                   .sort((a, b) =>
                     (a.product_description || a.product_name).localeCompare(b.product_description || b.product_name, 'nb')
                   )
-                  .filter((bl) => {
+                  .filter((g) => {
                     if (!budgetSearch) return true
                     const q = budgetSearch.toLowerCase()
                     return (
-                      bl.product_name.toLowerCase().includes(q) ||
-                      bl.product_description.toLowerCase().includes(q)
+                      g.product_name.toLowerCase().includes(q) ||
+                      g.product_description.toLowerCase().includes(q)
                     )
                   })
-                  .flatMap((bl) => {
-                  const usage = calculateBudgetUsage(bl.id, bl.budget_quantity, allLinesWithStatus)
-                  const usedPct = bl.budget_quantity > 0
-                    ? Math.min(100, Math.round((usage.approved / bl.budget_quantity) * 100))
+                  .flatMap((g) => {
+                  const usedPct = g.totalQty > 0
+                    ? Math.min(100, Math.round((g.approved / g.totalQty) * 100))
                     : 0
-                  const approvedValue = usage.approved * bl.subcontractor_cost_price_snapshot
-                  const budgetValue = bl.budget_quantity * bl.subcontractor_cost_price_snapshot
+                  const approvedValue = g.approved * g.price
+                  const budgetValue = g.totalQty * g.price
                   const barColor = usedPct >= 100 ? '#EF4444' : usedPct >= 75 ? '#F59E0B' : '#10B981'
-                  const isExpanded = expandedBudgetId === bl.id
+                  const isExpanded = expandedBudgetId === g.key
 
                   const approvedCOs = changeOrders
-                    .filter((co) => co.product_id === bl.product_id && co.status === 'approved' && co.reviewed_at != null)
+                    .filter((co) => co.product_id === g.product_id && co.status === 'approved' && co.reviewed_at != null)
                     .sort((a, b) => a.reviewed_at!.localeCompare(b.reviewed_at!))
                   const coTotal = approvedCOs.reduce((s, co) => s + co.requested_quantity, 0)
 
                   const rows = [
                     <tr
-                      key={bl.id}
-                      onClick={() => setExpandedBudgetId(isExpanded ? null : bl.id)}
+                      key={g.key}
+                      onClick={() => setExpandedBudgetId(isExpanded ? null : g.key)}
                       className="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer"
                     >
                       <td className="px-3 py-2.5">
-                        <span className="font-medium text-[var(--color-text-primary)]">{bl.product_name}</span>
+                        <span className="font-medium text-[var(--color-text-primary)]">{g.product_name}</span>
                       </td>
                       {/* S.8 — UE-ens egen avtalte enhetspris (trygt: UE-eget kosttall) */}
                       <td className="px-3 py-2.5 text-right whitespace-nowrap text-xs text-[var(--color-text-secondary)]">
-                        {bl.subcontractor_cost_price_snapshot > 0 ? (
-                          <>{fmt(bl.subcontractor_cost_price_snapshot)}<span className="text-[var(--color-text-muted)]">/{bl.unit}</span></>
+                        {g.price > 0 ? (
+                          <>{fmt(g.price)}<span className="text-[var(--color-text-muted)]">/{g.unit}</span></>
                         ) : '–'}
                       </td>
                       <td className="px-3 py-2.5 text-right whitespace-nowrap text-xs">
-                        <span className="font-semibold text-[var(--color-text-primary)]">{usage.approved}</span>
-                        <span className="text-[var(--color-text-muted)]"> / {bl.budget_quantity} {bl.unit}</span>
-                        {usage.pending > 0 && (
-                          <span className="ml-1 text-orange-500">+{usage.pending}</span>
+                        <span className="font-semibold text-[var(--color-text-primary)]">{g.approved}</span>
+                        <span className="text-[var(--color-text-muted)]"> / {g.totalQty} {g.unit}</span>
+                        {g.pending > 0 && (
+                          <span className="ml-1 text-orange-500">+{g.pending}</span>
                         )}
                       </td>
                       {/* 3.3 — gjenstående mengde, alltid synlig (ikke bak en kladd).
                           Rød når negativ (overprodusert mot budsjett). */}
-                      <td className={`px-3 py-2.5 text-right whitespace-nowrap text-xs font-medium ${usage.remaining < 0 ? 'text-danger' : 'text-[var(--color-text-primary)]'}`}>
-                        {usage.remaining} {bl.unit}
+                      <td className={`px-3 py-2.5 text-right whitespace-nowrap text-xs font-medium ${g.remaining < 0 ? 'text-danger' : 'text-[var(--color-text-primary)]'}`}>
+                        {g.remaining} {g.unit}
                       </td>
                       <td className="px-3 py-2.5">
                         <div className="flex items-center gap-1.5">
@@ -899,7 +934,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
                         </div>
                       </td>
                       <td className="px-3 py-2.5 text-right text-xs">
-                        {bl.subcontractor_cost_price_snapshot > 0 ? (
+                        {g.price > 0 ? (
                           <>
                             <span className="font-medium text-green-600">{fmt(approvedValue)}</span>
                             <span className="text-[var(--color-text-muted)]"> / {fmt(budgetValue)}</span>
@@ -917,12 +952,12 @@ export default function ProjectDetailClient({ initialData }: Props) {
 
                   if (isExpanded) {
                     rows.push(
-                      <tr key={`${bl.id}-chart`} className="bg-muted/30">
+                      <tr key={`${g.key}-chart`} className="bg-muted/30">
                         <td colSpan={7} className="px-0 py-0">
                           <BudgetLineChart
-                            productName={bl.product_name}
-                            unit={bl.unit}
-                            importQty={bl.budget_quantity - coTotal}
+                            productName={g.product_name}
+                            unit={g.unit}
+                            importQty={g.totalQty - coTotal}
                             projectStart={project.start_date}
                             approvedCOs={approvedCOs}
                           />
