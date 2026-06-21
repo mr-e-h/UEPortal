@@ -2,9 +2,10 @@
 
 import { useState, type RefObject } from 'react'
 import dynamic from 'next/dynamic'
-import { Download } from 'lucide-react'
+import { Download, Trash2 } from 'lucide-react'
 import SortableTable from '@/components/SortableTable'
 import NumberInput from '@/components/NumberInput'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 import { lineTypeLabel } from '@/lib/line-types'
 import type { ProjectBudgetLine, Product, Subcontractor, ChangeOrder, Project, BudgetVersion, ProjectPhase, PhaseType } from '@/types'
@@ -225,6 +226,29 @@ export default function BudgetLinesSection({
   budgetVersions, dragOver, setDragOver,
 }: Props) {
 
+  const { confirm, confirmDialog } = useConfirm()
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const [actionError, setActionError] = useState<string | null>(null)
+
+  async function handleDeleteLine(row: BLRow) {
+    setActionError(null)
+    const ok = await confirm({
+      title: 'Slette budsjettlinje?',
+      message: `«${row.product_code} ${row.product_name}» fjernes fra budsjettet. Dette kan ikke angres.`,
+      confirmLabel: 'Slett',
+    })
+    if (!ok) return
+    setDeletingId(row.id)
+    const res = await fetch(`/api/budget-lines?id=${encodeURIComponent(row.id)}`, { method: 'DELETE' })
+    setDeletingId(null)
+    if (res.ok) {
+      onRefresh()
+    } else {
+      const data = await res.json().catch(() => ({} as Record<string, unknown>))
+      setActionError((data as { error?: string }).error ?? 'Sletting feilet')
+    }
+  }
+
   const buildBLRows = (lines: ProjectBudgetLine[]): BLRow[] => lines.map((bl) => {
     const product = allProducts.find((p) => p.id === bl.product_id)
     const isIntern = bl.assigned_subcontractor_id === '__intern__'
@@ -369,6 +393,22 @@ export default function BudgetLinesSection({
         ? <span className={row.profit >= 0 ? 'text-green-600 font-medium' : 'text-red-600 font-medium'}>{fmt(row.profit)}</span>
         : '–',
     },
+    {
+      key: 'delete',
+      label: '',
+      render: (row: BLRow) => (
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); handleDeleteLine(row) }}
+          disabled={deletingId === row.id}
+          className="inline-flex items-center justify-center w-7 h-7 rounded text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-50 disabled:opacity-40"
+          title="Slett budsjettlinje"
+          aria-label={`Slett ${row.product_name}`}
+        >
+          <Trash2 size={14} />
+        </button>
+      ),
+    },
   ]
 
   const allRows = buildBLRows(budgetLines)
@@ -399,6 +439,7 @@ export default function BudgetLinesSection({
         <td />
         <td className="px-3 py-2 tabular-nums">{fmt(sumCost)}</td>
         <td className="px-3 py-2 tabular-nums">{fmt(sumProfit)}</td>
+        <td />
       </tr>
     )
   }
@@ -597,6 +638,12 @@ export default function BudgetLinesSection({
         </div>
       )}
 
+      {actionError && (
+        <div className="px-4 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
+          {actionError}
+        </div>
+      )}
+
       {/* Filter + bulk assign */}
       <div className="flex flex-wrap items-center gap-3 p-2 bg-muted border border-border rounded">
         <input type="checkbox" checked={allChecked} onChange={onToggleAll} className="h-4 w-4" title="Velg alle" />
@@ -634,7 +681,7 @@ export default function BudgetLinesSection({
           data={filteredRows}
           emptyText="Ingen budsjettlinjer ennå"
           tableClassName="table-fixed"
-          colWidths={['w-8', 'w-24', undefined, 'w-16', 'w-24', 'w-20', 'w-24', 'w-28', 'w-36', 'w-40', 'w-28', 'w-28']}
+          colWidths={['w-8', 'w-24', undefined, 'w-16', 'w-24', 'w-20', 'w-24', 'w-28', 'w-36', 'w-40', 'w-28', 'w-28', 'w-12']}
           rowClassName={(row: BLRow) => row.assigned_subcontractor_id
             ? 'border-b border-border hover:bg-blue-50'
             : 'border-b border-orange-100 bg-orange-50 hover:bg-orange-100'}
@@ -662,6 +709,8 @@ export default function BudgetLinesSection({
           }
         />
       </div>
+
+      {confirmDialog}
     </section>
   )
 }

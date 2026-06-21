@@ -196,3 +196,50 @@ export async function PUT(request: NextRequest) {
   if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
   return NextResponse.json(data)
 }
+
+// ─── DELETE /api/budget-lines?id=<lineId> ─────────────────────────────────────
+// Sletter én budsjettlinje. Vern om økonomien: linjer med rapporteringer eller
+// produksjonsføringer mot seg avvises (ville etterlatt foreldreløse rader som
+// forsvinner i tallene). Avledede avstemmingslinjer ryddes med.
+export async function DELETE(request: NextRequest) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
+  const id = new URL(request.url).searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id mangler' }, { status: 400 })
+
+  const sb = getSupabaseAdmin()
+  const { data: line } = await sb
+    .from('project_budget_lines')
+    .select('project_id')
+    .eq('id', id)
+    .maybeSingle<Pick<ProjectBudgetLine, 'project_id'>>()
+  if (!line) return NextResponse.json({ error: 'Linje ikke funnet' }, { status: 404 })
+
+  // PM write-side gate basert på linjas prosjekt.
+  const denied = await ensureProjectWritable(auth.user, line.project_id)
+  if (denied) return denied
+
+  const [wrl, prod] = await Promise.all([
+    sb.from('weekly_report_lines').select('id', { count: 'exact', head: true }).eq('project_budget_line_id', id),
+    sb.from('project_production_entries').select('id', { count: 'exact', head: true }).eq('project_budget_line_id', id),
+  ])
+  if ((wrl.count ?? 0) + (prod.count ?? 0) > 0) {
+    return NextResponse.json(
+      { error: 'Linja har rapporteringer eller produksjonsføringer mot seg og kan ikke slettes. Fjern disse først.' },
+      { status: 409 },
+    )
+  }
+
+  // Avledede avstemmingslinjer (regenereres) ryddes med før selve linja slettes.
+  await sb.from('project_reconciliation_lines').delete().eq('project_budget_line_id', id)
+
+  const { error } = await sb
+    .from('project_budget_lines')
+    .delete()
+    .eq('id', id)
+    .eq('project_id', line.project_id)
+  if (error) return NextResponse.json({ error: 'Sletting feilet' }, { status: 500 })
+
+  return NextResponse.json({ ok: true })
+}
