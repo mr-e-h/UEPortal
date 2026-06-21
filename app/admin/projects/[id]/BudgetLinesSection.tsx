@@ -1,6 +1,6 @@
 'use client'
 
-import { useState, type RefObject } from 'react'
+import { Fragment, useMemo, useState, type RefObject } from 'react'
 import dynamic from 'next/dynamic'
 import { Download, Trash2 } from 'lucide-react'
 import SortableTable from '@/components/SortableTable'
@@ -198,6 +198,130 @@ function CustomLineForm({
   )
 }
 
+// ── GroupedBudgetTable — én rad per produkt, prisperioder foldet inn ──────────
+
+/**
+ * Slår sammen budsjettlinjer med samme produkt (kode + navn) til én sammendrags-
+ * rad. Summene er EKSAKTE — hver linje beholder sin egen snapshot-pris (f.eks.
+ * gammel vs. indeksregulert pris), så det blandes aldri til én feil pris. Grupper
+ * med flere prisperioder kan foldes ut. Ren visning; bytt til flat visning for å
+ * tildele/slette/endre enkeltlinjer.
+ */
+function GroupedBudgetTable({ rows }: { rows: BLRow[] }) {
+  const [open, setOpen] = useState<Set<string>>(new Set())
+  const toggle = (k: string) => setOpen((prev) => {
+    const next = new Set(prev)
+    if (next.has(k)) next.delete(k); else next.add(k)
+    return next
+  })
+
+  const groups = useMemo(() => {
+    const map = new Map<string, { code: string; name: string; lines: BLRow[] }>()
+    for (const r of rows) {
+      const key = `${r.product_code}|||${r.product_name}`
+      const g = map.get(key) ?? { code: r.product_code, name: r.product_name, lines: [] }
+      g.lines.push(r)
+      map.set(key, g)
+    }
+    return Array.from(map.values()).map((g) => {
+      const totalQty = g.lines.reduce((s, l) => s + l.budget_quantity, 0)
+      const totalSales = g.lines.reduce((s, l) => s + l.sales_value, 0)
+      const totalCost = g.lines.reduce((s, l) => s + l.cost_value, 0)
+      const totalProfit = g.lines.reduce((s, l) => s + (l.assigned_subcontractor_id ? l.profit : 0), 0)
+      const prices = g.lines.map((l) => l.customer_price_snapshot)
+      const minPrice = Math.min(...prices)
+      const maxPrice = Math.max(...prices)
+      const avgPrice = totalQty !== 0 ? totalSales / totalQty : 0
+      const ueNames = Array.from(new Set(g.lines.filter((l) => l.assigned_subcontractor_id).map((l) => l.assigned_name)))
+      const assigned = ueNames.length === 0 ? '' : ueNames.length === 1 ? ueNames[0] : `${ueNames.length} UE-er`
+      return { key: `${g.code}|||${g.name}`, ...g, totalQty, totalSales, totalCost, totalProfit, minPrice, maxPrice, avgPrice, assigned }
+    }).sort((a, b) => a.code.localeCompare(b.code, 'nb'))
+  }, [rows])
+
+  const grand = groups.reduce(
+    (a, g) => ({ qty: a.qty + g.totalQty, sales: a.sales + g.totalSales, cost: a.cost + g.totalCost, profit: a.profit + g.totalProfit }),
+    { qty: 0, sales: 0, cost: 0, profit: 0 },
+  )
+
+  const th = 'px-3 py-2 text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide whitespace-nowrap'
+  const nb = (n: number) => n.toLocaleString('nb-NO', { maximumFractionDigits: 2 })
+
+  return (
+    <table className="w-full text-sm">
+      <thead>
+        <tr className="border-b border-border">
+          <th className={`${th} w-8`} />
+          <th className={`${th} text-left`}>Kode</th>
+          <th className={`${th} text-left`}>Produkt</th>
+          <th className={`${th} text-right`}>Mengde</th>
+          <th className={`${th} text-right`}>Pris</th>
+          <th className={`${th} text-right`}>Salgsverdi</th>
+          <th className={`${th} text-right`}>Kostnad</th>
+          <th className={`${th} text-right`}>Fortjeneste</th>
+          <th className={`${th} text-left`}>Tildelt</th>
+        </tr>
+      </thead>
+      <tbody>
+        {groups.length === 0 && (
+          <tr><td colSpan={9} className="px-3 py-6 text-center text-[var(--color-text-muted)]">Ingen budsjettlinjer</td></tr>
+        )}
+        {groups.map((g) => {
+          const many = g.lines.length > 1
+          const isOpen = open.has(g.key)
+          return (
+            <Fragment key={g.key}>
+              <tr
+                className={`border-b border-border ${many ? 'cursor-pointer hover:bg-muted' : ''}`}
+                onClick={() => many && toggle(g.key)}
+              >
+                <td className="px-3 py-2 text-center text-[var(--color-text-muted)]">{many ? (isOpen ? '▾' : '▸') : ''}</td>
+                <td className="px-3 py-2 font-mono text-xs text-[var(--color-text-muted)]">{g.code}</td>
+                <td className="px-3 py-2">
+                  <span className="text-[var(--color-text-primary)]">{g.name}</span>
+                  {many && <span className="ml-2 text-[10px] bg-amber-100 text-amber-800 border border-amber-200 rounded px-1.5 py-0.5">{g.lines.length} prisperioder</span>}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums">{nb(g.totalQty)}</td>
+                <td className="px-3 py-2 text-right tabular-nums text-xs text-[var(--color-text-muted)]" title={many ? `${fmt(g.minPrice)} – ${fmt(g.maxPrice)}` : undefined}>
+                  {g.minPrice === g.maxPrice ? fmt(g.minPrice) : `⌀ ${fmt(g.avgPrice)}`}
+                </td>
+                <td className="px-3 py-2 text-right tabular-nums font-medium">{fmt(g.totalSales)}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{g.totalCost > 0 ? fmt(g.totalCost) : '–'}</td>
+                <td className="px-3 py-2 text-right tabular-nums">{g.assigned ? fmt(g.totalProfit) : '–'}</td>
+                <td className="px-3 py-2 text-sm">{g.assigned || <span className="text-xs text-orange-400">Ikke tildelt</span>}</td>
+              </tr>
+              {isOpen && g.lines.map((l) => (
+                <tr key={l.id} className="border-b border-border bg-muted/30 text-xs">
+                  <td />
+                  <td className="px-3 py-1.5 font-mono text-[var(--color-text-muted)]">{l.product_code}</td>
+                  <td className="px-3 py-1.5 text-[var(--color-text-secondary)]">{nb(l.budget_quantity)} × {fmt(l.customer_price_snapshot)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{nb(l.budget_quantity)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{fmt(l.customer_price_snapshot)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{fmt(l.sales_value)}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{l.assigned_subcontractor_id ? fmt(l.cost_value) : '–'}</td>
+                  <td className="px-3 py-1.5 text-right tabular-nums">{l.assigned_subcontractor_id ? fmt(l.profit) : '–'}</td>
+                  <td className="px-3 py-1.5 text-[var(--color-text-secondary)]">{l.assigned_subcontractor_id ? l.assigned_name : '—'}</td>
+                </tr>
+              ))}
+            </Fragment>
+          )
+        })}
+      </tbody>
+      <tfoot>
+        <tr className="border-t-2 border-border bg-muted/60 font-medium text-[var(--color-text-primary)]">
+          <td />
+          <td className="px-3 py-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)] whitespace-nowrap" colSpan={2}>Sum · {groups.length} produkter</td>
+          <td className="px-3 py-2 text-right tabular-nums">{nb(grand.qty)}</td>
+          <td />
+          <td className="px-3 py-2 text-right tabular-nums font-semibold">{fmt(grand.sales)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(grand.cost)}</td>
+          <td className="px-3 py-2 text-right tabular-nums">{fmt(grand.profit)}</td>
+          <td />
+        </tr>
+      </tfoot>
+    </table>
+  )
+}
+
 /**
  * "Budsjettlinjer"-tab: form for adding lines, Excel-import, filter +
  * bulk-assign UI, and the actual table with per-row expand → BudgetLineChart.
@@ -230,6 +354,7 @@ export default function BudgetLinesSection({
   const { confirm, confirmDialog } = useConfirm()
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
+  const [groupByProduct, setGroupByProduct] = useState(false)
 
   async function handleDeleteLine(row: BLRow) {
     setActionError(null)
@@ -655,70 +780,86 @@ export default function BudgetLinesSection({
         </div>
       )}
 
-      {/* Filter + bulk assign */}
-      <div className="flex flex-wrap items-center gap-3 p-2 bg-muted border border-border rounded">
-        <input type="checkbox" checked={allChecked} onChange={onToggleAll} className="h-4 w-4" title="Velg alle" />
-        <span className="text-sm text-[var(--color-text-muted)]">
-          {selected.length > 0 ? `${selected.length} valgt` : 'Velg rader'}
-        </span>
-        {selected.length > 0 && (
-          <>
-            <select
-              value={bulkSubcontractor}
-              onChange={(e) => setBulkSubcontractor(e.target.value)}
-              className="text-sm border border-border rounded px-2 py-1"
-            >
-              <option value="">— Velg underentreprenør —</option>
-              <option value="__intern__">Intern / MinUE</option>
-              {projectSubDetails.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
-            </select>
-            <button
-              onClick={onBulkAssign}
-              disabled={!bulkSubcontractor}
-              className="text-sm bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-40"
-            >
-              Tildel
-            </button>
-            <button onClick={() => setSelected(() => [])} className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]">
-              Avbryt
-            </button>
-          </>
-        )}
+      {/* Verktøylinje: type-filter + grupper-toggle (delt av flat og gruppert visning) */}
+      <div className="flex flex-wrap items-center gap-3">
+        <span className="text-xs text-[var(--color-text-muted)]">Filtrer type:</span>
+        <select
+          value={lineTypeFilter}
+          onChange={(e) => setLineTypeFilter(e.target.value)}
+          className="text-sm border border-border rounded px-2 py-1"
+        >
+          <option value="all">Alle</option>
+          <option value="subcontractor_work">UE-arbeid</option>
+          <option value="internal_cost">Intern</option>
+          <option value="material">Materiell</option>
+        </select>
+        <button
+          type="button"
+          onClick={() => setGroupByProduct((v) => !v)}
+          className={`ml-auto inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border ${groupByProduct ? 'bg-blue-600 text-white border-blue-600' : 'border-border text-[var(--color-text-secondary)] hover:bg-muted'}`}
+          title="Slå sammen linjer med samme produkt til én rad — prisperioder (indeksregulering) foldes inn og summeres korrekt"
+        >
+          {groupByProduct ? '☰ Vis alle linjer' : '▦ Grupper per produkt'}
+        </button>
       </div>
 
-      <div className="bg-white rounded-lg shadow">
-        <SortableTable
-          columns={blColumns}
-          data={filteredRows}
-          emptyText="Ingen budsjettlinjer ennå"
-          tableClassName="table-fixed"
-          colWidths={['w-8', 'w-24', undefined, 'w-16', 'w-24', 'w-20', 'w-24', 'w-28', 'w-36', 'w-40', 'w-28', 'w-28', 'w-12']}
-          rowClassName={(row: BLRow) => row.assigned_subcontractor_id
-            ? 'border-b border-border hover:bg-blue-50'
-            : 'border-b border-orange-100 bg-orange-50 hover:bg-orange-100'}
-          expandedRowId={chartLineId}
-          onRowExpand={(rowId) => setChartLineId(rowId)}
-          expandedRowRender={expandedRowRenderFn}
-          searchable
-          searchPlaceholder="Søk i budsjettlinjer …"
-          getSearchText={(row) => `${row.product_code} ${row.product_name}`}
-          renderSummary={renderBudgetSummary}
-          toolbar={
-            <div className="flex items-center gap-2">
-              <span className="text-xs text-[var(--color-text-muted)]">Filtrer type:</span>
+      {/* Bulk-tildeling — kun i flat visning (gruppert har ingen linjevalg) */}
+      {!groupByProduct && (
+        <div className="flex flex-wrap items-center gap-3 p-2 bg-muted border border-border rounded">
+          <input type="checkbox" checked={allChecked} onChange={onToggleAll} className="h-4 w-4" title="Velg alle" />
+          <span className="text-sm text-[var(--color-text-muted)]">
+            {selected.length > 0 ? `${selected.length} valgt` : 'Velg rader'}
+          </span>
+          {selected.length > 0 && (
+            <>
               <select
-                value={lineTypeFilter}
-                onChange={(e) => setLineTypeFilter(e.target.value)}
+                value={bulkSubcontractor}
+                onChange={(e) => setBulkSubcontractor(e.target.value)}
                 className="text-sm border border-border rounded px-2 py-1"
               >
-                <option value="all">Alle</option>
-                <option value="subcontractor_work">UE-arbeid</option>
-                <option value="internal_cost">Intern</option>
-                <option value="material">Materiell</option>
+                <option value="">— Velg underentreprenør —</option>
+                <option value="__intern__">Intern / MinUE</option>
+                {projectSubDetails.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
               </select>
-            </div>
-          }
-        />
+              <button
+                onClick={onBulkAssign}
+                disabled={!bulkSubcontractor}
+                className="text-sm bg-blue-600 text-white px-3 py-1 rounded disabled:opacity-40"
+              >
+                Tildel
+              </button>
+              <button onClick={() => setSelected(() => [])} className="text-sm text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)]">
+                Avbryt
+              </button>
+            </>
+          )}
+        </div>
+      )}
+
+      <div className="bg-white rounded-lg shadow">
+        {groupByProduct ? (
+          <div className="overflow-x-auto p-1">
+            <GroupedBudgetTable rows={filteredRows} />
+          </div>
+        ) : (
+          <SortableTable
+            columns={blColumns}
+            data={filteredRows}
+            emptyText="Ingen budsjettlinjer ennå"
+            tableClassName="table-fixed"
+            colWidths={['w-8', 'w-24', undefined, 'w-16', 'w-24', 'w-20', 'w-24', 'w-28', 'w-36', 'w-40', 'w-28', 'w-28', 'w-12']}
+            rowClassName={(row: BLRow) => row.assigned_subcontractor_id
+              ? 'border-b border-border hover:bg-blue-50'
+              : 'border-b border-orange-100 bg-orange-50 hover:bg-orange-100'}
+            expandedRowId={chartLineId}
+            onRowExpand={(rowId) => setChartLineId(rowId)}
+            expandedRowRender={expandedRowRenderFn}
+            searchable
+            searchPlaceholder="Søk i budsjettlinjer …"
+            getSearchText={(row) => `${row.product_code} ${row.product_name}`}
+            renderSummary={renderBudgetSummary}
+          />
+        )}
       </div>
 
       {confirmDialog}
