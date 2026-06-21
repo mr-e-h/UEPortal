@@ -334,7 +334,7 @@ export default function ReconciliationSection({
     setFormError(null)
     if (!formDraft.product_id) { setFormError('Velg et produkt.'); return }
     const qty = Number(formDraft.quantity.replace(',', '.'))
-    if (!Number.isFinite(qty) || qty < 0) { setFormError('Mengde må være et ikke-negativt tall.'); return }
+    if (!Number.isFinite(qty)) { setFormError('Mengde må være et gyldig tall.'); return }
     if (formDraft.executed_by === 'subcontractor' && !formDraft.subcontractor_id) {
       setFormError('Velg underentreprenør når «utført av» er underentreprenør.'); return
     }

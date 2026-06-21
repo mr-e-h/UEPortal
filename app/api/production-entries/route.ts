@@ -83,8 +83,10 @@ export async function POST(request: NextRequest) {
   if (denied) return denied
 
   const qty = Number(body.quantity)
-  if (!Number.isFinite(qty) || qty < 0) {
-    return NextResponse.json({ error: 'Mengde må være et ikke-negativt tall' }, { status: 400 })
+  // Negativt tillatt: en korreksjonsføring kan trekke fra tidligere overrapportert
+  // produksjon. Kun ugyldige tall (NaN/Inf) avvises.
+  if (!Number.isFinite(qty)) {
+    return NextResponse.json({ error: 'Mengde må være et gyldig tall' }, { status: 400 })
   }
 
   if (!body.executed_by || !EXECUTED_BY_VALUES.includes(body.executed_by as ProductionExecutedBy)) {
@@ -111,10 +113,11 @@ export async function POST(request: NextRequest) {
     )
   }
 
-  // cost lagres alltid (v1: 0 kr = ordinær UE-kost). Ikke-negativt tall.
+  // cost lagres alltid (v1: 0 kr = ordinær UE-kost). Negativt tillatt — en
+  // korreksjonsføring (negativ mengde × pris) gir negativ kost (kreditering).
   const cost = body.cost == null ? 0 : Number(body.cost)
-  if (!Number.isFinite(cost) || cost < 0) {
-    return NextResponse.json({ error: 'Kost må være et ikke-negativt tall' }, { status: 400 })
+  if (!Number.isFinite(cost)) {
+    return NextResponse.json({ error: 'Kost må være et gyldig tall' }, { status: 400 })
   }
 
   const newEntry: ProductionEntry = {

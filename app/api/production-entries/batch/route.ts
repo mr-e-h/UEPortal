@@ -44,8 +44,8 @@ function validateRow(row: unknown, idx: number): { ok: true; row: BatchRow } | {
   }
 
   const qty = Number(r.quantity)
-  if (!Number.isFinite(qty) || qty < 0) {
-    return { ok: false, error: `Rad ${idx} (${r.project_budget_line_id}): mengde må være et ikke-negativt tall` }
+  if (!Number.isFinite(qty)) {
+    return { ok: false, error: `Rad ${idx} (${r.project_budget_line_id}): mengde må være et gyldig tall` }
   }
 
   return {
