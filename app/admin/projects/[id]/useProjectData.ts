@@ -25,6 +25,8 @@ import type {
   ReconciliationLine,
   ReconciliationStatus,
   ProductionVersion,
+  ProjectMaterial,
+  ProjectMaterialVersion,
 } from '@/types'
 import type { ProjectDetailData } from '@/lib/admin-project-detail'
 
@@ -81,6 +83,8 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
   const [productionEntries, setProductionEntries] = useState<ProductionEntry[]>(initialData?.productionEntries ?? [])
   const [reconciliationLines, setReconciliationLines] = useState<ReconciliationLine[]>(initialData?.reconciliationLines ?? [])
   const [productionVersions, setProductionVersions] = useState<ProductionVersion[]>([])
+  const [materials, setMaterials] = useState<ProjectMaterial[]>([])
+  const [materialVersions, setMaterialVersions] = useState<ProjectMaterialVersion[]>([])
   // If we have SSR data, the page is immediately populated — no loading spinner.
   const [loading, setLoading] = useState(!initialData)
 
@@ -109,6 +113,10 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
       fetch(`/api/production-entries?project_id=${id}`),
       fetch(`/api/reconciliation-lines?project_id=${id}`),
       fetch(`/api/production-entries/batch?project_id=${id}`),
+      // Materiell-budsjett (migrasjon 0021): eget mengde-budsjett + versjonslogg.
+      // 404 (API ennå ikke live) håndteres av safeArr → [].
+      fetch(`/api/projects/${id}/materials`),
+      fetch(`/api/projects/${id}/materials/versions`),
     ])
 
     if (responses.some((r) => r.status === 401)) {
@@ -116,7 +124,7 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
       return
     }
 
-    const [proj, prods, bls, rls, pSubs, subs, cos, ics, wrls, sps, ms, bv, mp, pms, ph, pt, inv, pe, rc, pv] = await Promise.all(
+    const [proj, prods, bls, rls, pSubs, subs, cos, ics, wrls, sps, ms, bv, mp, pms, ph, pt, inv, pe, rc, pv, mats, matVers] = await Promise.all(
       responses.map((r) => r.json())
     )
 
@@ -145,6 +153,9 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
     setProductionEntries(safeArr(pe))
     setReconciliationLines(safeArr(rc))
     setProductionVersions(safeArr(pv))
+    // Materiell-budsjett: 404/403 fra ennå-ikke-aktivt API → safeArr → [].
+    setMaterials(safeArr(mats))
+    setMaterialVersions(safeArr(matVers))
     setLoading(false)
   }, [id, router])
 
@@ -298,6 +309,30 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
     return { ok: true, upserted: typed.upserted, deleted: typed.deleted }
   }, [id, fetchAll])
 
+  // ── Materiell-avstemming (migrasjon 0021) ────────────────────────────────
+  // Batch-PUT faktisk mengde + avstemt-flagg + kommentar for alle rader.
+  // Admin/PL-only (materiell er internt — UE eksponeres ikke for dette).
+  const saveMaterialReconciliation = useCallback(async (
+    rows: Array<{
+      id: string
+      actual_quantity: number | null
+      reconciled: boolean
+      comment: string
+    }>,
+  ): Promise<{ ok: boolean; error?: string }> => {
+    const res = await fetch(`/api/projects/${id}/materials`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ rows }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({} as { error?: string }))
+      return { ok: false, error: d.error ?? 'Materiell-lagring feilet' }
+    }
+    await fetchAll()
+    return { ok: true }
+  }, [id, fetchAll])
+
   // Avstemmingsstatus på prosjektet (status-arbeidsflyt). PUT projects/[id].
   const setReconciliationStatus = useCallback(async (
     status: ReconciliationStatus,
@@ -337,6 +372,8 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
     productionEntries,
     reconciliationLines,
     productionVersions,
+    materials,
+    materialVersions,
     // state
     loading,
     adminName,
@@ -353,5 +390,6 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
     saveProductionBatch,
     saveReconciliationLine,
     setReconciliationStatus,
+    saveMaterialReconciliation,
   }
 }

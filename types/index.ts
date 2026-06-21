@@ -198,6 +198,42 @@ export interface ProjectBudgetLine {
 }
 
 /**
+ * Materiell-budsjett (migrasjon 0021): eget mengde-budsjett per prosjekt, helt
+ * adskilt fra produkter / budsjettlinjer / økonomi. unit_price + supplier lagres
+ * for sporing, men VISES ikke som salgsverdi og teller IKKE i ordreverdi. Avstemmes
+ * manuelt (actual_quantity) mot planlagt for å få en fasit til slutt.
+ */
+export interface ProjectMaterial {
+  id: string
+  project_id: string
+  material_code: string
+  material_name: string
+  category: string
+  unit: string
+  planned_quantity: number
+  unit_price: number
+  supplier: string
+  /** Faktisk brukt (manuell avstemming). null = ikke avstemt ennå. */
+  actual_quantity: number | null
+  reconciled: boolean
+  comment: string
+  sort_order: number
+  created_at?: string
+}
+
+/** Én logget versjon av materielliste-opplastingen (forrige beholdes ved ny opplasting). */
+export interface ProjectMaterialVersion {
+  id: string
+  project_id: string
+  version: number
+  file_name: string | null
+  snapshot: { materials: Array<Pick<ProjectMaterial, 'material_code' | 'material_name' | 'category' | 'unit' | 'planned_quantity' | 'unit_price' | 'supplier'>> }
+  uploaded_by: string
+  uploaded_at: string
+  created_at?: string
+}
+
+/**
  * Andel av en budsjettlinje tildelt ÉN underentreprenør — for å dele ett produkt
  * mellom flere UE (mengde + kostpris + ansvar per UE). Kunden faktureres for hele
  * produktet via budsjettlinjas mengde × kundepris; UE-kost = Σ(andel.mengde ×

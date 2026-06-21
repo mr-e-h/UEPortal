@@ -68,11 +68,12 @@ export default function ProjectDetailClient({ initialData }: Props) {
     project, allProducts, budgetLines, reportLines, projectSubs, allSubs,
     changeOrders, internalCosts, weeklyReportsWL, subPrices, milestones, phases, phaseTypes,
     budgetVersions, monthPlans, projectManagers, invoices, productionEntries, reconciliationLines,
-    productionVersions,
+    productionVersions, materials, materialVersions,
     loading, adminName,
     fetchAll, addBudgetLine: addBudgetLineHandler, addSubToProject: addSubHandler,
     removeSubFromProject, updateReportStatus, updateChangeOrderStatus: updateCOStatus,
-    deleteInternalCost, addProductionEntry, saveProductionBatch, saveReconciliationLine, setReconciliationStatus,
+    deleteInternalCost, addProductionEntry, saveProductionBatch, saveReconciliationLine,
+    setReconciliationStatus, saveMaterialReconciliation,
   } = useProjectData(id, initialData)
 
   const { me } = useMe()
@@ -633,16 +634,14 @@ export default function ProjectDetailClient({ initialData }: Props) {
       )}
 
       {/* ── MATERIELL ────────────────────────────────────────────────── */}
+      {/* Admin/PL-internt: ikke i SITE_MANAGER_TABS, API-ene 403'er for byggeleder/sub.
+          Ingen pris/salgsverdi vises — kun mengder og differanser. */}
       {activeTab === 'materiell' && (
         <MaterialSection
-          project={project}
-          budgetLines={budgetLines}
-          allProducts={allProducts}
-          allSubs={allSubs}
-          changeOrders={changeOrders}
-          chartLineId={chartLineId}
-          setChartLineId={setChartLineId}
-          onGoToBudgetLines={() => setActiveTab('budsjett')}
+          materials={materials}
+          materialVersions={materialVersions}
+          onImported={fetchAll}
+          saveMaterialReconciliation={saveMaterialReconciliation}
         />
       )}
 
