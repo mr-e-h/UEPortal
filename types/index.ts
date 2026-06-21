@@ -191,6 +191,9 @@ export interface ProjectBudgetLine {
   customer_price_snapshot: number
   assigned_subcontractor_id: string | null
   subcontractor_cost_price_snapshot: number
+  /** Egendefinert etikett (f.eks. «Blåsing») for UE-splittlinjer — vises i stedet
+   *  for produktnavnet. Tom = bruk produktnavnet. */
+  custom_label?: string
   source?: 'manual' | 'change_order'
   line_type?: 'subcontractor_work' | 'internal_cost' | 'material'
   /** Fase i fremdriftsplanen linja hører til — gir avledet fasevekt (ØKONOMIMODELL.md 1b). */

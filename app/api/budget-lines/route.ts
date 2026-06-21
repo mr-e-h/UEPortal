@@ -68,10 +68,24 @@ export async function POST(request: NextRequest) {
     budget_quantity: number
     line_type?: string
     phase_id?: string | null
+    // Egendefinert UE-splittlinje (valgfritt): sett etikett/pris/tildeling direkte
+    // i stedet for å hente UE-prisen fra katalogen. customer_price 0 = kun kost.
+    custom_label?: string
+    customer_price?: number
+    subcontractor_cost_price?: number
+    assigned_subcontractor_id?: string | null
   }
   const qty = Number(body.budget_quantity)
   if (!Number.isFinite(qty) || qty < 0) {
     return NextResponse.json({ error: 'Mengde må være et ikke-negativt tall' }, { status: 400 })
+  }
+  const customerPrice = body.customer_price != null ? Number(body.customer_price) : null
+  if (customerPrice != null && (!Number.isFinite(customerPrice) || customerPrice < 0)) {
+    return NextResponse.json({ error: 'Salgsverdi må være et ikke-negativt tall' }, { status: 400 })
+  }
+  const uePrice = body.subcontractor_cost_price != null ? Number(body.subcontractor_cost_price) : null
+  if (uePrice != null && (!Number.isFinite(uePrice) || uePrice < 0)) {
+    return NextResponse.json({ error: 'UE-pris må være et ikke-negativt tall' }, { status: 400 })
   }
 
   // PM write-side gate.
@@ -91,9 +105,10 @@ export async function POST(request: NextRequest) {
     project_id: body.project_id,
     product_id: body.product_id,
     budget_quantity: qty,
-    customer_price_snapshot: product.customer_price,
-    assigned_subcontractor_id: null,
-    subcontractor_cost_price_snapshot: 0,
+    customer_price_snapshot: customerPrice != null ? customerPrice : product.customer_price,
+    assigned_subcontractor_id: body.assigned_subcontractor_id ?? null,
+    subcontractor_cost_price_snapshot: uePrice != null ? uePrice : 0,
+    custom_label: (body.custom_label ?? '').trim(),
     line_type: (body.line_type as ProjectBudgetLine['line_type']) ?? 'subcontractor_work',
     phase_id: body.phase_id ?? null,
   }

@@ -544,6 +544,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
           setNewLine={setNewLine}
           savingLine={savingLine}
           onAddBudgetLine={addBudgetLine}
+          onRefresh={fetchAll}
           selected={selected}
           setSelected={setSelected}
           bulkSubcontractor={bulkSubcontractor}
