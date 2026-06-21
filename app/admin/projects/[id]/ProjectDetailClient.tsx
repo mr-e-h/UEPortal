@@ -476,6 +476,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
           invoices={invoices}
           periodEnd={planEnd}
           projectManagers={projectManagers}
+          materials={materials}
           onGoToTab={(tab) => setActiveTab(tab)}
         />
       )}

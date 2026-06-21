@@ -75,6 +75,8 @@ export interface ProjectEconomySummary {
   ueBudgetCost: number
   ueReportedCost: number
   internCost: number
+  /** Materiellbudsjettets kost (Σ antall × pris) — trekkes fra forventet fortjeneste. */
+  materialCost: number
   expectedProfit: number
 }
 
@@ -92,6 +94,7 @@ export function computeProjectEconomy({
   changeOrders,
   internalCostTotal,
   productionEntries = [],
+  materialBudgetTotal = 0,
 }: {
   budgetLines: ProjectBudgetLine[]
   weeklyReports: ReportWithLines[]
@@ -105,6 +108,9 @@ export function computeProjectEconomy({
    * føringer finnes. cost/UE-kost rører IKKE ueReportedCost i v1.
    */
   productionEntries?: ProductionEntryForEconomy[]
+  /** Materiellbudsjettets totalverdi (Σ planlagt antall × pris, fra project_materials).
+   *  Trekkes fra forventet fortjeneste som egen kost — materiell er IKKE i ordreverdi. */
+  materialBudgetTotal?: number
 }): ProjectEconomySummary {
   // Opprinnelig ordrebok (salgsverdi mot kunde — det er kontrakten).
   const originalBudget = budgetSalesValue(budgetLines)
@@ -169,7 +175,7 @@ export function computeProjectEconomy({
     }
   }
   const internCost = internalCostTotal
-  const expectedProfit = totalContract - ueBudgetCost - internCost
+  const expectedProfit = totalContract - ueBudgetCost - internCost - materialBudgetTotal
 
   // Bar-segmenter (klemt til en fornuftig stabling).
   const delivered = Math.min(deliveredValue, totalContract)
@@ -196,6 +202,7 @@ export function computeProjectEconomy({
     ueBudgetCost,
     ueReportedCost,
     internCost,
+    materialCost: materialBudgetTotal,
     expectedProfit,
   }
 }

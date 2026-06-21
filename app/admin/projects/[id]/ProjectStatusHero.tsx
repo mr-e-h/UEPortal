@@ -3,7 +3,7 @@
 import { useMemo } from 'react'
 import Link from 'next/link'
 import { AlertTriangle, AlertCircle, Mail } from 'lucide-react'
-import type { Project, ProjectBudgetLine, ChangeOrder, ProjectInternalCostEntry, ProjectInvoice, ProductionEntry } from '@/types'
+import type { Project, ProjectBudgetLine, ChangeOrder, ProjectInternalCostEntry, ProjectInvoice, ProductionEntry, ProjectMaterial } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
 import { computeProjectEconomy } from '@/lib/project-economy'
 import { internalCostTotal as sumInternalCosts, fallbackEndMonthIndex, internalCostToDate, currentMonthIndex } from '@/lib/internal-costs'
@@ -43,6 +43,8 @@ interface Props {
   /** Periodens slutt for løpende interne kostnader — følger fremdriftsplanen. */
   periodEnd: string | null
   projectManagers: ProjectManagerRow[]
+  /** Materiellbudsjett (migrasjon 0021) — totalverdien trekkes fra som kost i prognosen. */
+  materials: ProjectMaterial[]
   onGoToTab: (tab: 'endringsmeldinger' | 'rapporteringer') => void
 }
 
@@ -81,10 +83,17 @@ export default function ProjectStatusHero({
   invoices,
   periodEnd,
   projectManagers,
+  materials,
   onGoToTab,
 }: Props) {
   // All formler bor i økonomi-modulen (lib/project-economy.ts) — endres
   // de der, følger hero, API-ruter og alle andre visninger med.
+  // Materiellbudsjettets totalverdi (Σ planlagt antall × pris) — teller som kost
+  // i prognosen (men ikke i ordreverdi/salgsverdi — materiell faktureres ikke kunde).
+  const materialBudgetTotal = useMemo(
+    () => materials.reduce((s, m) => s + (m.planned_quantity || 0) * (m.unit_price || 0), 0),
+    [materials],
+  )
   const summary = useMemo(
     () => computeProjectEconomy({
       budgetLines,
@@ -95,8 +104,10 @@ export default function ProjectStatusHero({
       internalCostTotal: sumInternalCosts(internalCosts, fallbackEndMonthIndex(periodEnd, new Date())),
       // Produksjonsføringer øker opptjent straks (× budsjettlinjas kundepris).
       productionEntries,
+      // Materiellbudsjettet trekkes fra forventet fortjeneste (ikke i ordreverdi).
+      materialBudgetTotal,
     }),
-    [budgetLines, changeOrders, weeklyReportsWL, internalCosts, periodEnd, productionEntries],
+    [budgetLines, changeOrders, weeklyReportsWL, internalCosts, periodEnd, productionEntries, materialBudgetTotal],
   )
 
   // RESULTAT (per i dag): internkost PÅLØPT t.o.m. inneværende måned — det
@@ -218,6 +229,9 @@ export default function ProjectStatusHero({
             />
             <ResultRow sign="−" label="UE-kost (budsjett)" value={fmt(summary.ueBudgetCost)} tone="muted" />
             <ResultRow sign="−" label="Internkost (hele perioden)" value={fmt(summary.internCost)} tone="muted" />
+            {summary.materialCost > 0 && (
+              <ResultRow sign="−" label="Materiellkost (budsjett)" value={fmt(summary.materialCost)} tone="muted" />
+            )}
             <div className="border-t border-border pt-1.5 mt-0.5">
               <ResultRow
                 sign="="
