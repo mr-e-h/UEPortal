@@ -84,7 +84,7 @@ export async function importExcelLines(projectId: string, county: string, rawLin
 
       budgetLines[bestIdx] = {
         ...budgetLines[bestIdx],
-        budget_quantity: line.budget_quantity || 1,
+        budget_quantity: line.budget_quantity ?? 1,
         customer_price_snapshot: line.unit_price,
       }
       updatedIds.add(budgetLines[bestIdx].id)
@@ -103,7 +103,7 @@ export async function importExcelLines(projectId: string, county: string, rawLin
         id: String(idBase++),
         project_id: projectId,
         product_id: product!.id,
-        budget_quantity: line.budget_quantity || 1,
+        budget_quantity: line.budget_quantity ?? 1,
         customer_price_snapshot: line.unit_price,
         assigned_subcontractor_id: null,
         subcontractor_cost_price_snapshot: 0,
