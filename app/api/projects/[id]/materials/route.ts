@@ -1,4 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server'
+import { randomUUID } from 'crypto'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
 import type { ProjectMaterial } from '@/types'
@@ -102,4 +103,105 @@ export async function PUT(
   }
 
   return NextResponse.json({ ok: true, updated })
+}
+
+// ─── POST /api/projects/[id]/materials ────────────────────────────────────────
+// Legg til ÉN materiell-rad manuelt (uten Excel). Lager IKKE en ny versjon —
+// versjoner er forbeholdt Excel-opplastinger; manuell tilføying er en redigering
+// av den levende lista. sort_order = (max + 1) så raden havner sist.
+// Body: { material_name (påkrevd), planned_quantity (påkrevd, ≥0),
+//         material_code?, category?, unit?, unit_price?, supplier? }
+
+export async function POST(
+  request: NextRequest,
+  { params }: { params: { id: string } },
+) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
+  const denied = await ensureProjectWritable(auth.user, params.id)
+  if (denied) return denied
+
+  let body: Record<string, unknown>
+  try {
+    body = await request.json() as Record<string, unknown>
+  } catch {
+    return NextResponse.json({ error: 'Ugyldig JSON' }, { status: 400 })
+  }
+
+  const name = typeof body.material_name === 'string' ? body.material_name.trim() : ''
+  if (!name) return NextResponse.json({ error: 'Materiellnavn er påkrevd' }, { status: 400 })
+
+  const qty = Number(body.planned_quantity)
+  if (!Number.isFinite(qty) || qty < 0) {
+    return NextResponse.json({ error: 'Planlagt mengde må være et tall ≥ 0' }, { status: 400 })
+  }
+
+  // Pris er valgfri (default 0). Materiell uten pris teller 0 kr i økonomien.
+  const priceRaw = body.unit_price
+  const price = priceRaw == null || priceRaw === '' ? 0 : Number(priceRaw)
+  if (!Number.isFinite(price) || price < 0) {
+    return NextResponse.json({ error: 'Pris må være et tall ≥ 0' }, { status: 400 })
+  }
+
+  const str = (v: unknown) => (typeof v === 'string' ? v.trim() : '')
+
+  const sb = getSupabaseAdmin()
+
+  // sort_order = max + 1 (legg sist). Egen spørring så vi ikke drar hele lista.
+  const { data: top } = await sb
+    .from('project_materials')
+    .select('sort_order')
+    .eq('project_id', params.id)
+    .order('sort_order', { ascending: false })
+    .limit(1)
+  const nextSort = (((top ?? [])[0]?.sort_order as number | undefined) ?? -1) + 1
+
+  const row: Omit<ProjectMaterial, 'created_at'> = {
+    id: randomUUID(),
+    project_id: params.id,
+    material_code: str(body.material_code),
+    material_name: name,
+    category: str(body.category),
+    unit: str(body.unit),
+    planned_quantity: qty,
+    unit_price: price,
+    supplier: str(body.supplier),
+    actual_quantity: null,
+    reconciled: false,
+    comment: '',
+    sort_order: nextSort,
+  }
+
+  const { error } = await sb.from('project_materials').insert(row)
+  if (error) return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+
+  return NextResponse.json({ ok: true, material: row }, { status: 201 })
+}
+
+// ─── DELETE /api/projects/[id]/materials?id=<materialId> ──────────────────────
+// Sletter ÉN materiell-rad (scoped til prosjektet) — for å fjerne en feilført
+// eller manuelt lagt rad. Lager ingen versjon.
+
+export async function DELETE(
+  request: NextRequest,
+  { params }: { params: { id: string } },
+) {
+  const auth = await requireAdmin()
+  if (!auth.ok) return auth.response
+
+  const denied = await ensureProjectWritable(auth.user, params.id)
+  if (denied) return denied
+
+  const id = new URL(request.url).searchParams.get('id')
+  if (!id) return NextResponse.json({ error: 'id mangler' }, { status: 400 })
+
+  const { error } = await getSupabaseAdmin()
+    .from('project_materials')
+    .delete()
+    .eq('id', id)
+    .eq('project_id', params.id)
+
+  if (error) return NextResponse.json({ error: 'Sletting feilet' }, { status: 500 })
+  return NextResponse.json({ ok: true })
 }

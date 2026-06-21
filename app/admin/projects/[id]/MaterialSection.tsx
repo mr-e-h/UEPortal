@@ -1,17 +1,19 @@
 'use client'
 
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { Download } from 'lucide-react'
+import { Download, Plus, Trash2, X } from 'lucide-react'
 import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import ErrorBox from '@/components/ui/ErrorBox'
 import NumberInput from '@/components/NumberInput'
+import { useConfirm } from '@/components/ui/useConfirm'
 import { fmtNOK as fmt } from '@/lib/format'
 import type { ProjectMaterial, ProjectMaterialVersion } from '@/types'
 
 // ── Props ────────────────────────────────────────────────────────────────────
 
 interface Props {
+  projectId: string
   materials: ProjectMaterial[]
   materialVersions: ProjectMaterialVersion[]
   onImported: () => void
@@ -274,6 +276,133 @@ function VersionHistoryPanel({
   )
 }
 
+// ── AddMaterialForm — manuell tilføying av én materiell-rad ───────────────────
+
+/**
+ * Legg til materiell uten Excel. POSTer én rad til project_materials (ingen
+ * versjon — versjoner er kun for Excel-opplastinger) og kaller onAdded() for å
+ * friske opp lista. Skjemaet blir stående åpent så flere rader kan legges inn
+ * etter hverandre. Pris er valgfri og vises ikke i lista, men teller i økonomien.
+ */
+function AddMaterialForm({
+  projectId,
+  onAdded,
+}: {
+  projectId?: string
+  onAdded: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [f, setF] = useState({
+    material_name: '', material_code: '', category: '', unit: '',
+    planned_quantity: '', unit_price: '', supplier: '',
+  })
+  const upd = (patch: Partial<typeof f>) => setF((prev) => ({ ...prev, ...patch }))
+  const reset = () => {
+    setF({ material_name: '', material_code: '', category: '', unit: '', planned_quantity: '', unit_price: '', supplier: '' })
+    setError(null)
+  }
+
+  async function submit() {
+    if (!projectId) return
+    const name = f.material_name.trim()
+    if (!name) { setError('Materiellnavn er påkrevd'); return }
+    const qty = Number(f.planned_quantity.replace(',', '.'))
+    if (!Number.isFinite(qty) || qty < 0) { setError('Planlagt mengde må være et tall ≥ 0'); return }
+    const price = f.unit_price.trim() === '' ? 0 : Number(f.unit_price.replace(',', '.'))
+    if (!Number.isFinite(price) || price < 0) { setError('Pris må være et tall ≥ 0'); return }
+
+    setError(null)
+    setSaving(true)
+    const res = await fetch(`/api/projects/${projectId}/materials`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        material_name: name,
+        material_code: f.material_code.trim(),
+        category: f.category.trim(),
+        unit: f.unit.trim(),
+        planned_quantity: qty,
+        unit_price: price,
+        supplier: f.supplier.trim(),
+      }),
+    })
+    const data = await res.json().catch(() => ({} as Record<string, unknown>))
+    setSaving(false)
+    if (!res.ok) { setError((data as { error?: string }).error ?? 'Lagring feilet'); return }
+    reset()
+    onAdded()
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        disabled={!projectId}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-border bg-card text-[var(--color-text-secondary)] hover:bg-muted disabled:opacity-40"
+      >
+        <Plus size={15} /> Legg til materiell manuelt
+      </button>
+    )
+  }
+
+  const inputCls = 'px-2.5 py-1.5 text-sm border border-border rounded-lg bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary'
+
+  return (
+    <div className="rounded-xl border border-border bg-muted/30 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h3 className="text-sm font-semibold text-[var(--color-text-primary)]">Legg til materiell manuelt</h3>
+        <button type="button" onClick={() => { setOpen(false); reset() }} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]" aria-label="Lukk skjema"><X size={16} /></button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)] col-span-2">
+          Materiell *
+          <input value={f.material_name} onChange={(e) => upd({ material_name: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit() } }} placeholder="f.eks. Fiberkabel 24F" className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)]">
+          Kode
+          <input value={f.material_code} onChange={(e) => upd({ material_code: e.target.value })} placeholder="(valgfri)" className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)]">
+          Kategori
+          <input value={f.category} onChange={(e) => upd({ category: e.target.value })} placeholder="(valgfri)" className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)]">
+          Planlagt mengde *
+          <input value={f.planned_quantity} onChange={(e) => upd({ planned_quantity: e.target.value })} onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); submit() } }} inputMode="decimal" placeholder="0" className={`${inputCls} text-right tabular-nums`} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)]">
+          Enhet
+          <input value={f.unit} onChange={(e) => upd({ unit: e.target.value })} placeholder="stk, m, …" className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)]">
+          Pris (kr/enhet)
+          <input value={f.unit_price} onChange={(e) => upd({ unit_price: e.target.value })} inputMode="decimal" placeholder="0" className={`${inputCls} text-right tabular-nums`} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)]">
+          Leverandør
+          <input value={f.supplier} onChange={(e) => upd({ supplier: e.target.value })} placeholder="(valgfri)" className={inputCls} />
+        </label>
+      </div>
+
+      {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button variant="primary" disabled={saving} onClick={submit}>
+          {saving ? 'Lagrer…' : 'Legg til'}
+        </Button>
+        <button type="button" onClick={() => { setOpen(false); reset() }} className="text-sm text-[var(--color-text-secondary)] hover:underline">
+          Lukk
+        </button>
+        <span className="text-[11px] text-[var(--color-text-muted)]">Pris vises ikke i lista, men teller i prosjektøkonomien (Materiellkost).</span>
+      </div>
+    </div>
+  )
+}
+
 // ── Main component ────────────────────────────────────────────────────────────
 
 /**
@@ -288,6 +417,7 @@ function VersionHistoryPanel({
  *   (b) Regneark: Kategori · Kode · Materiell · Enhet · Planlagt · Faktisk · Diff · Kommentar · Avstemt
  */
 export default function MaterialSection({
+  projectId,
   materials,
   materialVersions,
   onImported,
@@ -322,6 +452,8 @@ export default function MaterialSection({
   // ── Save ──────────────────────────────────────────────────────────────────
   const [saving, setSaving] = useState(false)
   const [saveError, setSaveError] = useState<string | null>(null)
+  const [deletingId, setDeletingId] = useState<string | null>(null)
+  const { confirm, confirmDialog } = useConfirm()
 
   async function handleSave() {
     setSaveError(null)
@@ -346,8 +478,26 @@ export default function MaterialSection({
     setSaveError(null)
   }
 
-  // ── Derived: extract projectId from first material or first version ────────
-  const projectId = materials[0]?.project_id ?? materialVersions[0]?.project_id
+  // ── Slett én materiell-rad (manuelt lagt eller feilført) ───────────────────
+  async function handleDelete(m: ProjectMaterial) {
+    if (!projectId) return
+    const ok = await confirm({
+      title: 'Slette materiell?',
+      message: `«${m.material_name || m.material_code || 'Uten navn'}» fjernes fra materielliste. En ny Excel-opplasting henter inn igjen hele lista.`,
+      confirmLabel: 'Slett',
+    })
+    if (!ok) return
+    setSaveError(null)
+    setDeletingId(m.id)
+    const res = await fetch(`/api/projects/${projectId}/materials?id=${encodeURIComponent(m.id)}`, { method: 'DELETE' })
+    setDeletingId(null)
+    if (res.ok) {
+      onImported()
+    } else {
+      const data = await res.json().catch(() => ({} as Record<string, unknown>))
+      setSaveError((data as { error?: string }).error ?? 'Sletting feilet')
+    }
+  }
 
   // ── Group by category for display ─────────────────────────────────────────
   const categories = useMemo(() => {
@@ -382,6 +532,7 @@ export default function MaterialSection({
           versions={materialVersions}
           onImported={onImported}
         />
+        <AddMaterialForm projectId={projectId} onAdded={onImported} />
       </section>
     )
   }
@@ -405,6 +556,9 @@ export default function MaterialSection({
         onImported={onImported}
       />
 
+      {/* Legg til materiell manuelt */}
+      <AddMaterialForm projectId={projectId} onAdded={onImported} />
+
       {/* Dirty warning */}
       {dirty && (
         <p className="text-xs text-amber-700 bg-amber-50 border border-amber-200 rounded px-3 py-1.5">
@@ -422,11 +576,11 @@ export default function MaterialSection({
         <table className="w-full text-sm table-fixed border-collapse border border-border [&_th]:border [&_th]:border-border [&_td]:border [&_td]:border-border">
           <colgroup>
             {/* Kategori */}
-            <col style={{ width: '11%' }} />
+            <col style={{ width: '10%' }} />
             {/* Kode */}
             <col style={{ width: '8%' }} />
             {/* Materiell */}
-            <col style={{ width: '22%' }} />
+            <col style={{ width: '20%' }} />
             {/* Enhet */}
             <col style={{ width: '6%' }} />
             {/* Planlagt */}
@@ -436,8 +590,10 @@ export default function MaterialSection({
             {/* Differanse */}
             <col style={{ width: '9%' }} />
             {/* Kommentar */}
-            <col style={{ width: '20%' }} />
+            <col style={{ width: '17%' }} />
             {/* Avstemt */}
+            <col style={{ width: '6%' }} />
+            {/* Handling (slett) */}
             <col style={{ width: '6%' }} />
           </colgroup>
           <thead>
@@ -469,6 +625,7 @@ export default function MaterialSection({
               <th className="px-3 py-2 text-center text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide">
                 Avstemt
               </th>
+              <th className="px-3 py-2 text-center text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide" aria-label="Handling" />
             </tr>
           </thead>
           <tbody>
@@ -575,6 +732,20 @@ export default function MaterialSection({
                         />
                       </label>
                     </td>
+
+                    {/* Slett-rad */}
+                    <td className="px-2 py-1.5 text-center">
+                      <button
+                        type="button"
+                        onClick={() => handleDelete(m)}
+                        disabled={deletingId === m.id}
+                        className="inline-flex items-center justify-center w-6 h-6 rounded text-[var(--color-text-muted)] hover:text-red-600 hover:bg-red-50 disabled:opacity-40"
+                        title="Slett materiell-linje"
+                        aria-label={`Slett ${m.material_name}`}
+                      >
+                        <Trash2 size={14} />
+                      </button>
+                    </td>
                   </tr>
                 )
               })
@@ -611,6 +782,8 @@ export default function MaterialSection({
                 <td className="px-3 py-2 text-center text-xs text-[var(--color-text-muted)]">
                   {materials.filter((m) => draft[m.id]?.reconciled).length}/{materials.length}
                 </td>
+                {/* Handling */}
+                <td />
               </tr>
             </tfoot>
           )}
@@ -640,6 +813,8 @@ export default function MaterialSection({
         Fyll inn faktisk forbruk per materiell-linje og huk av «Avstemt» når linjen er kontrollert.
         Differansen er faktisk minus planlagt mengde.
       </p>
+
+      {confirmDialog}
     </section>
   )
 }

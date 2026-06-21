@@ -639,6 +639,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
           Ingen pris/salgsverdi vises — kun mengder og differanser. */}
       {activeTab === 'materiell' && (
         <MaterialSection
+          projectId={project.id}
           materials={materials}
           materialVersions={materialVersions}
           onImported={fetchAll}
