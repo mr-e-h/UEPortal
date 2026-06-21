@@ -6,14 +6,15 @@ import { randomUUID } from 'crypto'
 import type { WeeklyReport, WeeklyReportLine, ProjectBudgetLine } from '@/types'
 
 /**
- * UE saves draft lines on every input blur — this is one of the most
- * frequently-hit write endpoints in the app. Previously it read the entire
- * `weekly_report_lines` table on every save and wrote it back. Two UEs
- * saving concurrently (or one UE alt-tabbed between two browsers) lost
- * each other's lines.
+ * UE saves draft lines on every input blur — one of the most frequently-hit
+ * write endpoints in the app.
  *
- * Now each line is upserted by (weekly_report_id, project_budget_line_id) —
- * the existing unique index in the schema makes concurrent saves safe.
+ * Concurrency safety is enforced at the DB: the unique index
+ * uidx_wrl_report_budget_line (migrasjon 0020) guarantees at most one row per
+ * (weekly_report_id, project_budget_line_id). Existing lines are updated by id;
+ * new lines are inserted with ON CONFLICT DO NOTHING, so two concurrent saves
+ * of the same line can never create a duplicate — which previously caused
+ * double-counting in fakturagrunnlag/budsjettbruk.
  */
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
   const session = await getSession()
@@ -82,10 +83,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
   }
 
-  // Read existing lines just for this report so we can decide insert vs update
-  // without reading the entire table. The plan is to use upsert with a
-  // composite unique index in a future migration; for now this is the safe
-  // bounded read.
+  // Bounded read of THIS report's lines to decide update-vs-insert. This read
+  // is not the race source — duplicate creation is prevented by the unique
+  // index uidx_wrl_report_budget_line below, not by this lookup.
   const { data: existingLines } = await sb
     .from('weekly_report_lines')
     .select('id, project_budget_line_id')
@@ -118,9 +118,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
   }
 
-  // Parallel-ize. Each statement is a targeted update or insert — concurrent
-  // calls don't collide unless they touch the same row, in which case
-  // last-write-wins (acceptable for blur-based autosave).
+  // Targeted updates for known rows (last-write-wins on the same row is fine for
+  // blur autosave). New rows are inserted with ON CONFLICT DO NOTHING on the
+  // unique index, so a concurrent insert of the same (report, budsjettlinje)
+  // can never duplicate — the loser is a silent no-op rather than a dup row.
   const updatePromises = toUpdate.map((u) =>
     sb.from('weekly_report_lines').update({
       reported_quantity: u.reported_quantity,
@@ -128,9 +129,15 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }).eq('id', u.id),
   )
   const insertPromise = toInsert.length > 0
-    ? sb.from('weekly_report_lines').insert(toInsert)
+    ? sb.from('weekly_report_lines').upsert(toInsert, {
+        onConflict: 'weekly_report_id,project_budget_line_id',
+        ignoreDuplicates: true,
+      })
     : Promise.resolve({ error: null })
 
-  await Promise.all([...updatePromises, insertPromise])
+  const results = await Promise.all([...updatePromises, insertPromise])
+  if (results.some((r) => r.error)) {
+    return NextResponse.json({ error: 'Lagring feilet' }, { status: 500 })
+  }
   return NextResponse.json({ ok: true })
 }
