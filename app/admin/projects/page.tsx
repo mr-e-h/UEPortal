@@ -6,6 +6,7 @@ import { ADMIN_ROLES, PROJECT_STAFF_ROLES } from '@/lib/roles'
 import { getProjectScope } from '@/lib/api-guard'
 import { EM_NEEDS_ACTION, WR_NEEDS_ACTION, attentionCounts } from '@/lib/attention'
 import { projectHealth } from '@/lib/project-health'
+import { materialOrderValue } from '@/lib/project-economy'
 import type { Project, ProjectBudgetLine, ProjectSubcontractor } from '@/types'
 import Button from '@/components/ui/Button'
 import ProjectsOverviewClient, { type ProjectCardData } from '@/components/admin/ProjectsOverviewClient'
@@ -146,6 +147,19 @@ export default async function ProjectsPage() {
     for (const co of (emData ?? []) as Array<{ project_id: string; total_customer_value: number | null }>) {
       revenueByProject.set(co.project_id, (revenueByProject.get(co.project_id) ?? 0) + (co.total_customer_value ?? 0))
     }
+    // Materiellbudsjettet i ordreverdi — SAMME formel (materialOrderValue,
+    // lib/project-economy) som prosjekt-hero, så «Ordreverdi» på lista og
+    // «Samlet ordreverdi» stemmer med prosjektsiden.
+    const { data: matData } = await sb.from('project_materials').select('project_id, planned_quantity, unit_price')
+    const matByProject = new Map<string, Array<{ planned_quantity: number | null; unit_price: number | null }>>()
+    for (const m of (matData ?? []) as Array<{ project_id: string; planned_quantity: number | null; unit_price: number | null }>) {
+      const arr = matByProject.get(m.project_id) ?? []
+      arr.push({ planned_quantity: m.planned_quantity, unit_price: m.unit_price })
+      matByProject.set(m.project_id, arr)
+    }
+    matByProject.forEach((mats, pid) => {
+      revenueByProject.set(pid, (revenueByProject.get(pid) ?? 0) + materialOrderValue(mats))
+    })
   }
 
   // Fakturert per prosjekt (sum av invoices.amount) — KUN økonomiroller, samme

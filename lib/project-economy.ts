@@ -22,6 +22,17 @@ export function budgetCostValue(lines: BudgetLineLike[]): number {
   return lines.reduce((s, bl) => s + (bl.budget_quantity ?? 0) * (bl.subcontractor_cost_price_snapshot ?? 0), 0)
 }
 
+/**
+ * Materiellbudsjettets ordreverdi: Σ planlagt antall × pris. ÉN kilde til denne
+ * formelen — brukes av prosjekt-hero, prosjektlista OG totaløkonomi, så materiell
+ * teller likt i ordreverdi overalt (ingen avvik mellom visningene).
+ */
+export function materialOrderValue(
+  materials: Array<{ planned_quantity?: number | null; unit_price?: number | null }>,
+): number {
+  return materials.reduce((s, m) => s + (Number(m.planned_quantity) || 0) * (Number(m.unit_price) || 0), 0)
+}
+
 type EmLike = Pick<ChangeOrder, 'total_customer_value' | 'total_cost'>
 
 /** Sum kundeverdi på EM-er (f.eks. godkjente). */

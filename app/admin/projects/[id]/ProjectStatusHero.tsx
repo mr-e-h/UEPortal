@@ -5,7 +5,7 @@ import Link from 'next/link'
 import { AlertTriangle, AlertCircle, Mail } from 'lucide-react'
 import type { Project, ProjectBudgetLine, ChangeOrder, ProjectInternalCostEntry, ProjectInvoice, ProductionEntry, ProjectMaterial } from '@/types'
 import { fmtNOK as fmt } from '@/lib/format'
-import { computeProjectEconomy } from '@/lib/project-economy'
+import { computeProjectEconomy, materialOrderValue as calcMaterialOrderValue } from '@/lib/project-economy'
 import { internalCostTotal as sumInternalCosts, fallbackEndMonthIndex, internalCostToDate, currentMonthIndex } from '@/lib/internal-costs'
 import type { WRWithLines, ProjectManagerRow } from './useProjectData'
 
@@ -93,17 +93,15 @@ export default function ProjectStatusHero({
   //  - avstemt verdi = Σ planlagt × pris for AVSTEMTE linjer    → teller som opptjent
   //  - avstemt kost  = Σ faktisk × pris for AVSTEMTE linjer     → kosten påløper FØRST nå
   const { materialOrderValue, materialReconciledValue, materialReconciledCost } = useMemo(() => {
-    let order = 0, recVal = 0, recCost = 0
+    let recVal = 0, recCost = 0
     for (const m of materials) {
+      if (!m.reconciled) continue
       const price = Number(m.unit_price) || 0
-      const planned = Number(m.planned_quantity) || 0
-      order += planned * price
-      if (m.reconciled) {
-        recVal += planned * price
-        recCost += (Number(m.actual_quantity) || 0) * price
-      }
+      recVal += (Number(m.planned_quantity) || 0) * price
+      recCost += (Number(m.actual_quantity) || 0) * price
     }
-    return { materialOrderValue: order, materialReconciledValue: recVal, materialReconciledCost: recCost }
+    // Ordreverdi-delen via DELT funksjon (lib/project-economy) — lik på lista/totaløkonomi.
+    return { materialOrderValue: calcMaterialOrderValue(materials), materialReconciledValue: recVal, materialReconciledCost: recCost }
   }, [materials])
   const summary = useMemo(
     () => computeProjectEconomy({
