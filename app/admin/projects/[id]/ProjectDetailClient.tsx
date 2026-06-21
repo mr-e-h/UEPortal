@@ -643,7 +643,6 @@ export default function ProjectDetailClient({ initialData }: Props) {
           chartLineId={chartLineId}
           setChartLineId={setChartLineId}
           onGoToBudgetLines={() => setActiveTab('budsjett')}
-          onImported={fetchAll}
         />
       )}
 

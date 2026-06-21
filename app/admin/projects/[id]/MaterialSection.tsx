@@ -1,6 +1,5 @@
 'use client'
 
-import { useRef, useState } from 'react'
 import dynamic from 'next/dynamic'
 import SortableTable from '@/components/SortableTable'
 import { fmtNOK as fmt } from '@/lib/format'
@@ -35,16 +34,6 @@ interface Props {
   chartLineId: string | null
   setChartLineId: (id: string | null) => void
   onGoToBudgetLines: () => void
-  onImported: () => void
-}
-
-type ImportResult = {
-  ok?: boolean
-  error?: string
-  added?: number
-  updated?: number
-  new_products?: number
-  skipped?: { row: number; code: string; name: string; reason: string }[]
 }
 
 /**
@@ -61,45 +50,7 @@ export default function MaterialSection({
   chartLineId,
   setChartLineId,
   onGoToBudgetLines,
-  onImported,
 }: Props) {
-  const fileInputRef = useRef<HTMLInputElement>(null)
-  const [dragging, setDragging] = useState(false)
-  const [importing, setImporting] = useState(false)
-  const [importResult, setImportResult] = useState<ImportResult | null>(null)
-  const [importError, setImportError] = useState('')
-
-  async function handleMaterialFile(file: File) {
-    if (!file.name.endsWith('.xlsx')) {
-      setImportError('Kun .xlsx-filer støttes')
-      return
-    }
-    setImporting(true)
-    setImportError('')
-    setImportResult(null)
-
-    const fd = new FormData()
-    fd.append('file', file)
-    let res: Response
-    try {
-      res = await fetch(`/api/projects/${project.id}/import-materials`, { method: 'POST', body: fd })
-    } catch {
-      setImportError('Nettverksfeil — prøv igjen')
-      setImporting(false)
-      return
-    }
-
-    const data = await res.json() as ImportResult
-    if (!res.ok) {
-      setImportError(data.error ?? 'Import feilet')
-      setImporting(false)
-      return
-    }
-
-    setImportResult(data)
-    setImporting(false)
-    onImported()
-  }
   const rows: MaterialRow[] = budgetLines
     .filter((bl) => bl.line_type === 'material')
     .map((bl) => {
@@ -197,63 +148,6 @@ export default function MaterialSection({
       <div className="flex items-center justify-between">
         <h2 className="text-lg font-semibold text-[var(--color-text-primary)]">Materiell</h2>
         <span className="text-xs text-[var(--color-text-muted)]">Viser budsjettlinjer av type «Materiell»</span>
-      </div>
-
-      {/* Material import */}
-      <div className="bg-white rounded-xl border border-border p-4 space-y-3">
-        <p className="text-sm font-medium text-[var(--color-text-secondary)]">Last opp materielliste (.xlsx)</p>
-        <div
-          className={`border-2 border-dashed rounded-lg p-5 text-center cursor-pointer transition-colors ${dragging ? 'border-blue-400 bg-blue-50' : 'border-border hover:border-blue-400 hover:bg-muted'}`}
-          onClick={() => fileInputRef.current?.click()}
-          onDragOver={(e) => { e.preventDefault(); setDragging(true) }}
-          onDragLeave={() => setDragging(false)}
-          onDrop={(e) => {
-            e.preventDefault()
-            setDragging(false)
-            const file = e.dataTransfer.files[0]
-            if (file) handleMaterialFile(file)
-          }}
-        >
-          {importing ? (
-            <p className="text-sm text-blue-600">Importerer...</p>
-          ) : importResult?.ok ? (
-            <p className="text-sm text-green-600 font-medium">
-              {((importResult.added ?? 0) + (importResult.updated ?? 0))} materiell-linjer importert
-              {(importResult.new_products ?? 0) > 0 && ` · ${importResult.new_products} nye produkter`}
-              {(importResult.updated ?? 0) > 0 && ` (${importResult.updated} oppdatert)`}
-              {' — last opp ny fil for å erstatte'}
-            </p>
-          ) : (
-            <>
-              <p className="text-sm text-[var(--color-text-muted)]">Dra og slipp .xlsx-fil hit, eller klikk for å velge</p>
-              <p className="text-xs text-[var(--color-text-muted)] mt-1">Legger til materiell-linjer i eksisterende budsjett</p>
-            </>
-          )}
-        </div>
-        <input
-          ref={fileInputRef}
-          type="file"
-          accept=".xlsx"
-          className="hidden"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleMaterialFile(f); e.target.value = '' }}
-        />
-
-        {importResult?.ok && importResult.skipped && importResult.skipped.length > 0 && (
-          <div className="rounded-lg border border-amber-300 bg-amber-50 px-3 py-2">
-            <p className="text-sm font-medium text-amber-800">
-              {importResult.skipped.length} {importResult.skipped.length === 1 ? 'rad ble hoppet over' : 'rader ble hoppet over'} — kontroller at ingen av disse skulle vært med:
-            </p>
-            <ul className="mt-1.5 space-y-0.5 text-xs text-amber-800 max-h-40 overflow-auto">
-              {importResult.skipped.map((s, i) => (
-                <li key={i}>Rad {s.row}: {s.name || s.code || '(uten navn)'} — {s.reason}</li>
-              ))}
-            </ul>
-          </div>
-        )}
-
-        {importError && (
-          <p className="text-sm text-red-600">{importError}</p>
-        )}
       </div>
 
       {rows.length === 0 ? (

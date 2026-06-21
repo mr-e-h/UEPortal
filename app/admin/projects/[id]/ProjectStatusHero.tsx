@@ -218,9 +218,6 @@ export default function ProjectStatusHero({
             />
             <ResultRow sign="−" label="UE-kost (budsjett)" value={fmt(summary.ueBudgetCost)} tone="muted" />
             <ResultRow sign="−" label="Internkost (hele perioden)" value={fmt(summary.internCost)} tone="muted" />
-            {summary.materialCost > 0 && (
-              <ResultRow sign="−" label="Materiellkost (pass-through)" value={fmt(summary.materialCost)} tone="muted" />
-            )}
             <div className="border-t border-border pt-1.5 mt-0.5">
               <ResultRow
                 sign="="
