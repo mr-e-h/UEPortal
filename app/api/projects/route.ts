@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
+import { revalidateTag } from 'next/cache'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import type { Project, ProjectBudgetLine, BudgetVersion, ProjectSubcontractor } from '@/types'
 import { importExcelLines } from '@/lib/excel-import'
@@ -91,6 +92,9 @@ export async function POST(request: NextRequest) {
 
   if (import_excel && excel_data?.length) {
     const result = await importExcelLines(newProject.id, newProject.county, excel_data)
+    // Importen kan opprette nye produkter — evict produkt-cachen så de vises
+    // (ellers «–» for navn/kode i budsjettlista til TTL-en utløper).
+    revalidateTag('products')
     imported = result.imported
     new_products = result.new_products
 

@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
+import { revalidateTag } from 'next/cache'
 import { getSupabaseAdmin } from '@/lib/supabase'
 import { uploadBudgetFile } from '@/lib/storage'
 import { requireAdmin, ensureProjectWritable } from '@/lib/api-guard'
@@ -72,6 +73,10 @@ export async function POST(
   }
 
   const result = await importExcelLines(project.id, project.county, parsed.lines)
+  // Importen kan opprette nye produkter (via writeJson) — evict produkt-cachen,
+  // ellers mangler de nye produktene i den cachede lista og budsjettlinjer som
+  // peker på dem viser «–» for navn/kode til TTL-en (1t) utløper.
+  revalidateTag('products')
 
   // Snapshot budget totals after import — manual lines + approved COs.
   const [blRes, coRes] = await Promise.all([
