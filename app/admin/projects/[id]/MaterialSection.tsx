@@ -483,7 +483,7 @@ export default function MaterialSection({
     if (!projectId) return
     const ok = await confirm({
       title: 'Slette materiell?',
-      message: `«${m.material_name || m.material_code || 'Uten navn'}» fjernes fra materielliste. En ny Excel-opplasting henter inn igjen hele lista.`,
+      message: `«${m.material_name || m.material_code || 'Uten navn'}» fjernes fra materielliste og kan ikke angres.`,
       confirmLabel: 'Slett',
     })
     if (!ok) return
@@ -670,7 +670,14 @@ export default function MaterialSection({
                     {/* Materiell + leverandør som liten grå tekst */}
                     <td className="px-3 py-1.5">
                       <div className="min-w-0">
-                        <p className="truncate text-xs text-[var(--color-text-primary)]">{m.material_name}</p>
+                        <div className="flex items-center gap-1.5 min-w-0">
+                          <p className="truncate text-xs text-[var(--color-text-primary)]">{m.material_name}</p>
+                          {m.source === 'manual' && (
+                            <span className="flex-none text-[9px] font-medium uppercase tracking-wide text-blue-700 bg-blue-50 border border-blue-200 rounded px-1 py-0.5" title="Lagt til manuelt — beholdes ved ny Excel-opplasting">
+                              Manuell
+                            </span>
+                          )}
+                        </div>
                         {m.supplier && (
                           <p className="truncate text-[10px] text-[var(--color-text-muted)]">{m.supplier}</p>
                         )}

@@ -21,7 +21,8 @@ const EXCEL_MIME = 'application/vnd.openxmlformats-officedocument.spreadsheetml.
 //   (b) last opp .xlsx til budget-files-bucket under <project_id>/materials/<uuid>_<name>
 //   (c) beregn neste versjonsnummer
 //   (d) sett inn versjon-rad med snapshot = DEN NYE lista + file_name = objektstien
-//   (e) ERSTATT project_materials med den nye lista
+//   (e) ERSTATT KUN Excel-radene (source='excel') — manuelt tillagte rader
+//       (source='manual') beholdes
 //
 // Returnerer { ok, imported, skipped, version }
 
@@ -100,19 +101,14 @@ export async function POST(
   const { error: snapErr } = await sb.from('project_material_versions').insert(versionRow)
   if (snapErr) return NextResponse.json({ error: 'Versjon-lagring feilet' }, { status: 500 })
 
-  // (e) ERSTATT: slett eksisterende rader, sett inn ny liste
-  const { data: existing } = await sb
+  // (e) ERSTATT KUN EXCEL-RADENE: slett source='excel', behold manuelt tillagte
+  // rader (source='manual'). Slik overlever manuelt materiell en ny opplasting.
+  const { error: delErr } = await sb
     .from('project_materials')
-    .select('id')
+    .delete()
     .eq('project_id', projectId)
-
-  if ((existing ?? []).length > 0) {
-    const { error: delErr } = await sb
-      .from('project_materials')
-      .delete()
-      .eq('project_id', projectId)
-    if (delErr) return NextResponse.json({ error: 'Sletting av gamle rader feilet' }, { status: 500 })
-  }
+    .eq('source', 'excel')
+  if (delErr) return NextResponse.json({ error: 'Sletting av gamle Excel-rader feilet' }, { status: 500 })
 
   const newRows: Omit<ProjectMaterial, 'created_at'>[] = parsed.materials.map((m, idx) => ({
     id: randomUUID(),
@@ -128,6 +124,7 @@ export async function POST(
     reconciled: false,
     comment: '',
     sort_order: idx,
+    source: 'excel',
   }))
 
   if (newRows.length > 0) {

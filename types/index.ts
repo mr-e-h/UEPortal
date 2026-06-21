@@ -218,6 +218,9 @@ export interface ProjectMaterial {
   reconciled: boolean
   comment: string
   sort_order: number
+  /** 'excel' = importert (erstattes ved ny Excel-opplasting), 'manual' = lagt til
+   *  manuelt (beholdes ved ny Excel-opplasting). */
+  source: 'excel' | 'manual'
   created_at?: string
 }
 

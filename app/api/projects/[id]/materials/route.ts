@@ -148,14 +148,19 @@ export async function POST(
 
   const sb = getSupabaseAdmin()
 
-  // sort_order = max + 1 (legg sist). Egen spørring så vi ikke drar hele lista.
+  // Manuelle rader får sort_order i et eget høyt bånd (≥ 1 000 000) så de alltid
+  // sorteres ETTER Excel-radene (0..N) — uavhengig av hvor mange rader en senere
+  // Excel-opplasting gir. Spør kun mot manuelle rader for å finne neste plass.
+  const MANUAL_BASE = 1_000_000
   const { data: top } = await sb
     .from('project_materials')
     .select('sort_order')
     .eq('project_id', params.id)
+    .eq('source', 'manual')
     .order('sort_order', { ascending: false })
     .limit(1)
-  const nextSort = (((top ?? [])[0]?.sort_order as number | undefined) ?? -1) + 1
+  const prevMax = ((top ?? [])[0]?.sort_order as number | undefined)
+  const nextSort = Math.max(MANUAL_BASE - 1, prevMax ?? (MANUAL_BASE - 1)) + 1
 
   const row: Omit<ProjectMaterial, 'created_at'> = {
     id: randomUUID(),
@@ -171,6 +176,7 @@ export async function POST(
     reconciled: false,
     comment: '',
     sort_order: nextSort,
+    source: 'manual',
   }
 
   const { error } = await sb.from('project_materials').insert(row)
