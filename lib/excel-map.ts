@@ -91,7 +91,9 @@ export function parseRows(rows: unknown[][], map: ImportColumnMap): ParseRowsRes
       budget_quantity = antall2
     }
     if (product_code && isLumpSumCode(product_code)) {
-      budget_quantity = Math.max(fastpris, antall2, pris2)
+      // Velg beløpet med STØRST absoluttverdi og BEHOLD fortegnet, slik at en
+      // negativ fastpris (fradrag, f.eks. ULG39B −65 000) ikke blir til 0 av Math.max.
+      budget_quantity = [fastpris, antall2, pris2].reduce((a, b) => (Math.abs(b) > Math.abs(a) ? b : a), 0)
       unit_price = 1
     }
 
