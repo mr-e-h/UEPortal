@@ -40,7 +40,7 @@ export type TimelineMilestone = {
 }
 
 /** Porteføljens element = kjernens element + detaljtekst + (for faser) ansvarlig UE. */
-type TimelineItem = CoreItem & { detail: string; subcontractor_id?: string | null }
+type TimelineItem = CoreItem & { detail: string; subcontractor_id?: string | null; sort_order?: number }
 
 const MONTHS = ['jan', 'feb', 'mar', 'apr', 'mai', 'jun', 'jul', 'aug', 'sep', 'okt', 'nov', 'des']
 
@@ -404,6 +404,7 @@ export default function FremdriftsplanClient({
           id: `phase-${ph.id}`,
           kind: 'phase' as const,
           rawId: ph.id,
+          sort_order: ph.sort_order,
           label: ph.name ?? t?.name ?? 'Fase',
           color: t?.color ?? FALLBACK_COLOR,
           start: ph.start_date,
@@ -449,7 +450,16 @@ export default function FremdriftsplanClient({
         }
       })
     }
-    return items.sort((a, b) => a.start.localeCompare(b.start))
+    // Rad-rekkefølge = standardfase-rekkefølgen (sort_order). Baren posisjoneres
+    // uansett etter dato, så en fase som er flyttet i tid beholder plassen sin i
+    // WBS-sekvensen. Lik sort_order → tidligst start øverst. Milepæler (uten
+    // sort_order) legges sist.
+    return items.sort((a, b) => {
+      const ao = a.sort_order ?? Number.MAX_SAFE_INTEGER
+      const bo = b.sort_order ?? Number.MAX_SAFE_INTEGER
+      if (ao !== bo) return ao - bo
+      return a.start.localeCompare(b.start)
+    })
   }
 
   const rows = useMemo(() => {

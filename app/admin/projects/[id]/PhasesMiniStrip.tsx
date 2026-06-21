@@ -296,7 +296,18 @@ export default function PhasesMiniStrip({
 
   const rows = baseRows
     .map(applyDraft)
-    .sort((a, b) => a.start.localeCompare(b.start))
+    // Rad-rekkefølge = standardfase-rekkefølgen (sort_order). Baren posisjoneres
+    // uansett etter dato (pos(r.start, r.end)), så en fase som er flyttet i tid
+    // beholder plassen sin i WBS-sekvensen — ellers «hopper» radene rundt etter
+    // dato og standard-rekkefølgen forsvinner. Lik sort_order → tidligst start
+    // øverst. Milepæler har ingen sort_order og legges sist (point-events,
+    // ikke del av fasesekvensen).
+    .sort((a, b) => {
+      const ao = a.kind === 'phase' ? (a.phase?.sort_order ?? 0) : Number.MAX_SAFE_INTEGER
+      const bo = b.kind === 'phase' ? (b.phase?.sort_order ?? 0) : Number.MAX_SAFE_INTEGER
+      if (ao !== bo) return ao - bo
+      return a.start.localeCompare(b.start)
+    })
 
   const changeCount = new Set([...Object.keys(drafts), ...Array.from(deleted)]).size
 
