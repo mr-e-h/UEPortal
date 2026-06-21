@@ -207,13 +207,40 @@ function CustomLineForm({
  * med flere prisperioder kan foldes ut. Ren visning; bytt til flat visning for å
  * tildele/slette/endre enkeltlinjer.
  */
-function GroupedBudgetTable({ rows }: { rows: BLRow[] }) {
+function GroupedBudgetTable({ rows, subs, onRefresh }: { rows: BLRow[]; subs: Subcontractor[]; onRefresh: () => void }) {
   const [open, setOpen] = useState<Set<string>>(new Set())
+  const [assigningKey, setAssigningKey] = useState<string | null>(null)
+  const [assignError, setAssignError] = useState<string | null>(null)
   const toggle = (k: string) => setOpen((prev) => {
     const next = new Set(prev)
     if (next.has(k)) next.delete(k); else next.add(k)
     return next
   })
+
+  // Tildel ALLE prisperiodene i en gruppe til samme UE i én handling. Hver linje
+  // PUT-es enkeltvis (samme rute + katalogpris-snapshot som bulk-tildeling).
+  async function assignGroup(key: string, lineIds: string[], subId: string | null) {
+    setAssignError(null)
+    setAssigningKey(key)
+    const results = await Promise.allSettled(lineIds.map((id) =>
+      fetch('/api/budget-lines', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id, assigned_subcontractor_id: subId }),
+      }).then(async (res) => {
+        if (!res.ok) {
+          const d = await res.json().catch(() => ({} as { error?: string }))
+          throw new Error(d.error ?? 'Tildeling feilet')
+        }
+      }),
+    ))
+    setAssigningKey(null)
+    const failed = results.filter((r) => r.status === 'rejected') as PromiseRejectedResult[]
+    if (failed.length > 0) {
+      setAssignError(`${failed.length} linje(r) kunne ikke tildeles: ${failed[0].reason?.message ?? 'feil'}`)
+    }
+    onRefresh()
+  }
 
   const groups = useMemo(() => {
     const map = new Map<string, { code: string; name: string; lines: BLRow[] }>()
@@ -232,9 +259,12 @@ function GroupedBudgetTable({ rows }: { rows: BLRow[] }) {
       const minPrice = Math.min(...prices)
       const maxPrice = Math.max(...prices)
       const avgPrice = totalQty !== 0 ? totalSales / totalQty : 0
-      const ueNames = Array.from(new Set(g.lines.filter((l) => l.assigned_subcontractor_id).map((l) => l.assigned_name)))
-      const assigned = ueNames.length === 0 ? '' : ueNames.length === 1 ? ueNames[0] : `${ueNames.length} UE-er`
-      return { key: `${g.code}|||${g.name}`, ...g, totalQty, totalSales, totalCost, totalProfit, minPrice, maxPrice, avgPrice, assigned }
+      const lineIds = g.lines.map((l) => l.id)
+      const assignedSet = new Set(g.lines.map((l) => l.assigned_subcontractor_id))
+      // ÉN felles tildeling hvis alle prisperiodene deler samme (kan være null =
+      // ingen); 'MIXED' når de er tildelt ulikt.
+      const uniformAssigned = assignedSet.size === 1 ? (Array.from(assignedSet)[0] ?? null) : 'MIXED'
+      return { key: `${g.code}|||${g.name}`, ...g, totalQty, totalSales, totalCost, totalProfit, minPrice, maxPrice, avgPrice, lineIds, uniformAssigned }
     }).sort((a, b) => a.code.localeCompare(b.code, 'nb'))
   }, [rows])
 
@@ -247,78 +277,102 @@ function GroupedBudgetTable({ rows }: { rows: BLRow[] }) {
   const nb = (n: number) => n.toLocaleString('nb-NO', { maximumFractionDigits: 2 })
 
   return (
-    <table className="w-full text-sm">
-      <thead>
-        <tr className="border-b border-border">
-          <th className={`${th} w-8`} />
-          <th className={`${th} text-left`}>Kode</th>
-          <th className={`${th} text-left`}>Produkt</th>
-          <th className={`${th} text-right`}>Mengde</th>
-          <th className={`${th} text-right`}>Pris</th>
-          <th className={`${th} text-right`}>Salgsverdi</th>
-          <th className={`${th} text-right`}>Kostnad</th>
-          <th className={`${th} text-right`}>Fortjeneste</th>
-          <th className={`${th} text-left`}>Tildelt</th>
-        </tr>
-      </thead>
-      <tbody>
-        {groups.length === 0 && (
-          <tr><td colSpan={9} className="px-3 py-6 text-center text-[var(--color-text-muted)]">Ingen budsjettlinjer</td></tr>
-        )}
-        {groups.map((g) => {
-          const many = g.lines.length > 1
-          const isOpen = open.has(g.key)
-          return (
-            <Fragment key={g.key}>
-              <tr
-                className={`border-b border-border ${many ? 'cursor-pointer hover:bg-muted' : ''}`}
-                onClick={() => many && toggle(g.key)}
-              >
-                <td className="px-3 py-2 text-center text-[var(--color-text-muted)]">{many ? (isOpen ? '▾' : '▸') : ''}</td>
-                <td className="px-3 py-2 font-mono text-xs text-[var(--color-text-muted)]">{g.code}</td>
-                <td className="px-3 py-2">
-                  <span className="text-[var(--color-text-primary)]">{g.name}</span>
-                  {many && <span className="ml-2 text-[10px] bg-amber-100 text-amber-800 border border-amber-200 rounded px-1.5 py-0.5">{g.lines.length} prisperioder</span>}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums">{nb(g.totalQty)}</td>
-                <td className="px-3 py-2 text-right tabular-nums text-xs text-[var(--color-text-muted)]" title={many ? `${fmt(g.minPrice)} – ${fmt(g.maxPrice)}` : undefined}>
-                  {g.minPrice === g.maxPrice ? fmt(g.minPrice) : `⌀ ${fmt(g.avgPrice)}`}
-                </td>
-                <td className="px-3 py-2 text-right tabular-nums font-medium">{fmt(g.totalSales)}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{g.totalCost > 0 ? fmt(g.totalCost) : '–'}</td>
-                <td className="px-3 py-2 text-right tabular-nums">{g.assigned ? fmt(g.totalProfit) : '–'}</td>
-                <td className="px-3 py-2 text-sm">{g.assigned || <span className="text-xs text-orange-400">Ikke tildelt</span>}</td>
-              </tr>
-              {isOpen && g.lines.map((l) => (
-                <tr key={l.id} className="border-b border-border bg-muted/30 text-xs">
-                  <td />
-                  <td className="px-3 py-1.5 font-mono text-[var(--color-text-muted)]">{l.product_code}</td>
-                  <td className="px-3 py-1.5 text-[var(--color-text-secondary)]">{nb(l.budget_quantity)} × {fmt(l.customer_price_snapshot)}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{nb(l.budget_quantity)}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{fmt(l.customer_price_snapshot)}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{fmt(l.sales_value)}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{l.assigned_subcontractor_id ? fmt(l.cost_value) : '–'}</td>
-                  <td className="px-3 py-1.5 text-right tabular-nums">{l.assigned_subcontractor_id ? fmt(l.profit) : '–'}</td>
-                  <td className="px-3 py-1.5 text-[var(--color-text-secondary)]">{l.assigned_subcontractor_id ? l.assigned_name : '—'}</td>
+    <>
+      {assignError && (
+        <div className="mb-2 px-3 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">{assignError}</div>
+      )}
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="border-b-2 border-border">
+            <th className={`${th} w-8`} />
+            <th className={`${th} text-left`}>Kode</th>
+            <th className={`${th} text-left`}>Produkt</th>
+            <th className={`${th} text-right`}>Mengde</th>
+            <th className={`${th} text-right`}>Pris</th>
+            <th className={`${th} text-right`}>Salgsverdi</th>
+            <th className={`${th} text-right`}>Kostnad</th>
+            <th className={`${th} text-right`}>Fortjeneste</th>
+            <th className={`${th} text-left`}>Tildel UE</th>
+          </tr>
+        </thead>
+        <tbody>
+          {groups.length === 0 && (
+            <tr><td colSpan={9} className="px-3 py-6 text-center text-[var(--color-text-muted)]">Ingen budsjettlinjer</td></tr>
+          )}
+          {groups.map((g) => {
+            const many = g.lines.length > 1
+            const isOpen = open.has(g.key)
+            const selectVal = g.uniformAssigned === 'MIXED' ? '__mixed__' : (g.uniformAssigned ?? '')
+            return (
+              <Fragment key={g.key}>
+                {/* Produktrad — uthevet; hele raden folder ut prisperiodene */}
+                <tr
+                  className={`border-b border-border ${many ? 'cursor-pointer' : ''} ${isOpen ? 'bg-blue-50/70' : 'bg-muted/40 hover:bg-muted'}`}
+                  onClick={() => many && toggle(g.key)}
+                >
+                  <td className="px-2 py-2.5 text-center">
+                    {many && <span className={`inline-block text-[var(--color-text-muted)] transition-transform ${isOpen ? 'rotate-90' : ''}`}>▸</span>}
+                  </td>
+                  <td className="px-3 py-2.5 font-mono text-xs font-medium text-[var(--color-text-secondary)]">{g.code}</td>
+                  <td className="px-3 py-2.5">
+                    <span className="font-medium text-[var(--color-text-primary)]">{g.name}</span>
+                    {many && <span className="ml-2 align-middle text-[10px] bg-amber-100 text-amber-800 border border-amber-200 rounded px-1.5 py-0.5">{g.lines.length} prisperioder</span>}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums font-medium">{nb(g.totalQty)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums text-xs text-[var(--color-text-muted)]" title={many ? `${fmt(g.minPrice)} – ${fmt(g.maxPrice)}` : undefined}>
+                    {g.minPrice === g.maxPrice ? fmt(g.minPrice) : `⌀ ${fmt(g.avgPrice)}`}
+                  </td>
+                  <td className="px-3 py-2.5 text-right tabular-nums font-semibold">{fmt(g.totalSales)}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{g.totalCost > 0 ? fmt(g.totalCost) : '–'}</td>
+                  <td className="px-3 py-2.5 text-right tabular-nums">{g.totalCost > 0 ? fmt(g.totalProfit) : '–'}</td>
+                  <td className="px-3 py-2.5" onClick={(e) => e.stopPropagation()}>
+                    <select
+                      value={selectVal}
+                      disabled={assigningKey === g.key}
+                      onChange={(e) => assignGroup(g.key, g.lineIds, e.target.value || null)}
+                      className="w-full max-w-[150px] text-xs border border-border rounded px-1.5 py-1 bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary disabled:opacity-50"
+                    >
+                      {g.uniformAssigned === 'MIXED' && <option value="__mixed__" disabled>Flere UE-er</option>}
+                      <option value="">Ikke tildelt</option>
+                      <option value="__intern__">Intern / MinUE</option>
+                      {subs.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
+                    </select>
+                  </td>
                 </tr>
-              ))}
-            </Fragment>
-          )
-        })}
-      </tbody>
-      <tfoot>
-        <tr className="border-t-2 border-border bg-muted/60 font-medium text-[var(--color-text-primary)]">
-          <td />
-          <td className="px-3 py-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)] whitespace-nowrap" colSpan={2}>Sum · {groups.length} produkter</td>
-          <td className="px-3 py-2 text-right tabular-nums">{nb(grand.qty)}</td>
-          <td />
-          <td className="px-3 py-2 text-right tabular-nums font-semibold">{fmt(grand.sales)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(grand.cost)}</td>
-          <td className="px-3 py-2 text-right tabular-nums">{fmt(grand.profit)}</td>
-          <td />
-        </tr>
-      </tfoot>
-    </table>
+                {/* Prisperioder — innrykket med tre-strek, tydelig underordnet */}
+                {isOpen && g.lines.map((l, i) => (
+                  <tr key={l.id} className="border-b border-border bg-blue-50/20 text-xs">
+                    <td />
+                    <td className="py-1.5 pl-4 pr-2 font-mono text-[var(--color-text-muted)] whitespace-nowrap">
+                      <span className="text-blue-300 mr-1">{i === g.lines.length - 1 ? '└─' : '├─'}</span>{l.product_code}
+                    </td>
+                    <td className="px-3 py-1.5 text-[var(--color-text-secondary)]">Prisperiode {i + 1}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{nb(l.budget_quantity)}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{fmt(l.customer_price_snapshot)}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{fmt(l.sales_value)}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{l.assigned_subcontractor_id ? fmt(l.cost_value) : '–'}</td>
+                    <td className="px-3 py-1.5 text-right tabular-nums">{l.assigned_subcontractor_id ? fmt(l.profit) : '–'}</td>
+                    <td className="px-3 py-1.5 text-[var(--color-text-secondary)]">{l.assigned_subcontractor_id ? l.assigned_name : '—'}</td>
+                  </tr>
+                ))}
+              </Fragment>
+            )
+          })}
+        </tbody>
+        <tfoot>
+          <tr className="border-t-2 border-border bg-muted/60 font-medium text-[var(--color-text-primary)]">
+            <td />
+            <td className="px-3 py-2 text-xs uppercase tracking-wide text-[var(--color-text-muted)] whitespace-nowrap" colSpan={2}>Sum · {groups.length} produkter</td>
+            <td className="px-3 py-2 text-right tabular-nums">{nb(grand.qty)}</td>
+            <td />
+            <td className="px-3 py-2 text-right tabular-nums font-semibold">{fmt(grand.sales)}</td>
+            <td className="px-3 py-2 text-right tabular-nums">{fmt(grand.cost)}</td>
+            <td className="px-3 py-2 text-right tabular-nums">{fmt(grand.profit)}</td>
+            <td />
+          </tr>
+        </tfoot>
+      </table>
+    </>
   )
 }
 
@@ -839,7 +893,7 @@ export default function BudgetLinesSection({
       <div className="bg-white rounded-lg shadow">
         {groupByProduct ? (
           <div className="overflow-x-auto p-1">
-            <GroupedBudgetTable rows={filteredRows} />
+            <GroupedBudgetTable rows={filteredRows} subs={projectSubDetails} onRefresh={onRefresh} />
           </div>
         ) : (
           <SortableTable
