@@ -6,6 +6,7 @@ import Card from '@/components/ui/Card'
 import Button from '@/components/ui/Button'
 import ErrorBox from '@/components/ui/ErrorBox'
 import NumberInput from '@/components/NumberInput'
+import { fmtNOK as fmt } from '@/lib/format'
 import type { ProjectMaterial, ProjectMaterialVersion } from '@/types'
 
 // ── Props ────────────────────────────────────────────────────────────────────
@@ -202,6 +203,7 @@ function VersionHistoryPanel({
                 <tr className="border-b border-border">
                   <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-left">Versjon</th>
                   <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-right">Antall linjer</th>
+                  <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-right">Verdi</th>
                   <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-left">Lastet opp</th>
                   <th className="px-5 py-2.5 text-xs font-medium text-[var(--color-text-muted)] uppercase text-center">Fil</th>
                 </tr>
@@ -212,6 +214,10 @@ function VersionHistoryPanel({
                   const isLatest = idx === 0
                   const label = ver.version === 0 ? 'Original' : `V${ver.version}`
                   const lineCount = ver.snapshot?.materials?.length ?? 0
+                  // Materiellverdi for versjonen = Σ planlagt antall × pris (pris ligger
+                  // skjult i snapshotet — vises kun som totalsum her, ikke per linje).
+                  const value = (ver.snapshot?.materials ?? []).reduce(
+                    (s, m) => s + (Number(m.planned_quantity) || 0) * (Number(m.unit_price) || 0), 0)
                   const { date, time } = fmtDateTime(ver.uploaded_at)
                   return (
                     <tr
@@ -230,6 +236,9 @@ function VersionHistoryPanel({
                       </td>
                       <td className="px-5 py-3 text-right text-[var(--color-text-secondary)]">
                         {lineCount}
+                      </td>
+                      <td className="px-5 py-3 text-right font-medium text-[var(--color-text-primary)] tabular-nums">
+                        {fmt(value)}
                       </td>
                       <td className="px-5 py-3">
                         <div className="text-[var(--color-text-secondary)]">{ver.uploaded_by}</div>
