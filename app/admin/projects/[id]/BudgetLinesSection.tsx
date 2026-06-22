@@ -2,9 +2,10 @@
 
 import { Fragment, useMemo, useState, type RefObject } from 'react'
 import dynamic from 'next/dynamic'
-import { Download, Trash2 } from 'lucide-react'
+import { Download, Trash2, X } from 'lucide-react'
 import SortableTable from '@/components/SortableTable'
 import NumberInput from '@/components/NumberInput'
+import Button from '@/components/ui/Button'
 import { useConfirm } from '@/components/ui/useConfirm'
 import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 import { lineTypeLabel } from '@/lib/line-types'
@@ -195,6 +196,157 @@ function CustomLineForm({
         Salgsverdi settes til 0 (kun kost) — kundeinntekten blir på hovedlinja. Husk å sette hovedlinja til «Intern / MinUE».
       </p>
     </form>
+  )
+}
+
+// ── SubProductSplitForm — splitt en budsjettlinje i underprodukter ────────────
+
+/**
+ * Vises inne i en utfoldet budsjettlinje. Lager underprodukt-linjer på SAMME
+ * produkt (egen etikett) med fullt valgfri mengde + kundepris + UE-kostpris, og
+ * viser salgsverdi/kost/fortjeneste live. Kan valgfritt TREKKE mengden fra
+ * hovedlinja (begrenset antall av underproduktet i selve produktet) — ellers er
+ * underproduktet et rent kost-tillegg (kundepris 0). Bruker samme POST/PUT som
+ * resten; ingenting beregnes feil (hver linje beholder sine egne tall).
+ */
+function SubProductSplitForm({
+  projectId, line, mainLabel, mainPrice, mainQty, subs, onRefresh,
+}: {
+  projectId: string
+  line: { id: string; product_id: string }
+  mainLabel: string
+  mainPrice: number
+  mainQty: number
+  subs: Subcontractor[]
+  onRefresh: () => void
+}) {
+  const [open, setOpen] = useState(false)
+  const [saving, setSaving] = useState(false)
+  const [error, setError] = useState<string | null>(null)
+  const [f, setF] = useState({ label: '', qty: '', cust_price: '0', ue_price: '', sub_id: '', reduceMain: false })
+  const upd = (patch: Partial<typeof f>) => setF((p) => ({ ...p, ...patch }))
+  const reset = () => { setF({ label: '', qty: '', cust_price: '0', ue_price: '', sub_id: '', reduceMain: false }); setError(null) }
+
+  const qtyN = Number(f.qty.replace(',', '.')) || 0
+  const custN = Number(f.cust_price.replace(',', '.')) || 0
+  const ueN = Number(f.ue_price.replace(',', '.')) || 0
+  const salgs = qtyN * custN
+  const kost = qtyN * ueN
+
+  async function submit() {
+    const label = f.label.trim()
+    if (!label) { setError('Skriv hva underproduktet er (etikett)'); return }
+    if (!Number.isFinite(qtyN) || qtyN <= 0) { setError('Mengde må være større enn 0'); return }
+    if (custN < 0 || ueN < 0) { setError('Priser kan ikke være negative'); return }
+    if (f.reduceMain && qtyN > mainQty) { setError(`Kan ikke trekke ${qtyN} fra hovedlinja (har ${mainQty})`); return }
+    setError(null)
+    setSaving(true)
+    const res = await fetch('/api/budget-lines', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        project_id: projectId,
+        product_id: line.product_id,
+        budget_quantity: qtyN,
+        custom_label: label,
+        customer_price: custN,
+        subcontractor_cost_price: ueN,
+        assigned_subcontractor_id: f.sub_id || null,
+        line_type: 'subcontractor_work',
+      }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({} as { error?: string }))
+      setSaving(false)
+      setError(d.error ?? 'Lagring feilet')
+      return
+    }
+    if (f.reduceMain) {
+      const res2 = await fetch('/api/budget-lines', {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ id: line.id, budget_quantity: Math.max(0, mainQty - qtyN) }),
+      })
+      if (!res2.ok) {
+        setSaving(false)
+        setError('Underprodukt lagret, men kunne ikke redusere hovedlinja — sjekk mengden.')
+        onRefresh()
+        return
+      }
+    }
+    setSaving(false)
+    reset()
+    onRefresh()
+  }
+
+  if (!open) {
+    return (
+      <button
+        type="button"
+        onClick={() => setOpen(true)}
+        className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm font-medium rounded-lg border border-blue-300 text-blue-700 hover:bg-blue-50"
+      >
+        + Splitt opp i underprodukter
+      </button>
+    )
+  }
+
+  const inputCls = 'text-sm text-[var(--color-text-primary)] border border-border rounded px-2 py-1.5 focus:outline-none focus:border-primary bg-card'
+
+  return (
+    <div className="rounded-xl border border-blue-200 bg-blue-50/40 p-4 space-y-3">
+      <div className="flex items-center justify-between">
+        <h4 className="text-sm font-semibold text-[var(--color-text-primary)]">Splitt «{mainLabel}» i underprodukter</h4>
+        <button type="button" onClick={() => { setOpen(false); reset() }} className="text-[var(--color-text-muted)] hover:text-[var(--color-text-primary)]" aria-label="Lukk"><X size={16} /></button>
+      </div>
+
+      <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 items-end">
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)] col-span-2 lg:col-span-2">
+          Hva er det (etikett) *
+          <input value={f.label} onChange={(e) => upd({ label: e.target.value })} placeholder="f.eks. Blåsing" className={inputCls} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)]">
+          Mengde *
+          <NumberInput value={f.qty} onChange={(raw) => upd({ qty: raw })} className={`${inputCls} text-right tabular-nums`} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)]">
+          Kundepris/enhet
+          <NumberInput value={f.cust_price} onChange={(raw) => upd({ cust_price: raw })} className={`${inputCls} text-right tabular-nums`} />
+          <button type="button" onClick={() => upd({ cust_price: String(mainPrice) })} className="text-[10px] text-blue-600 hover:underline text-left">= hovedpris ({fmt(mainPrice)})</button>
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)]">
+          UE-kostpris/enhet
+          <NumberInput value={f.ue_price} onChange={(raw) => upd({ ue_price: raw })} className={`${inputCls} text-right tabular-nums`} />
+        </label>
+        <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)]">
+          Tildel UE
+          <select value={f.sub_id} onChange={(e) => upd({ sub_id: e.target.value })} className={inputCls}>
+            <option value="">— Ingen —</option>
+            {subs.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
+          </select>
+        </label>
+      </div>
+
+      {/* Live utregning */}
+      <div className="flex flex-wrap items-center gap-x-5 gap-y-1 text-xs bg-card border border-border rounded-lg px-3 py-2">
+        <span className="text-[var(--color-text-muted)]">Salgsverdi <span className="font-medium text-[var(--color-text-primary)] tabular-nums">{fmt(salgs)}</span></span>
+        <span className="text-[var(--color-text-muted)]">Kost <span className="font-medium text-[var(--color-text-primary)] tabular-nums">{fmt(kost)}</span></span>
+        <span className="text-[var(--color-text-muted)]">Fortjeneste <span className={`font-semibold tabular-nums ${salgs - kost >= 0 ? 'text-green-600' : 'text-red-600'}`}>{fmt(salgs - kost)}</span></span>
+      </div>
+
+      <label className="flex items-center gap-2 text-xs text-[var(--color-text-secondary)]">
+        <input type="checkbox" checked={f.reduceMain} onChange={(e) => upd({ reduceMain: e.target.checked })} className="rounded" />
+        Trekk mengden ({qtyN || 0}) fra hovedlinja ({mainQty}) — bruk når underproduktet er en DEL av hovedmengden (så salgsverdien ikke telles dobbelt)
+      </label>
+
+      {error && <p className="text-xs font-medium text-red-600">{error}</p>}
+
+      <div className="flex items-center gap-3 flex-wrap">
+        <Button variant="primary" disabled={saving} onClick={submit}>{saving ? 'Lagrer…' : 'Legg til underprodukt'}</Button>
+        <button type="button" onClick={() => { setOpen(false); reset() }} className="text-sm text-[var(--color-text-secondary)] hover:underline">Lukk</button>
+        <span className="text-[11px] text-[var(--color-text-muted)]">Kundepris 0 = rent kost-tillegg (hovedlinja beholder salgsverdien). Egen pris + «trekk mengde» = del opp salgsverdien.</span>
+      </div>
+    </div>
   )
 }
 
@@ -476,15 +628,28 @@ export default function BudgetLinesSection({
       .sort((a, b) => a.reviewed_at!.localeCompare(b.reviewed_at!))
     const coTotal = cos.reduce((s, co) => s + co.requested_quantity, 0)
     return (
-      <BudgetLineChart
-        productName={product?.name ?? row.product_name}
-        productCode={product?.description}
-        unit={product?.unit ?? row.unit}
-        subName={sub?.company_name}
-        importQty={bl.budget_quantity - coTotal}
-        projectStart={project.start_date ?? ''}
-        approvedCOs={cos}
-      />
+      <>
+        <BudgetLineChart
+          productName={product?.name ?? row.product_name}
+          productCode={product?.description}
+          unit={product?.unit ?? row.unit}
+          subName={sub?.company_name}
+          importQty={bl.budget_quantity - coTotal}
+          projectStart={project.start_date ?? ''}
+          approvedCOs={cos}
+        />
+        <div className="px-4 pb-4">
+          <SubProductSplitForm
+            projectId={project.id}
+            line={{ id: bl.id, product_id: bl.product_id }}
+            mainLabel={`${product?.description ?? ''} ${product?.name ?? ''}`.trim() || row.product_name}
+            mainPrice={bl.customer_price_snapshot}
+            mainQty={bl.budget_quantity}
+            subs={projectSubDetails}
+            onRefresh={onRefresh}
+          />
+        </div>
+      </>
     )
   }
 
