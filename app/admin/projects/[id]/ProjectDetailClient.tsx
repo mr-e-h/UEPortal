@@ -534,6 +534,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
           allProducts={allProducts}
           allSubs={allSubs}
           projectSubDetails={projectSubDetails}
+          subPrices={subPrices}
           changeOrders={changeOrders}
           phases={phases}
           phaseTypes={phaseTypes}

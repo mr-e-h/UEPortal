@@ -10,7 +10,7 @@ import { useConfirm } from '@/components/ui/useConfirm'
 import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 import { lineTypeLabel } from '@/lib/line-types'
 import { budgetSalesValue, budgetCostValue } from '@/lib/project-economy'
-import type { ProjectBudgetLine, Product, Subcontractor, ChangeOrder, Project, BudgetVersion, ProjectPhase, PhaseType } from '@/types'
+import type { ProjectBudgetLine, Product, Subcontractor, SubcontractorProductPrice, ChangeOrder, Project, BudgetVersion, ProjectPhase, PhaseType } from '@/types'
 
 // BudgetLineChart is lazy-loaded — only mounts when a row is expanded.
 const BudgetLineChart = dynamic(() => import('@/components/BudgetLineChart'), { ssr: false })
@@ -39,6 +39,7 @@ interface Props {
   allProducts: Product[]
   allSubs: Subcontractor[]
   projectSubDetails: Subcontractor[]
+  subPrices: SubcontractorProductPrice[]
   changeOrders: ChangeOrder[]
   // Faser + tagging: tagger man en budsjettlinje til en fase, avledes fasevekten
   // i prognosen fra linjene (ØKONOMIMODELL.md 1b).
@@ -99,22 +100,29 @@ interface Props {
  * resten; ingenting beregnes feil (hver linje beholder sine egne tall).
  */
 function SubProductSplitForm({
-  projectId, line, mainLabel, mainPrice, mainQty, subs, onRefresh,
+  projectId, line, mainLabel, mainPrice, mainQty, mainUePrice, subs, subPrices, onRefresh,
 }: {
   projectId: string
   line: { id: string; product_id: string }
   mainLabel: string
   mainPrice: number
   mainQty: number
+  mainUePrice: number
   subs: Subcontractor[]
+  subPrices: SubcontractorProductPrice[]
   onRefresh: () => void
 }) {
+  // UE-pris for «den delen» er ferdig utfylt: standard = hovedlinjas UE-pris, og
+  // oppdateres til valgt UEs katalogpris for produktet når man velger en annen UE.
+  const priceFor = (subId: string) =>
+    subPrices.find((sp) => sp.subcontractor_id === subId && sp.product_id === line.product_id)?.cost_price ?? null
+  const defaultUePrice = mainUePrice > 0 ? String(mainUePrice) : ''
   const [open, setOpen] = useState(false)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState<string | null>(null)
-  const [f, setF] = useState({ label: '', qty: '', cust_price: '0', ue_price: '', sub_id: '', reduceMain: false })
+  const [f, setF] = useState({ label: '', qty: '', cust_price: '0', ue_price: defaultUePrice, sub_id: '', reduceMain: false })
   const upd = (patch: Partial<typeof f>) => setF((p) => ({ ...p, ...patch }))
-  const reset = () => { setF({ label: '', qty: '', cust_price: '0', ue_price: '', sub_id: '', reduceMain: false }); setError(null) }
+  const reset = () => { setF({ label: '', qty: '', cust_price: '0', ue_price: defaultUePrice, sub_id: '', reduceMain: false }); setError(null) }
 
   const qtyN = Number(f.qty.replace(',', '.')) || 0
   const custN = Number(f.cust_price.replace(',', '.')) || 0
@@ -209,7 +217,11 @@ function SubProductSplitForm({
         </label>
         <label className="flex flex-col gap-1 text-xs text-[var(--color-text-muted)]">
           Tildel UE
-          <select value={f.sub_id} onChange={(e) => upd({ sub_id: e.target.value })} className={inputCls}>
+          <select
+            value={f.sub_id}
+            onChange={(e) => { const sid = e.target.value; const p = priceFor(sid); upd({ sub_id: sid, ...(p != null ? { ue_price: String(p) } : {}) }) }}
+            className={inputCls}
+          >
             <option value="">— Ingen —</option>
             {subs.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
           </select>
@@ -431,6 +443,7 @@ export default function BudgetLinesSection({
   allProducts,
   allSubs,
   projectSubDetails,
+  subPrices,
   changeOrders,
   phases, phaseTypes, onAssignPhase,
   showAddLine, setShowAddLine,
@@ -584,7 +597,9 @@ export default function BudgetLinesSection({
             mainLabel={`${product?.description ?? ''} ${product?.name ?? ''}`.trim() || row.product_name}
             mainPrice={bl.customer_price_snapshot}
             mainQty={bl.budget_quantity}
+            mainUePrice={bl.subcontractor_cost_price_snapshot}
             subs={projectSubDetails}
+            subPrices={subPrices}
             onRefresh={onRefresh}
           />
         </div>
