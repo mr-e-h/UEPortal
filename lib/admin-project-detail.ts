@@ -285,7 +285,9 @@ export async function loadProjectDetail(
   // uansett ikke synlige for byggeleder).
   let budgetVersions = safeArr<BudgetVersion>(bvRes.data)
   if (!canEconomy) {
-    budgetVersions = budgetVersions.map((v) => ({ ...v, total_sales_value: 0 }))
+    // Nuller salgssum OG per-produkt-øyeblikksbildet — snapshot inneholder
+    // kundepris + UE-kost (diffen ville ellers lekket disse til byggeleder).
+    budgetVersions = budgetVersions.map((v) => ({ ...v, total_sales_value: 0, snapshot: null }))
   }
   const monthPlans = canEconomy ? safeArr<ProjectMonthPlan>(mpRes.data) : []
   const internalCosts = canEconomy ? safeArr<ProjectInternalCostEntry>(icsRes.data) : []

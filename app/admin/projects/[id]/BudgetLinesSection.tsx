@@ -10,7 +10,7 @@ import { useConfirm } from '@/components/ui/useConfirm'
 import { fmtNOK as fmt, fmtProductLabel } from '@/lib/format'
 import { lineTypeLabel } from '@/lib/line-types'
 import { budgetSalesValue, budgetCostValue } from '@/lib/project-economy'
-import type { ProjectBudgetLine, Product, Subcontractor, SubcontractorProductPrice, ChangeOrder, Project, BudgetVersion, ProjectPhase, PhaseType } from '@/types'
+import type { ProjectBudgetLine, Product, Subcontractor, SubcontractorProductPrice, ChangeOrder, Project, BudgetVersion, BudgetVersionSnapshot, ProjectPhase, PhaseType } from '@/types'
 
 // BudgetLineChart is lazy-loaded — only mounts when a row is expanded.
 const BudgetLineChart = dynamic(() => import('@/components/BudgetLineChart'), { ssr: false })
@@ -431,6 +431,129 @@ function GroupedBudgetTable({ rows, subs, onRefresh }: { rows: BLRow[]; subs: Su
 
 // ── ExpandedBudgetLine — utfoldet budsjettlinje: underprodukter i fokus ───────
 
+// ─── Versjons-diff (mark 2) ───────────────────────────────────────────────────
+// Aggregerer et øyeblikksbilde per produkt-identitet (product_id + custom_label),
+// slik at prisperioder/duplikater av samme produkt teller som ÉN rad. Verdier =
+// Σ(mengde), Σ(mengde×kundepris), Σ(mengde×UE-kost).
+type DiffAgg = { product_id: string; custom_label: string; qty: number; sales: number; cost: number }
+type DiffRow = DiffAgg & { key: string; kind: 'added' | 'removed' | 'changed'; prevQty: number; prevSales: number; prevCost: number }
+
+function aggregateSnapshot(snap: BudgetVersionSnapshot): Map<string, DiffAgg> {
+  const m = new Map<string, DiffAgg>()
+  for (const l of snap.lines) {
+    const label = (l.custom_label ?? '').trim()
+    const key = `${l.product_id}|${label}`
+    const e = m.get(key) ?? { product_id: l.product_id, custom_label: label, qty: 0, sales: 0, cost: 0 }
+    const q = l.budget_quantity ?? 0
+    e.qty += q
+    e.sales += q * (l.customer_price_snapshot ?? 0)
+    e.cost += q * (l.subcontractor_cost_price_snapshot ?? 0)
+    m.set(key, e)
+  }
+  return m
+}
+
+// Diff to øyeblikksbilder per produkt-identitet → bare RADENE som faktisk endret seg.
+function diffSnapshots(cur: BudgetVersionSnapshot, prev: BudgetVersionSnapshot): DiffRow[] {
+  const c = aggregateSnapshot(cur)
+  const p = aggregateSnapshot(prev)
+  const keys = new Set<string>([...Array.from(c.keys()), ...Array.from(p.keys())])
+  const rows: DiffRow[] = []
+  for (const key of Array.from(keys)) {
+    const a = c.get(key)
+    const b = p.get(key)
+    const base = (a ?? b) as DiffAgg
+    const qty = a?.qty ?? 0, prevQty = b?.qty ?? 0
+    const sales = a?.sales ?? 0, prevSales = b?.sales ?? 0
+    const cost = a?.cost ?? 0, prevCost = b?.cost ?? 0
+    let kind: DiffRow['kind']
+    if (a && !b) kind = 'added'
+    else if (!a && b) kind = 'removed'
+    else {
+      const changed = qty !== prevQty || Math.abs(sales - prevSales) > 0.5 || Math.abs(cost - prevCost) > 0.5
+      if (!changed) continue
+      kind = 'changed'
+    }
+    rows.push({ key, product_id: base.product_id, custom_label: base.custom_label, kind, qty, prevQty, sales, prevSales, cost, prevCost })
+  }
+  // Størst absolutt salgsverdi-endring først (mest relevante øverst).
+  rows.sort((x, y) => Math.abs(y.sales - y.prevSales) - Math.abs(x.sales - x.prevSales))
+  return rows
+}
+
+const DIFF_KIND: Record<DiffRow['kind'], { label: string; cls: string }> = {
+  added: { label: 'Lagt til', cls: 'bg-green-100 text-green-700' },
+  removed: { label: 'Fjernet', cls: 'bg-red-100 text-red-700' },
+  changed: { label: 'Endret', cls: 'bg-amber-100 text-amber-700' },
+}
+
+/**
+ * Per-produkt endringsoversikt mellom to budsjettversjoner (mark 2). Krever at
+ * BEGGE versjonene har et øyeblikksbilde (fanges kun fra og med migrasjon 0024 +
+ * neste opplasting). Snapshot er null for byggeleder/UE → da vises ingen diff.
+ */
+function BudgetVersionDiff({
+  snapshot, prevSnapshot, allProducts,
+}: {
+  snapshot: BudgetVersionSnapshot | null
+  prevSnapshot: BudgetVersionSnapshot | null
+  allProducts: Product[]
+}) {
+  if (!snapshot || !prevSnapshot) {
+    return (
+      <div className="px-5 py-4 text-sm text-[var(--color-text-muted)]">
+        Ingen detaljert endringsoversikt — øyeblikksbilde mangler på minst én av versjonene (fanges først fra og med neste opplasting).
+      </div>
+    )
+  }
+  const rows = diffSnapshots(snapshot, prevSnapshot)
+  if (rows.length === 0) {
+    return <div className="px-5 py-4 text-sm text-[var(--color-text-muted)]">Ingen endringer på produktnivå mellom disse versjonene.</div>
+  }
+  const nbq = (n: number) => n.toLocaleString('nb-NO', { maximumFractionDigits: 2 })
+  const name = (productId: string, label: string) => {
+    const base = fmtProductLabel(allProducts.find((p) => p.id === productId))
+    return label ? `${base} · ${label}` : base
+  }
+  return (
+    <div className="px-5 py-4 bg-muted/40">
+      <div className="text-xs font-semibold text-[var(--color-text-secondary)] uppercase tracking-wide mb-2">Endrede produkter ({rows.length})</div>
+      <table className="w-full text-sm">
+        <thead>
+          <tr className="text-[10px] text-[var(--color-text-muted)] uppercase">
+            <th className="text-left py-1 font-medium">Produkt</th>
+            <th className="text-center py-1 font-medium">Type</th>
+            <th className="text-right py-1 font-medium">Mengde</th>
+            <th className="text-right py-1 font-medium">Salgsverdi</th>
+            <th className="text-right py-1 font-medium">Endring</th>
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r) => {
+            const meta = DIFF_KIND[r.kind]
+            const dSales = r.sales - r.prevSales
+            const qtyCell = r.kind === 'changed'
+              ? `${nbq(r.prevQty)} → ${nbq(r.qty)}`
+              : r.kind === 'added' ? nbq(r.qty) : nbq(r.prevQty)
+            const salesCell = r.kind === 'removed' ? r.prevSales : r.sales
+            return (
+              <tr key={r.key} className="border-t border-border">
+                <td className="py-1.5 pr-2 text-[var(--color-text-primary)]">{name(r.product_id, r.custom_label)}</td>
+                <td className="py-1.5 text-center"><span className={`text-[10px] px-1.5 py-0.5 rounded font-medium ${meta.cls}`}>{meta.label}</span></td>
+                <td className="py-1.5 text-right text-[var(--color-text-secondary)] tabular-nums">{qtyCell}</td>
+                <td className="py-1.5 text-right text-[var(--color-text-secondary)] tabular-nums">{fmt(salesCell)}</td>
+                <td className={`py-1.5 text-right font-medium tabular-nums ${dSales > 0 ? 'text-green-600' : dSales < 0 ? 'text-red-600' : 'text-[var(--color-text-muted)]'}`}>
+                  {dSales > 0 ? '+' : ''}{fmt(dSales)}
+                </td>
+              </tr>
+            )
+          })}
+        </tbody>
+      </table>
+    </div>
+  )
+}
+
 /**
  * Vises når en budsjettlinje utfoldes. PRIMÆRT: produktets underprodukter
  * (egne custom_label-linjer) med inline UE-tildeling + slett, og et enkelt
@@ -598,6 +721,8 @@ export default function BudgetLinesSection({
   const [actionError, setActionError] = useState<string | null>(null)
   const [groupByProduct, setGroupByProduct] = useState(false)
   const [mergeMsg, setMergeMsg] = useState<string | null>(null)
+  // Hvilken budsjettversjon som har endringsoversikten (diff) utfoldet.
+  const [openDiffVersion, setOpenDiffVersion] = useState<string | null>(null)
 
   // Full-identitets-nøkkel (samme som backend): KUN helt like linjer slås sammen
   // (samme produkt + pris + UE-kost + tildeling + etikett + type + fase).
@@ -915,11 +1040,22 @@ export default function BudgetLinesSection({
                     const label = bver.version === 0 ? 'Originalbudsjett' : `V${bver.version}`
                     const dateStr = new Date(bver.uploaded_at).toLocaleDateString('nb-NO', { day: '2-digit', month: 'short', year: 'numeric' })
                     const timeStr = new Date(bver.uploaded_at).toLocaleTimeString('nb-NO', { hour: '2-digit', minute: '2-digit' })
+                    const diffOpen = openDiffVersion === bver.id
                     return (
-                      <tr key={bver.id} className={`border-b border-border ${isLatest ? 'bg-blue-50' : 'hover:bg-muted'}`}>
+                      <Fragment key={bver.id}>
+                      <tr className={`border-b border-border ${isLatest ? 'bg-blue-50' : 'hover:bg-muted'}`}>
                         <td className="px-5 py-3">
                           <span className={`font-medium ${isLatest ? 'text-blue-700' : 'text-[var(--color-text-primary)]'}`}>{label}</span>
                           {isLatest && <span className="ml-2 text-[10px] bg-blue-600 text-white px-1.5 py-0.5 rounded font-medium">Gjeldende</span>}
+                          {prev != null && (
+                            <button
+                              type="button"
+                              onClick={() => setOpenDiffVersion(diffOpen ? null : bver.id)}
+                              className="block mt-1 text-xs text-blue-600 hover:text-blue-700 hover:underline"
+                            >
+                              {diffOpen ? '▾ Skjul endringer' : '▸ Vis endringer'}
+                            </button>
+                          )}
                         </td>
                         <td className="px-5 py-3 text-right text-[var(--color-text-secondary)]" title={isLatest ? 'Beregnet live fra gjeldende budsjettlinjer' : undefined}>{fmt(salesValue)}</td>
                         <td className="px-5 py-3 text-right text-[var(--color-text-secondary)]" title={isLatest ? 'Beregnet live fra gjeldende budsjettlinjer' : undefined}>{fmt(costValue)}</td>
@@ -947,6 +1083,18 @@ export default function BudgetLinesSection({
                           )}
                         </td>
                       </tr>
+                      {diffOpen && (
+                        <tr>
+                          <td colSpan={7} className="p-0 border-b border-border">
+                            <BudgetVersionDiff
+                              snapshot={bver.snapshot ?? null}
+                              prevSnapshot={prev?.snapshot ?? null}
+                              allProducts={allProducts}
+                            />
+                          </td>
+                        </tr>
+                      )}
+                      </Fragment>
                     )
                   })}
                 </tbody>

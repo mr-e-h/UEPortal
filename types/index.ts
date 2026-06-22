@@ -623,6 +623,23 @@ export interface ActivityEntry {
   created_at: string
 }
 
+// Per-produkt øyeblikksbilde tatt ved import — gjør det mulig å vise en diff
+// («hva endret seg fra forrige versjon til denne»). Linje-identitet = product_id
+// + custom_label (samme nøkkel som duplikat-merge bruker). Inneholder KUNDEPRIS
+// og UE-kost → MÅ maskeres for UE/byggeleder (se admin-loader + budget-versions GET).
+export interface BudgetVersionSnapshotLine {
+  product_id: string
+  custom_label: string
+  budget_quantity: number
+  customer_price_snapshot: number
+  subcontractor_cost_price_snapshot: number
+  assigned_subcontractor_id: string | null
+  line_type: ProjectBudgetLine['line_type']
+}
+export interface BudgetVersionSnapshot {
+  lines: BudgetVersionSnapshotLine[]
+}
+
 export interface BudgetVersion {
   id: string
   project_id: string
@@ -632,6 +649,8 @@ export interface BudgetVersion {
   uploaded_by: string
   uploaded_at: string
   file_name?: string
+  // Per-produkt øyeblikksbilde (fra og med migrasjon 0024). Eldre versjoner = null.
+  snapshot?: BudgetVersionSnapshot | null
 }
 
 // ─── Fremdriftsplan (faser + milepæler) ─────────────────────────────────────

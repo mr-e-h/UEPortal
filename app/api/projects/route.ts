@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import { randomUUID } from 'crypto'
 import { revalidateTag } from 'next/cache'
 import { getSupabaseAdmin } from '@/lib/supabase'
-import type { Project, ProjectBudgetLine, BudgetVersion, ProjectSubcontractor } from '@/types'
+import type { Project, ProjectBudgetLine, BudgetVersion, BudgetVersionSnapshot, ProjectSubcontractor } from '@/types'
 import { importExcelLines } from '@/lib/excel-import'
 import { budgetSalesValue, budgetCostValue } from '@/lib/project-economy'
 import type { ParsedExcelLine } from '@/lib/excel'
@@ -101,12 +101,26 @@ export async function POST(request: NextRequest) {
     // Snapshot a baseline version-0 row.
     const { data: blData } = await sb
       .from('project_budget_lines')
-      .select('budget_quantity, customer_price_snapshot, subcontractor_cost_price_snapshot, source')
+      .select('product_id, custom_label, budget_quantity, customer_price_snapshot, subcontractor_cost_price_snapshot, assigned_subcontractor_id, line_type, source')
       .eq('project_id', newProject.id)
-    const budgetLines = ((blData ?? []) as ProjectBudgetLine[])
-      .filter((bl) => !bl.source || bl.source === 'manual')
+    const allLines = (blData ?? []) as ProjectBudgetLine[]
+    const budgetLines = allLines.filter((bl) => !bl.source || bl.source === 'manual')
     const totalSalesValue = budgetSalesValue(budgetLines)
     const totalCostValue = budgetCostValue(budgetLines)
+
+    // Per-produkt øyeblikksbilde av originalbudsjettet (V0) — gjør at den FØRSTE
+    // re-importen (V1) kan vise en ekte diff mot originalen i versjonshistorikken.
+    const snapshot: BudgetVersionSnapshot = {
+      lines: allLines.map((bl) => ({
+        product_id: bl.product_id,
+        custom_label: (bl.custom_label ?? '').trim(),
+        budget_quantity: bl.budget_quantity ?? 0,
+        customer_price_snapshot: bl.customer_price_snapshot ?? 0,
+        subcontractor_cost_price_snapshot: bl.subcontractor_cost_price_snapshot ?? 0,
+        assigned_subcontractor_id: bl.assigned_subcontractor_id ?? null,
+        line_type: bl.line_type ?? 'subcontractor_work',
+      })),
+    }
 
     const versionRow: BudgetVersion = {
       id: randomUUID(),
@@ -116,6 +130,7 @@ export async function POST(request: NextRequest) {
       total_cost_value: totalCostValue,
       uploaded_by: auth.user.full_name ?? 'Ukjent',
       uploaded_at: new Date().toISOString(),
+      snapshot,
     }
     await sb.from('budget_versions').insert(versionRow)
   }

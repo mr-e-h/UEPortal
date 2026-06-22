@@ -32,7 +32,7 @@ export async function GET(req: NextRequest) {
     // konkurrentene koster. UE-en ser sin egen kost via /api/budget-lines.
     versions = versions
       .filter((v) => allowedProjectIds.has(v.project_id))
-      .map((v) => ({ ...v, total_sales_value: 0, total_cost_value: 0 }))
+      .map((v) => ({ ...v, total_sales_value: 0, total_cost_value: 0, snapshot: null }))
     return NextResponse.json(versions)
   }
 
@@ -44,7 +44,8 @@ export async function GET(req: NextRequest) {
   // see MinUE's customer-side sales total. Only admin roles get it unmasked —
   // same masking the UE branch above applies.
   if (!canSeeCustomerEconomics(auth.user)) {
-    versions = versions.map((v) => ({ ...v, total_sales_value: 0 }))
+    // Snapshot inneholder kundepris + UE-kost → nulles for byggeleder.
+    versions = versions.map((v) => ({ ...v, total_sales_value: 0, snapshot: null }))
   }
 
   return NextResponse.json(versions)
