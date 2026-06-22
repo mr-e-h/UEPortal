@@ -561,6 +561,43 @@ export default function BudgetLinesSection({
   const [deletingId, setDeletingId] = useState<string | null>(null)
   const [actionError, setActionError] = useState<string | null>(null)
   const [groupByProduct, setGroupByProduct] = useState(false)
+  const [mergeMsg, setMergeMsg] = useState<string | null>(null)
+
+  // Antall linjer som forsvinner ved sammenslåing av HELT identiske duplikater
+  // (samme produkt + pris + UE-kost + tildeling + etikett + type + fase).
+  const dupRemovable = useMemo(() => {
+    const key = (l: ProjectBudgetLine) => [
+      l.product_id, l.customer_price_snapshot, l.subcontractor_cost_price_snapshot,
+      l.assigned_subcontractor_id ?? '', (l.custom_label ?? '').trim(),
+      l.line_type ?? 'subcontractor_work', l.phase_id ?? '',
+    ].join('||')
+    const counts = new Map<string, number>()
+    for (const l of budgetLines) counts.set(key(l), (counts.get(key(l)) ?? 0) + 1)
+    let removable = 0
+    for (const c of Array.from(counts.values())) if (c > 1) removable += c - 1
+    return removable
+  }, [budgetLines])
+
+  async function handleMergeDuplicates() {
+    const ok = await confirm({
+      title: 'Slå sammen duplikater?',
+      message: `${dupRemovable} identiske duplikatlinjer slås sammen (mengden summeres til én linje per gruppe). Prisperioder (ulik pris) og underprodukter røres ikke. Linjer med rapport/produksjon hoppes over.`,
+      confirmLabel: 'Slå sammen',
+    })
+    if (!ok) return
+    setActionError(null)
+    setMergeMsg(null)
+    const res = await fetch('/api/budget-lines/merge-duplicates', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ project_id: project.id }),
+    })
+    const data = await res.json().catch(() => ({} as Record<string, unknown>))
+    if (!res.ok) { setActionError((data as { error?: string }).error ?? 'Sammenslåing feilet'); return }
+    const d = data as { merged: number; removed: number; skipped: number }
+    setMergeMsg(`Slo sammen ${d.merged} ${d.merged === 1 ? 'gruppe' : 'grupper'} · fjernet ${d.removed} ${d.removed === 1 ? 'linje' : 'linjer'}${d.skipped > 0 ? ` · hoppet over ${d.skipped} (har rapport/produksjon)` : ''}.`)
+    onRefresh()
+  }
 
   async function handleDeleteLine(row: BLRow) {
     setActionError(null)
@@ -998,6 +1035,11 @@ export default function BudgetLinesSection({
           {actionError}
         </div>
       )}
+      {mergeMsg && (
+        <div className="px-4 py-2 bg-green-50 border border-green-200 rounded text-sm text-green-700">
+          {mergeMsg}
+        </div>
+      )}
 
       {/* Verktøylinje: type-filter + grupper-toggle (delt av flat og gruppert visning) */}
       <div className="flex flex-wrap items-center gap-3">
@@ -1012,6 +1054,16 @@ export default function BudgetLinesSection({
           <option value="internal_cost">Intern</option>
           <option value="material">Materiell</option>
         </select>
+        {dupRemovable > 0 && (
+          <button
+            type="button"
+            onClick={handleMergeDuplicates}
+            className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
+            title="Slå sammen helt identiske duplikatlinjer til én (mengden summeres). Prisperioder og underprodukter røres ikke."
+          >
+            Slå sammen duplikater ({dupRemovable})
+          </button>
+        )}
         <button
           type="button"
           onClick={() => setGroupByProduct((v) => !v)}
