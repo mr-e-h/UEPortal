@@ -202,7 +202,11 @@ export async function GET(
       // product_name bærer den kanoniske 'KODE - Navn'-etiketten så sub-UI-en
       // slipper å skille description vs name. product_description er den rå
       // koden for kallere som fortsatt vil ha dem fra hverandre.
-      product_name: fmtProductLabel(product),
+      // Underprodukter (egen custom_label på samme produkt) vises med etiketten
+      // så UE ser akkurat delen han er tildelt — ikke hovedproduktets navn.
+      product_name: bl.custom_label?.trim()
+        ? (product?.description ? `${product.description} – ${bl.custom_label.trim()}` : bl.custom_label.trim())
+        : fmtProductLabel(product),
       product_description: product?.description ?? '',
       unit: product?.unit ?? '',
       budget_quantity: bl.budget_quantity,

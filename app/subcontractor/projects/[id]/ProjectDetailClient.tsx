@@ -554,11 +554,13 @@ export default function ProjectDetailClient({ initialData }: Props) {
   const budgetGroups = (() => {
     const map = new Map<string, Array<(typeof project.budget_lines)[number]>>()
     for (const bl of project.budget_lines) {
-      const arr = map.get(bl.product_id) ?? []
+      // Grupper på VISNINGSNAVN (inkl. underprodukt-etikett), ikke product_id, så
+      // underprodukter (egen etikett på samme produkt) står som egne rader.
+      const arr = map.get(bl.product_name) ?? []
       arr.push(bl)
-      map.set(bl.product_id, arr)
+      map.set(bl.product_name, arr)
     }
-    return Array.from(map.entries()).map(([pid, lines]) => {
+    return Array.from(map.values()).map((lines) => {
       const first = lines[0]
       const totalQty = lines.reduce((s, l) => s + l.budget_quantity, 0)
       let approved = 0
@@ -569,8 +571,8 @@ export default function ProjectDetailClient({ initialData }: Props) {
         pending += u.pending
       }
       return {
-        key: pid,
-        product_id: pid,
+        key: first.product_name,
+        product_id: first.product_id,
         product_name: first.product_name,
         product_description: first.product_description,
         unit: first.unit,
