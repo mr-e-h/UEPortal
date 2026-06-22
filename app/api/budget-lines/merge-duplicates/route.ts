@@ -25,9 +25,11 @@ export async function POST(request: NextRequest) {
   const auth = await requireAdmin()
   if (!auth.ok) return auth.response
 
-  let body: { project_id?: string }
+  // product_id (valgfritt): slå sammen KUN duplikater for ett produkt (per-produkt-
+  // merge inne på linja). Uten = alle produkter i prosjektet (global «slå sammen alt»).
+  let body: { project_id?: string; product_id?: string }
   try {
-    body = await request.json() as { project_id?: string }
+    body = await request.json() as { project_id?: string; product_id?: string }
   } catch {
     return NextResponse.json({ error: 'Ugyldig JSON' }, { status: 400 })
   }
@@ -42,7 +44,8 @@ export async function POST(request: NextRequest) {
     .select('*')
     .eq('project_id', body.project_id)
   if (linesErr) return NextResponse.json({ error: 'Henting feilet' }, { status: 500 })
-  const lines = (linesData ?? []) as ProjectBudgetLine[]
+  let lines = (linesData ?? []) as ProjectBudgetLine[]
+  if (body.product_id) lines = lines.filter((l) => l.product_id === body.product_id)
   if (lines.length === 0) return NextResponse.json({ merged: 0, removed: 0, skipped: 0 })
 
   // Full-identitets-nøkkel: alt som påvirker tallene + tagging må være likt.

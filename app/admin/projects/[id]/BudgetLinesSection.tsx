@@ -88,117 +88,6 @@ interface Props {
   setDragOver: (v: boolean) => void
 }
 
-// ── CustomLineForm — egendefinert UE-splittlinje (egen pris, kun kost) ────────
-
-/**
- * Legg til en budsjettlinje der en DEL av et produkt settes ut til en UE med
- * EGEN pris (ikke katalogprisen) — f.eks. «UPFA2303 - Blåsing». Salgsverdi = 0
- * (kun kost; kundeinntekten blir på hovedlinja), og linja tildeles UE-en direkte.
- * Hovedlinja settes til «Intern / MinUE» med den vanlige tildelingen.
- */
-function CustomLineForm({
-  projectId, products, subs, onRefresh,
-}: {
-  projectId: string
-  products: Product[]
-  subs: Subcontractor[]
-  onRefresh: () => void
-}) {
-  const [open, setOpen] = useState(false)
-  const [saving, setSaving] = useState(false)
-  const [error, setError] = useState<string | null>(null)
-  const [f, setF] = useState({ product_id: '', label: '', qty: '', sub_id: '', ue_price: '' })
-  const upd = (patch: Partial<typeof f>) => setF((p) => ({ ...p, ...patch }))
-  const reset = () => { setF({ product_id: '', label: '', qty: '', sub_id: '', ue_price: '' }); setError(null) }
-
-  async function submit() {
-    const qty = Number(f.qty.replace(',', '.'))
-    const uePrice = Number(f.ue_price.replace(',', '.'))
-    if (!f.product_id) { setError('Velg et produkt'); return }
-    if (!Number.isFinite(qty) || qty < 0) { setError('Mengde må være et tall ≥ 0'); return }
-    if (!f.sub_id) { setError('Velg underentreprenør'); return }
-    if (!Number.isFinite(uePrice) || uePrice < 0) { setError('UE-pris må være et tall ≥ 0'); return }
-    setError(null); setSaving(true)
-    const res = await fetch('/api/budget-lines', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        project_id: projectId,
-        product_id: f.product_id,
-        budget_quantity: qty,
-        custom_label: f.label.trim(),
-        customer_price: 0,                       // kun kost — kundeinntekt på hovedlinja
-        subcontractor_cost_price: uePrice,
-        assigned_subcontractor_id: f.sub_id,
-        line_type: 'subcontractor_work',
-      }),
-    })
-    const data = await res.json().catch(() => ({} as Record<string, unknown>))
-    setSaving(false)
-    if (!res.ok) { setError((data as { error?: string }).error ?? 'Lagring feilet'); return }
-    reset()
-    onRefresh()
-  }
-
-  if (!open) {
-    return (
-      <button
-        type="button"
-        onClick={() => setOpen(true)}
-        className="px-4 py-1.5 border border-blue-300 text-blue-700 text-sm rounded hover:bg-blue-50"
-      >
-        + UE-splittlinje (egen pris)
-      </button>
-    )
-  }
-
-  const inputCls = 'text-sm text-[var(--color-text-primary)] border border-border rounded px-2 py-1.5 focus:outline-none focus:ring-blue-500'
-
-  return (
-    <form
-      onSubmit={(e) => { e.preventDefault(); submit() }}
-      className="bg-blue-50 border border-blue-200 rounded-lg p-4 flex flex-wrap gap-4 items-end"
-    >
-      <div>
-        <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Produkt (kode/navn)</label>
-        <select required value={f.product_id} onChange={(e) => upd({ product_id: e.target.value })} className={inputCls}>
-          <option value="">Velg produkt</option>
-          {products.map((p) => <option key={p.id} value={p.id}>{fmtProductLabel(p)} — {p.unit}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Etikett</label>
-        <input value={f.label} onChange={(e) => upd({ label: e.target.value })} placeholder="f.eks. Blåsing" className={`${inputCls} w-36`} />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Mengde</label>
-        <NumberInput value={f.qty} onChange={(raw) => upd({ qty: raw })} className={`${inputCls} w-24`} />
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">Underentreprenør</label>
-        <select required value={f.sub_id} onChange={(e) => upd({ sub_id: e.target.value })} className={inputCls}>
-          <option value="">Velg UE</option>
-          {subs.map((s) => <option key={s.id} value={s.id}>{s.company_name}</option>)}
-        </select>
-      </div>
-      <div>
-        <label className="block text-xs font-medium text-[var(--color-text-secondary)] mb-1">UE-pris (kr/enhet)</label>
-        <NumberInput value={f.ue_price} onChange={(raw) => upd({ ue_price: raw })} className={`${inputCls} w-28`} />
-      </div>
-      <button type="submit" disabled={saving} className="px-4 py-1.5 bg-blue-600 text-white text-sm rounded hover:bg-blue-700 disabled:opacity-50">
-        {saving ? 'Lagrer…' : 'Lagre linje'}
-      </button>
-      <button type="button" onClick={() => { setOpen(false); reset() }} className="px-3 py-1.5 text-sm text-[var(--color-text-secondary)] hover:underline">
-        Avbryt
-      </button>
-      {error && <p className="w-full text-xs font-medium text-red-600">{error}</p>}
-      <p className="w-full text-[11px] text-[var(--color-text-muted)]">
-        Salgsverdi settes til 0 (kun kost) — kundeinntekten blir på hovedlinja. Husk å sette hovedlinja til «Intern / MinUE».
-      </p>
-    </form>
-  )
-}
-
 // ── SubProductSplitForm — splitt en budsjettlinje i underprodukter ────────────
 
 /**
@@ -563,25 +452,28 @@ export default function BudgetLinesSection({
   const [groupByProduct, setGroupByProduct] = useState(false)
   const [mergeMsg, setMergeMsg] = useState<string | null>(null)
 
-  // Antall linjer som forsvinner ved sammenslåing av HELT identiske duplikater
+  // Full-identitets-nøkkel (samme som backend): KUN helt like linjer slås sammen
   // (samme produkt + pris + UE-kost + tildeling + etikett + type + fase).
-  const dupRemovable = useMemo(() => {
-    const key = (l: ProjectBudgetLine) => [
-      l.product_id, l.customer_price_snapshot, l.subcontractor_cost_price_snapshot,
-      l.assigned_subcontractor_id ?? '', (l.custom_label ?? '').trim(),
-      l.line_type ?? 'subcontractor_work', l.phase_id ?? '',
-    ].join('||')
+  const identityKey = (l: ProjectBudgetLine) => [
+    l.product_id, l.customer_price_snapshot, l.subcontractor_cost_price_snapshot,
+    l.assigned_subcontractor_id ?? '', (l.custom_label ?? '').trim(),
+    l.line_type ?? 'subcontractor_work', l.phase_id ?? '',
+  ].join('||')
+  const countRemovable = (ls: ProjectBudgetLine[]) => {
     const counts = new Map<string, number>()
-    for (const l of budgetLines) counts.set(key(l), (counts.get(key(l)) ?? 0) + 1)
-    let removable = 0
-    for (const c of Array.from(counts.values())) if (c > 1) removable += c - 1
-    return removable
-  }, [budgetLines])
+    for (const l of ls) counts.set(identityKey(l), (counts.get(identityKey(l)) ?? 0) + 1)
+    let r = 0
+    for (const c of Array.from(counts.values())) if (c > 1) r += c - 1
+    return r
+  }
+  const dupRemovable = countRemovable(budgetLines)
+  const productDupRemovable = (productId: string) => countRemovable(budgetLines.filter((l) => l.product_id === productId))
 
-  async function handleMergeDuplicates() {
+  // Slå sammen duplikater — globalt (productId=null) eller for ETT produkt.
+  async function runMerge(productId: string | null, count: number) {
     const ok = await confirm({
       title: 'Slå sammen duplikater?',
-      message: `${dupRemovable} identiske duplikatlinjer slås sammen (mengden summeres til én linje per gruppe). Prisperioder (ulik pris) og underprodukter røres ikke. Linjer med rapport/produksjon hoppes over.`,
+      message: `${count} identiske duplikatlinjer ${productId ? 'for dette produktet' : 'i prosjektet'} slås sammen (mengden summeres til én linje per gruppe). Prisperioder (ulik pris) og underprodukter røres ikke.`,
       confirmLabel: 'Slå sammen',
     })
     if (!ok) return
@@ -590,12 +482,12 @@ export default function BudgetLinesSection({
     const res = await fetch('/api/budget-lines/merge-duplicates', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ project_id: project.id }),
+      body: JSON.stringify({ project_id: project.id, ...(productId ? { product_id: productId } : {}) }),
     })
     const data = await res.json().catch(() => ({} as Record<string, unknown>))
     if (!res.ok) { setActionError((data as { error?: string }).error ?? 'Sammenslåing feilet'); return }
-    const d = data as { merged: number; removed: number; skipped: number }
-    setMergeMsg(`Slo sammen ${d.merged} ${d.merged === 1 ? 'gruppe' : 'grupper'} · fjernet ${d.removed} ${d.removed === 1 ? 'linje' : 'linjer'}${d.skipped > 0 ? ` · hoppet over ${d.skipped} (har rapport/produksjon)` : ''}.`)
+    const d = data as { merged: number; removed: number }
+    setMergeMsg(`Slo sammen ${d.merged} ${d.merged === 1 ? 'gruppe' : 'grupper'} · fjernet ${d.removed} ${d.removed === 1 ? 'linje' : 'linjer'}.`)
     onRefresh()
   }
 
@@ -675,7 +567,17 @@ export default function BudgetLinesSection({
           projectStart={project.start_date ?? ''}
           approvedCOs={cos}
         />
-        <div className="px-4 pb-4">
+        <div className="px-4 pb-4 space-y-3">
+          {productDupRemovable(bl.product_id) > 0 && (
+            <button
+              type="button"
+              onClick={() => runMerge(bl.product_id, productDupRemovable(bl.product_id))}
+              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
+              title="Slå sammen helt identiske duplikatlinjer for dette produktet til én (mengden summeres)."
+            >
+              Slå sammen {productDupRemovable(bl.product_id)} like linjer for dette produktet
+            </button>
+          )}
           <SubProductSplitForm
             projectId={project.id}
             line={{ id: bl.id, product_id: bl.product_id }}
@@ -1015,15 +917,6 @@ export default function BudgetLinesSection({
         </form>
       )}
 
-      <div className="flex">
-        <CustomLineForm
-          projectId={project.id}
-          products={allProducts}
-          subs={projectSubDetails}
-          onRefresh={onRefresh}
-        />
-      </div>
-
       {bulkError && (
         <div className="px-4 py-2 bg-red-50 border border-red-200 rounded text-sm text-red-700">
           {bulkError}
@@ -1057,11 +950,11 @@ export default function BudgetLinesSection({
         {dupRemovable > 0 && (
           <button
             type="button"
-            onClick={handleMergeDuplicates}
+            onClick={() => runMerge(null, dupRemovable)}
             className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
-            title="Slå sammen helt identiske duplikatlinjer til én (mengden summeres). Prisperioder og underprodukter røres ikke."
+            title="Slå sammen ALLE helt identiske duplikatlinjer i prosjektet til én (mengden summeres). Prisperioder og underprodukter røres ikke."
           >
-            Slå sammen duplikater ({dupRemovable})
+            Slå sammen alle duplikater ({dupRemovable})
           </button>
         )}
         <button
