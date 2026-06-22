@@ -429,6 +429,140 @@ function GroupedBudgetTable({ rows, subs, onRefresh }: { rows: BLRow[]; subs: Su
   )
 }
 
+// ── ExpandedBudgetLine — utfoldet budsjettlinje: underprodukter i fokus ───────
+
+/**
+ * Vises når en budsjettlinje utfoldes. PRIMÆRT: produktets underprodukter
+ * (egne custom_label-linjer) med inline UE-tildeling + slett, og et enkelt
+ * «+ Legg til underprodukt». Mengdehistorikk-grafen (+ EM-historikk) ligger bak
+ * en «Vis mengdehistorikk»-knapp (skjult som standard, egen state — ikke koblet
+ * til rad-utfoldingen). «Slå sammen duplikater» flyttet ned som sekundær handling.
+ */
+function ExpandedBudgetLine({
+  bl, product, rowName, projectId, subLines, subs, subPrices, deletingId,
+  onAssign, onDelete, mergeCount, onMerge, changeOrders, projectStart, onRefresh,
+}: {
+  bl: ProjectBudgetLine
+  product: Product | undefined
+  rowName: string
+  projectId: string
+  subLines: BLRow[]
+  subs: Subcontractor[]
+  subPrices: SubcontractorProductPrice[]
+  deletingId: string | null
+  onAssign: (lineId: string, subId: string | null) => void
+  onDelete: (row: BLRow) => void
+  mergeCount: number
+  onMerge: () => void
+  changeOrders: ChangeOrder[]
+  projectStart: string
+  onRefresh: () => void
+}) {
+  const [showHistory, setShowHistory] = useState(false)
+
+  // Beregnes kun når historikk åpnes (lazy).
+  const cos = showHistory
+    ? changeOrders
+        .filter((co) => co.product_id === bl.product_id && co.subcontractor_id === bl.assigned_subcontractor_id && co.status === 'approved' && co.reviewed_at != null)
+        .sort((a, b) => a.reviewed_at!.localeCompare(b.reviewed_at!))
+    : []
+  const coTotal = cos.reduce((s, co) => s + co.requested_quantity, 0)
+  const selCls = 'text-xs border border-border rounded px-1.5 py-1 bg-card text-[var(--color-text-primary)] focus:outline-none focus:border-primary max-w-[160px]'
+
+  return (
+    <div className="px-4 py-3 space-y-4 bg-muted/20">
+      {/* Underprodukter — primært innhold */}
+      <div>
+        <h4 className="text-xs font-semibold uppercase tracking-wide text-[var(--color-text-muted)] mb-1.5">Underprodukter</h4>
+        {subLines.length === 0 ? (
+          <p className="text-xs text-[var(--color-text-muted)] mb-2">Ingen underprodukter ennå.</p>
+        ) : (
+          <table className="w-full text-xs mb-2">
+            <thead>
+              <tr className="text-[var(--color-text-muted)]">
+                <th className="text-left font-medium py-1">Underprodukt</th>
+                <th className="text-right font-medium py-1 px-2">Mengde</th>
+                <th className="text-right font-medium py-1 px-2">Salgsverdi</th>
+                <th className="text-right font-medium py-1 px-2">Kostnad</th>
+                <th className="text-left font-medium py-1 px-2">Tildelt UE</th>
+                <th className="w-6" />
+              </tr>
+            </thead>
+            <tbody>
+              {subLines.map((s) => (
+                <tr key={s.id} className="border-t border-border">
+                  <td className="py-1.5 text-[var(--color-text-primary)]">{s.product_name}</td>
+                  <td className="py-1.5 px-2 text-right tabular-nums">{s.budget_quantity}</td>
+                  <td className="py-1.5 px-2 text-right tabular-nums">{fmt(s.sales_value)}</td>
+                  <td className="py-1.5 px-2 text-right tabular-nums">{s.assigned_subcontractor_id ? fmt(s.cost_value) : '–'}</td>
+                  <td className="py-1.5 px-2">
+                    <select
+                      value={s.assigned_subcontractor_id ?? ''}
+                      onChange={(e) => onAssign(s.id, e.target.value || null)}
+                      className={selCls}
+                    >
+                      <option value="">Ikke tildelt</option>
+                      <option value="__intern__">Intern / MinUE</option>
+                      {subs.map((u) => <option key={u.id} value={u.id}>{u.company_name}</option>)}
+                    </select>
+                  </td>
+                  <td className="py-1.5 text-right">
+                    <button
+                      type="button"
+                      onClick={() => onDelete(s)}
+                      disabled={deletingId === s.id}
+                      className="text-[var(--color-text-muted)] hover:text-red-600 disabled:opacity-40"
+                      title="Slett underprodukt"
+                      aria-label={`Slett ${s.product_name}`}
+                    >
+                      <Trash2 size={13} />
+                    </button>
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+        {/* + Legg til underprodukt */}
+        <SubProductSplitForm
+          projectId={projectId}
+          line={{ id: bl.id, product_id: bl.product_id }}
+          mainLabel={`${product?.description ?? ''} ${product?.name ?? ''}`.trim() || rowName}
+          mainPrice={bl.customer_price_snapshot}
+          mainQty={bl.budget_quantity}
+          mainUePrice={bl.subcontractor_cost_price_snapshot}
+          subs={subs}
+          subPrices={subPrices}
+          onRefresh={onRefresh}
+        />
+      </div>
+
+      {/* Sekundære handlinger: historikk + slå sammen */}
+      <div className="flex flex-wrap items-center gap-4 pt-2 border-t border-border">
+        <button type="button" onClick={() => setShowHistory((v) => !v)} className="text-xs font-medium text-[var(--color-text-secondary)] hover:underline">
+          {showHistory ? '▾ Skjul mengdehistorikk' : '▸ Vis mengdehistorikk'}
+        </button>
+        {mergeCount > 0 && (
+          <button type="button" onClick={onMerge} className="text-xs font-medium text-amber-700 hover:underline">
+            Slå sammen {mergeCount} like linjer for dette produktet
+          </button>
+        )}
+      </div>
+      {showHistory && (
+        <BudgetLineChart
+          productName={product?.name ?? rowName}
+          productCode={product?.description}
+          unit={product?.unit ?? '–'}
+          subName={subs.find((u) => u.id === bl.assigned_subcontractor_id)?.company_name}
+          importQty={bl.budget_quantity - coTotal}
+          projectStart={projectStart}
+          approvedCOs={cos}
+        />
+      )}
+    </div>
+  )
+}
+
 /**
  * "Budsjettlinjer"-tab: form for adding lines, Excel-import, filter +
  * bulk-assign UI, and the actual table with per-row expand → BudgetLineChart.
@@ -523,6 +657,23 @@ export default function BudgetLinesSection({
     }
   }
 
+  // Tildel ÉN linje (inline-tildeling av underprodukter). For underprodukter
+  // (custom_label) beholder PUT-en den manuelle UE-prisen — den er for «delen».
+  async function assignLine(lineId: string, subId: string | null) {
+    setActionError(null)
+    const res = await fetch('/api/budget-lines', {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: lineId, assigned_subcontractor_id: subId }),
+    })
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({} as Record<string, unknown>))
+      setActionError((d as { error?: string }).error ?? 'Tildeling feilet')
+      return
+    }
+    onRefresh()
+  }
+
   const buildBLRows = (lines: ProjectBudgetLine[]): BLRow[] => lines.map((bl) => {
     const product = allProducts.find((p) => p.id === bl.product_id)
     const isIntern = bl.assigned_subcontractor_id === '__intern__'
@@ -559,51 +710,28 @@ export default function BudgetLinesSection({
     const bl = budgetLines.find((b) => b.id === row.id)
     if (!bl) return null
     const product = allProducts.find((p) => p.id === bl.product_id)
-    const sub = allSubs.find((s) => s.id === bl.assigned_subcontractor_id)
-    const cos = changeOrders
-      .filter((co) =>
-        co.product_id === bl.product_id
-        && co.subcontractor_id === bl.assigned_subcontractor_id
-        && co.status === 'approved'
-        && co.reviewed_at != null
-      )
-      .sort((a, b) => a.reviewed_at!.localeCompare(b.reviewed_at!))
-    const coTotal = cos.reduce((s, co) => s + co.requested_quantity, 0)
+    // Underprodukter for dette produktet = egne linjer m/custom_label (ikke hovedlinja selv).
+    const subLines = buildBLRows(
+      budgetLines.filter((b) => b.product_id === bl.product_id && (b.custom_label ?? '').trim() !== '' && b.id !== bl.id),
+    )
     return (
-      <>
-        <BudgetLineChart
-          productName={product?.name ?? row.product_name}
-          productCode={product?.description}
-          unit={product?.unit ?? row.unit}
-          subName={sub?.company_name}
-          importQty={bl.budget_quantity - coTotal}
-          projectStart={project.start_date ?? ''}
-          approvedCOs={cos}
-        />
-        <div className="px-4 pb-4 space-y-3">
-          {productDupRemovable(bl.product_id) > 0 && (
-            <button
-              type="button"
-              onClick={() => runMerge(bl.product_id, productDupRemovable(bl.product_id))}
-              className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded border border-amber-300 text-amber-800 bg-amber-50 hover:bg-amber-100"
-              title="Slå sammen helt identiske duplikatlinjer for dette produktet til én (mengden summeres)."
-            >
-              Slå sammen {productDupRemovable(bl.product_id)} like linjer for dette produktet
-            </button>
-          )}
-          <SubProductSplitForm
-            projectId={project.id}
-            line={{ id: bl.id, product_id: bl.product_id }}
-            mainLabel={`${product?.description ?? ''} ${product?.name ?? ''}`.trim() || row.product_name}
-            mainPrice={bl.customer_price_snapshot}
-            mainQty={bl.budget_quantity}
-            mainUePrice={bl.subcontractor_cost_price_snapshot}
-            subs={projectSubDetails}
-            subPrices={subPrices}
-            onRefresh={onRefresh}
-          />
-        </div>
-      </>
+      <ExpandedBudgetLine
+        bl={bl}
+        product={product}
+        rowName={row.product_name}
+        projectId={project.id}
+        subLines={subLines}
+        subs={projectSubDetails}
+        subPrices={subPrices}
+        deletingId={deletingId}
+        onAssign={assignLine}
+        onDelete={handleDeleteLine}
+        mergeCount={productDupRemovable(bl.product_id)}
+        onMerge={() => runMerge(bl.product_id, productDupRemovable(bl.product_id))}
+        changeOrders={changeOrders}
+        projectStart={project.start_date ?? ''}
+        onRefresh={onRefresh}
+      />
     )
   }
 

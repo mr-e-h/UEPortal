@@ -163,7 +163,11 @@ export async function PUT(request: NextRequest) {
 
   if (body.assigned_subcontractor_id !== undefined) {
     updates.assigned_subcontractor_id = body.assigned_subcontractor_id
-    if (body.assigned_subcontractor_id && body.assigned_subcontractor_id !== '__intern__') {
+    const isSubProduct = (line.custom_label ?? '').trim() !== ''
+    if (isSubProduct) {
+      // Underprodukt: BEHOLD den manuelle UE-prisen ved omtildeling — prisen er
+      // for «delen» (satt ved oppretting), ikke en katalogpris. Rør den ikke.
+    } else if (body.assigned_subcontractor_id && body.assigned_subcontractor_id !== '__intern__') {
       // Look up the UE's price for this product so we can snapshot it.
       const { data: price } = await sb
         .from('subcontractor_product_prices')
