@@ -120,12 +120,12 @@ export default function SortableTable<T extends { id: string }>({ columns, data,
           </colgroup>
         )}
         <thead>
-          <tr className="border-b border-border">
+          <tr className="border-b border-border bg-muted/60">
             {columns.map((col) => (
               <th
                 key={col.key}
                 onClick={() => col.sortable && handleSort(col.key)}
-                className={`px-3 py-2 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide whitespace-nowrap ${col.sortable ? 'cursor-pointer select-none hover:text-[var(--color-text-primary)]' : ''}`}
+                className={`px-3 py-1.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide whitespace-nowrap ${col.sortable ? 'cursor-pointer select-none hover:text-[var(--color-text-primary)]' : ''}`}
               >
                 {col.label}
                 {col.sortable && sortKey === col.key && (
@@ -159,7 +159,7 @@ export default function SortableTable<T extends { id: string }>({ columns, data,
                   className={`${rowClassName ? rowClassName(row) : 'border-b border-border hover:bg-muted'}${(expandedRowRender || onRowClick) ? ' cursor-pointer' : ''}`}
                 >
                   {columns.map((col) => (
-                    <td key={col.key} className={`px-3 py-2 text-sm text-[var(--color-text-secondary)]${col.tdClassName ? ` ${col.tdClassName}` : ''}`}>
+                    <td key={col.key} className={`px-3 py-1.5 text-sm text-[var(--color-text-secondary)]${col.tdClassName ? ` ${col.tdClassName}` : ''}`}>
                       {col.render
                         ? col.render(row)
                         : String((row as Record<string, unknown>)[col.key] ?? '')}

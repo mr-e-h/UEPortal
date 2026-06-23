@@ -938,16 +938,16 @@ export default function ProjectDetailClient({ initialData }: Props) {
                       onClick={() => setExpandedBudgetId(isExpanded ? null : g.key)}
                       className="border-b border-border last:border-0 hover:bg-muted/40 cursor-pointer"
                     >
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-1.5">
                         <span className="font-medium text-[var(--color-text-primary)]">{g.product_name}</span>
                       </td>
                       {/* S.8 — UE-ens egen avtalte enhetspris (trygt: UE-eget kosttall) */}
-                      <td className="px-3 py-2.5 text-right whitespace-nowrap text-xs text-[var(--color-text-secondary)]">
+                      <td className="px-3 py-1.5 text-right whitespace-nowrap text-xs text-[var(--color-text-secondary)]">
                         {g.price > 0 ? (
                           <>{fmt(g.price)}<span className="text-[var(--color-text-muted)]">/{g.unit}</span></>
                         ) : '–'}
                       </td>
-                      <td className="px-3 py-2.5 text-right whitespace-nowrap text-xs">
+                      <td className="px-3 py-1.5 text-right whitespace-nowrap text-xs">
                         <span className="font-semibold text-[var(--color-text-primary)]">{g.approved}</span>
                         <span className="text-[var(--color-text-muted)]"> / {g.totalQty} {g.unit}</span>
                         {g.pending > 0 && (
@@ -956,10 +956,10 @@ export default function ProjectDetailClient({ initialData }: Props) {
                       </td>
                       {/* 3.3 — gjenstående mengde, alltid synlig (ikke bak en kladd).
                           Rød når negativ (overprodusert mot budsjett). */}
-                      <td className={`px-3 py-2.5 text-right whitespace-nowrap text-xs font-medium ${g.remaining < 0 ? 'text-danger' : 'text-[var(--color-text-primary)]'}`}>
+                      <td className={`px-3 py-1.5 text-right whitespace-nowrap text-xs font-medium ${g.remaining < 0 ? 'text-danger' : 'text-[var(--color-text-primary)]'}`}>
                         {g.remaining} {g.unit}
                       </td>
-                      <td className="px-3 py-2.5">
+                      <td className="px-3 py-1.5">
                         <div className="flex items-center gap-1.5">
                           <div className="flex-1 h-1.5 bg-muted rounded-full overflow-hidden">
                             <div className="h-full rounded-full" style={{ width: `${usedPct}%`, backgroundColor: barColor }} />
@@ -967,7 +967,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
                           <span className="text-[10px] text-[var(--color-text-muted)] w-7 text-right">{usedPct}%</span>
                         </div>
                       </td>
-                      <td className="px-3 py-2.5 text-right text-xs">
+                      <td className="px-3 py-1.5 text-right text-xs">
                         {g.price > 0 ? (
                           <>
                             <span className="font-medium text-green-600">{fmt(approvedValue)}</span>
@@ -975,7 +975,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
                           </>
                         ) : '–'}
                       </td>
-                      <td className="px-3 py-2.5 text-center">
+                      <td className="px-3 py-1.5 text-center">
                         <ChevronDown
                           size={14}
                           className={`text-[var(--color-text-muted)] transition-transform ${isExpanded ? 'rotate-180' : ''}`}

@@ -119,7 +119,7 @@ function ReportTable({ rows }: { rows: ReportRow[] }) {
             {['Prosjekt', 'Underentreprenør', 'Uke', 'Innsendt', 'Status', ''].map((h) => (
               <th
                 key={h}
-                className="px-4 py-2.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide"
+                className="px-3 py-1.5 text-left text-xs font-medium text-[var(--color-text-muted)] uppercase tracking-wide"
               >
                 {h}
               </th>
@@ -129,15 +129,15 @@ function ReportTable({ rows }: { rows: ReportRow[] }) {
         <tbody>
           {rows.map((r) => (
             <tr key={r.id} className="border-b border-border last:border-0 hover:bg-muted transition-colors">
-              <td className="px-4 py-2.5 font-medium text-[var(--color-text-primary)]">{r.project_name}</td>
-              <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{r.sub_name}</td>
-              <td className="px-4 py-2.5 text-[var(--color-text-secondary)]">{r.week_label}</td>
-              <td className="px-4 py-2.5 text-[var(--color-text-muted)]">{r.submitted}</td>
-              <td className="px-4 py-2.5">
+              <td className="px-3 py-1.5 font-medium text-[var(--color-text-primary)]">{r.project_name}</td>
+              <td className="px-3 py-1.5 text-[var(--color-text-secondary)]">{r.sub_name}</td>
+              <td className="px-3 py-1.5 text-[var(--color-text-secondary)]">{r.week_label}</td>
+              <td className="px-3 py-1.5 text-[var(--color-text-muted)]">{r.submitted}</td>
+              <td className="px-3 py-1.5">
                 {/* Ord og farger fra status-modulen — én kilde for alle statuser. */}
                 <StatusPill meta={weeklyReportStatus(r.status)} />
               </td>
-              <td className="px-4 py-2.5 text-right">
+              <td className="px-3 py-1.5 text-right">
                 <Link
                   href={`/admin/weekly-reports/${r.id}`}
                   className="text-xs text-primary hover:underline font-medium"
