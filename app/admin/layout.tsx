@@ -42,10 +42,15 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   // super-admin ever sees it, so only then do we reserve right-hand space in
   // the header to stop it overlapping the username + logout.
   const canViewAs = isSuperAdmin(realUser)
+  // Når super-admin ser appen «som» en annen, viser ViewAsBar en fast amber-
+  // stripe langs toppen (fixed top-0). Den reserverer ingen plass selv, så vi
+  // dytter hele skallet ned 28px her så stripa ikke legger seg oppå toppen av
+  // headeren/innholdet. Bare i visning-som-modus.
+  const impersonating = canViewAs && realUser.id !== me.id
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-page)] flex justify-center">
-      <div className="w-full max-w-[1920px] flex min-h-screen">
+      <div className={`w-full max-w-[1920px] flex min-h-screen ${impersonating ? 'pt-7' : ''}`}>
         <AdminSidebarNav isUserAdmin={isUserAdmin} isSiteManager={isSiteManager} />
 
         {/* Main area */}

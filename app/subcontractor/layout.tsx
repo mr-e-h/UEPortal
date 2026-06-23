@@ -28,10 +28,13 @@ export default async function SubcontractorLayout({ children }: { children: Reac
   // switcher, so only then reserve right-hand header space for it. A real sub
   // never renders it.
   const canViewAs = isSuperAdmin(realUser)
+  // Reserver 28px til ViewAsBar-amber-stripa (fixed top-0) i visning-som-modus,
+  // så den ikke legger seg oppå toppen av innholdet.
+  const impersonating = canViewAs && realUser.id !== me.id
 
   return (
     <div className="min-h-screen bg-[var(--color-bg-page)] flex justify-center">
-      <div className="w-full max-w-[1600px] flex min-h-screen">
+      <div className={`w-full max-w-[1600px] flex min-h-screen ${impersonating ? 'pt-7' : ''}`}>
         <SubcontractorNav />
 
         <div className="flex-1 min-w-0 flex flex-col">

@@ -24,9 +24,12 @@ export default async function CompanyLayout({ children }: { children: React.Reac
   // Only the super-admin "viewing as" a company user sees the floating view-as
   // switcher; reserve header space for it only then.
   const canViewAs = isSuperAdmin(realUser)
+  // Reserver 28px til ViewAsBar-amber-stripa (fixed top-0) i visning-som-modus,
+  // så den ikke legger seg oppå toppen av innholdet.
+  const impersonating = canViewAs && realUser.id !== me.id
 
   return (
-    <div className="min-h-screen flex bg-[var(--color-bg-page)]">
+    <div className={`min-h-screen flex bg-[var(--color-bg-page)] ${impersonating ? 'pt-7' : ''}`}>
       <CompanyNav userName={me.full_name} />
 
       <div className="flex-1 min-w-0 flex flex-col">
