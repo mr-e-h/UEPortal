@@ -341,10 +341,12 @@ export default function AdminWeeklyReportPage() {
         })}
       </div>
 
-      {/* Hovedinnhold (godkjenning + tabell) + sidekolonne (hendelser + kommentarer) */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-5 items-start">
+      {/* Hovedinnhold (godkjenning + tabell) + sidekolonne (hendelser + kommentarer).
+          Flex med smal, fast sidekolonne (~320px) så tabellen får all resten av
+          bredden — min-w-0 lar tabellens overflow-x virke inni flex-barnet. */}
+      <div className="flex flex-col lg:flex-row gap-5 items-start">
         {/* ── Venstre: godkjenning + tabell ── */}
-        <div className="lg:col-span-2 space-y-4">
+        <div className="flex-1 min-w-0 w-full space-y-4">
           {/* Godkjenningspanel: bulk-handlinger (kun ved innsendt) + tabellfiltre */}
           <Card className="p-4 space-y-3">
             {report.status === 'submitted' && (
@@ -444,8 +446,8 @@ export default function AdminWeeklyReportPage() {
           )}
         </div>
 
-        {/* ── Høyre: hendelser + kommentarer ── */}
-        <div className="space-y-4">
+        {/* ── Høyre: hendelser + kommentarer (smal fast bredde) ── */}
+        <div className="w-full lg:w-80 lg:flex-none space-y-4">
           {/* Hendelser / Historikk */}
           <Card className="p-4">
             <h2 className="flex items-center gap-2 text-sm font-semibold text-[var(--color-text-primary)] mb-3">
