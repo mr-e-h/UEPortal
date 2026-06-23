@@ -5,6 +5,7 @@ import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
 import type { WeeklyReport, WeeklyReportLine, ActivityEntry } from '@/types'
 import { formatWeekLabel } from '@/lib/utils/weeks'
+import { calculateBudgetUsage, type LineWithReportStatus } from '@/lib/utils/budgetUsage'
 import SortableTable from '@/components/SortableTable'
 import { fmtNOK as fmt } from '@/lib/format'
 import { ADMIN_ROLES } from '@/lib/roles'
@@ -25,7 +26,7 @@ type EnrichedLine = WeeklyReportLine & {
 
 type ReportDetail = WeeklyReport & { lines: EnrichedLine[] }
 type SiblingReport = WeeklyReport & { lines: WeeklyReportLine[] }
-type BudgetLine = { id: string; subcontractor_cost_price_snapshot: number }
+type BudgetLine = { id: string; budget_quantity: number; subcontractor_cost_price_snapshot: number }
 
 type Subcontractor = { id: string; company_name: string }
 type Project = { id: string; name: string; project_number: string }
@@ -36,7 +37,9 @@ export default function AdminWeeklyReportPage() {
   const [report, setReport] = useState<ReportDetail | null>(null)
   const [project, setProject] = useState<Project | null>(null)
   const [sub, setSub] = useState<Subcontractor | null>(null)
-  const [siblings, setSiblings] = useState<SiblingReport[]>([])
+  // Alle innsendinger for dette prosjekt+UE (alle uker) — brukes både til
+  // «andre innsendinger denne uken» OG til «allerede godkjent»-konteksten.
+  const [allSubReports, setAllSubReports] = useState<SiblingReport[]>([])
   const [budgetLines, setBudgetLines] = useState<BudgetLine[]>([])
   const [activity, setActivity] = useState<ActivityEntry[]>([])
   const [loading, setLoading] = useState(true)
@@ -61,15 +64,15 @@ export default function AdminWeeklyReportPage() {
     setProject(projs.find((p) => p.id === detail.project_id) ?? null)
     setSub(subs.find((s) => s.id === detail.subcontractor_id) ?? null)
 
-    const [siblingReports, bl, activityData] = await Promise.all([
+    const [allReports, bl, activityData] = await Promise.all([
       fetch(
-        `/api/weekly-reports?project_id=${detail.project_id}&subcontractor_id=${detail.subcontractor_id}&year=${detail.year}&week_number=${detail.week_number}&with_lines=true`
+        `/api/weekly-reports?project_id=${detail.project_id}&subcontractor_id=${detail.subcontractor_id}&with_lines=true`
       ).then((r) => r.json()) as Promise<SiblingReport[]>,
       fetch(`/api/budget-lines?project_id=${detail.project_id}`).then((r) => r.json()) as Promise<BudgetLine[]>,
       fetch(`/api/activity?entity_id=${id}&entity_type=weekly_report`).then((r) => r.json()) as Promise<ActivityEntry[]>,
     ])
-    setSiblings(siblingReports.filter((r) => r.id !== id))
-    setBudgetLines(bl)
+    setAllSubReports(Array.isArray(allReports) ? allReports : [])
+    setBudgetLines(Array.isArray(bl) ? bl : [])
     setActivity(Array.isArray(activityData) ? activityData : [])
 
     setLoading(false)
@@ -100,13 +103,20 @@ export default function AdminWeeklyReportPage() {
     setSaving(false)
   }
 
-  async function reviewLine(lineId: string, status: 'approved' | 'rejected') {
-    await fetch(`/api/weekly-reports/${id}/lines/${lineId}/review`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ status, reviewed_by: adminName }),
-    })
+  // Godkjenn/avslå alle (pending) linjene i en produktgruppe på én gang — UE
+  // rapporterer per produkt, så admin behandler per produkt.
+  async function reviewGroup(lineIds: string[], status: 'approved' | 'rejected') {
+    if (lineIds.length === 0) return
+    setSaving(true)
+    await Promise.all(lineIds.map((lid) =>
+      fetch(`/api/weekly-reports/${id}/lines/${lid}/review`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ status, reviewed_by: adminName }),
+      }),
+    ))
     await load()
+    setSaving(false)
   }
 
   async function submitComment(e: React.FormEvent) {
@@ -132,16 +142,68 @@ export default function AdminWeeklyReportPage() {
 
   const totalCost = report.lines.reduce((s, l) => s + l.reported_quantity * l.subcontractor_cost_price_snapshot, 0)
   const totalSales = report.lines.reduce((s, l) => s + l.reported_quantity * l.customer_price_snapshot, 0)
+  const nb = (n: number) => n.toLocaleString('nb-NO', { maximumFractionDigits: 2 })
 
-  type LineRow = EnrichedLine & { cost: number; sales: number }
-  // Show ALL lines (including 0-qty) so admin can see what was submitted +
-  // approve/reject the zero entries too. Previously zeros were hidden, which
-  // caused the table count to mismatch the report's "Linjer: N" KPI.
-  const lineRows: LineRow[] = report.lines.map((l) => ({
-    ...l,
-    cost: l.reported_quantity * l.subcontractor_cost_price_snapshot,
-    sales: l.reported_quantity * l.customer_price_snapshot,
-  }))
+  // Andre innsendinger DENNE uken (utenom denne) — til seksjonen nederst.
+  const siblings = allSubReports.filter(
+    (r) => r.id !== id && r.year === report.year && r.week_number === report.week_number,
+  )
+
+  // Alle rapportlinjer på tvers av uker (med rapport-status) — for «allerede
+  // godkjent» per budsjettlinje (ekskl. denne rapporten).
+  const usageLines: LineWithReportStatus[] = allSubReports.flatMap((r) =>
+    r.lines.map((l) => ({ ...l, report_status: r.status })),
+  )
+  const blById = new Map(budgetLines.map((b) => [b.id, b]))
+
+  // Grupper DENNE rapportens linjer per produkt (product_name) — UE rapporterer
+  // per produkt; et produkt kan ha flere budsjettlinjer (prisperioder/korreksjoner).
+  // Budsjett-kontekst: Budsjett (netto Σ) · Godkjent før (andre rapporter) ·
+  // Meldt inn (denne) · Etter godkj. (= budsjett − godkjent før − meldt inn).
+  type GroupRow = {
+    id: string; product_name: string; unit: string; comment: string
+    lineIds: string[]; pendingLineIds: string[]
+    reportedNow: number; budget: number; alreadyApproved: number; afterRemaining: number
+    cost: number; sales: number; status: string
+  }
+  const groupMap = new Map<string, EnrichedLine[]>()
+  for (const l of report.lines) {
+    const arr = groupMap.get(l.product_name) ?? []
+    arr.push(l)
+    groupMap.set(l.product_name, arr)
+  }
+  const groupRows: GroupRow[] = Array.from(groupMap.values()).map((lines) => {
+    const first = lines[0]
+    const blIds = lines.map((l) => l.project_budget_line_id)
+    const reportedNow = lines.reduce((s, l) => s + l.reported_quantity, 0)
+    const budget = blIds.reduce((s, blId) => s + (blById.get(blId)?.budget_quantity ?? 0), 0)
+    const alreadyApproved = blIds.reduce(
+      (s, blId) => s + calculateBudgetUsage(blId, blById.get(blId)?.budget_quantity ?? 0, usageLines, report.id).approved,
+      0,
+    )
+    const status = lines.every((l) => l.status === 'approved')
+      ? 'approved'
+      : lines.every((l) => l.status === 'rejected')
+        ? 'rejected'
+        : lines.some((l) => l.status === 'pending')
+          ? 'pending'
+          : first.status
+    return {
+      id: first.product_name,
+      product_name: first.product_name,
+      unit: first.unit,
+      comment: lines.map((l) => l.comment).filter(Boolean).join(' · '),
+      lineIds: lines.map((l) => l.id),
+      pendingLineIds: lines.filter((l) => l.status === 'pending').map((l) => l.id),
+      reportedNow,
+      budget,
+      alreadyApproved,
+      afterRemaining: budget - alreadyApproved - reportedNow,
+      cost: lines.reduce((s, l) => s + l.reported_quantity * l.subcontractor_cost_price_snapshot, 0),
+      sales: lines.reduce((s, l) => s + l.reported_quantity * l.customer_price_snapshot, 0),
+      status,
+    }
+  })
 
   const isReviewed = report.status === 'approved' || report.status === 'rejected'
 
@@ -224,41 +286,60 @@ export default function AdminWeeklyReportPage() {
         </div>
       )}
 
-      {/* Lines table */}
-      <div className="bg-white rounded-lg shadow">
+      {/* Linjer — gruppert per produkt, med budsjett-kontekst så admin ser hva
+          som skjer ved godkjenning: Budsjett (netto) · Godkjent før (andre
+          rapporter) · Meldt inn (denne) · Etter godkj. (= budsjett − godkjent
+          før − meldt inn; rødt + ⚠ = over budsjett). */}
+      <div className="bg-white rounded-lg shadow overflow-x-auto">
         <SortableTable
           columns={[
-            { key: 'product_name', label: 'Produkt', sortable: true },
+            {
+              key: 'product_name', label: 'Produkt', sortable: true,
+              render: (r: GroupRow) => (
+                <div>
+                  <div className="font-medium text-[var(--color-text-primary)]">{r.product_name}</div>
+                  {r.comment && <div className="text-xs text-[var(--color-text-muted)]">{r.comment}</div>}
+                </div>
+              ),
+            },
             { key: 'unit', label: 'Enhet' },
-            { key: 'reported_quantity', label: 'Mengde', sortable: true },
-            { key: 'comment', label: 'Kommentar' },
-            { key: 'cost', label: 'Kostnad', sortable: true, getValue: (r: LineRow) => r.cost, render: (r: LineRow) => fmt(r.cost) },
+            { key: 'budget', label: 'Budsjett', sortable: true, getValue: (r: GroupRow) => r.budget, render: (r: GroupRow) => <span className="tabular-nums text-[var(--color-text-secondary)]">{nb(r.budget)}</span> },
+            { key: 'alreadyApproved', label: 'Godkjent før', sortable: true, getValue: (r: GroupRow) => r.alreadyApproved, render: (r: GroupRow) => <span className="tabular-nums text-[var(--color-text-secondary)]">{nb(r.alreadyApproved)}</span> },
+            { key: 'reportedNow', label: 'Meldt inn', sortable: true, getValue: (r: GroupRow) => r.reportedNow, render: (r: GroupRow) => <span className="tabular-nums font-medium text-[var(--color-text-primary)]">{nb(r.reportedNow)}</span> },
+            {
+              key: 'afterRemaining', label: 'Etter godkj.', sortable: true,
+              getValue: (r: GroupRow) => r.afterRemaining,
+              render: (r: GroupRow) => (
+                <span
+                  className={`tabular-nums font-medium ${r.afterRemaining < 0 ? 'text-danger' : 'text-[var(--color-text-primary)]'}`}
+                  title="Budsjett − godkjent før − meldt inn. Negativt = over budsjett ved godkjenning."
+                >
+                  {nb(r.afterRemaining)}{r.afterRemaining < 0 ? ' ⚠' : ''}
+                </span>
+              ),
+            },
+            { key: 'cost', label: 'Kostnad', sortable: true, getValue: (r: GroupRow) => r.cost, render: (r: GroupRow) => fmt(r.cost) },
             ...(canSeeEconomy
-              ? [{ key: 'sales', label: 'Salgsverdi', sortable: true, getValue: (r: LineRow) => r.sales, render: (r: LineRow) => <span className="font-medium">{fmt(r.sales)}</span> }]
+              ? [{ key: 'sales', label: 'Salgsverdi', sortable: true, getValue: (r: GroupRow) => r.sales, render: (r: GroupRow) => <span className="font-medium">{fmt(r.sales)}</span> }]
               : []),
             {
-              key: 'status',
-              label: 'Status',
-              sortable: true,
-              render: (r: LineRow) => {
+              key: 'status', label: 'Status', sortable: true,
+              render: (r: GroupRow) => {
                 const m = weeklyReportLineStatus(r.status)
                 return <span className={`text-xs px-2 py-0.5 rounded ${m.cls}`}>{m.label}</span>
               },
             },
             {
-              key: 'actions',
-              label: '',
-              render: (r: LineRow) => r.status === 'pending' ? (
-                // Outline-stil — bulk-knappene øverst er primærhandlingen,
-                // per-linje-knappene skal ikke rope på hver rad.
+              key: 'actions', label: '',
+              render: (r: GroupRow) => r.pendingLineIds.length > 0 ? (
                 <div className="flex gap-1.5">
-                  <button onClick={() => reviewLine(r.id, 'approved')} className="px-2 py-1 border border-green-300 text-green-700 text-xs rounded hover:bg-green-50">Godkjenn</button>
-                  <button onClick={() => reviewLine(r.id, 'rejected')} className="px-2 py-1 border border-red-300 text-red-700 text-xs rounded hover:bg-red-50">Avslå</button>
+                  <button onClick={() => reviewGroup(r.pendingLineIds, 'approved')} disabled={saving} className="px-2 py-1 border border-green-300 text-green-700 text-xs rounded hover:bg-green-50 disabled:opacity-50">Godkjenn</button>
+                  <button onClick={() => reviewGroup(r.pendingLineIds, 'rejected')} disabled={saving} className="px-2 py-1 border border-red-300 text-red-700 text-xs rounded hover:bg-red-50 disabled:opacity-50">Avslå</button>
                 </div>
               ) : null,
             },
           ]}
-          data={lineRows}
+          data={groupRows}
           emptyText="Ingen linjer i denne rapporten"
         />
       </div>
