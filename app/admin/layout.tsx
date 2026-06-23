@@ -44,8 +44,8 @@ export default async function AdminLayout({ children }: { children: React.ReactN
   const canViewAs = isSuperAdmin(realUser)
 
   return (
-    <div className="min-h-screen bg-[var(--color-bg-page)] flex justify-center">
-      <div className="w-full max-w-[1600px] flex min-h-screen">
+    <div className="min-h-screen bg-[var(--color-bg-page)] flex">
+      <div className="w-full max-w-[1920px] flex min-h-screen">
         <AdminSidebarNav isUserAdmin={isUserAdmin} isSiteManager={isSiteManager} />
 
         {/* Main area */}
