@@ -385,12 +385,13 @@ export default function ProjectDetailClient({ initialData }: Props) {
       )
     setInputs((current) => {
       const next = { ...current }
-      ;(project?.budget_lines ?? []).forEach((bl) => {
-        const q = qtyByLine.get(bl.id) ?? 0
+      for (const g of budgetGroups) {
+        // Summer forrige ukes mengder over alle linjene i produktet → hovedlinja.
+        const q = g.lineIds.reduce((s, id) => s + (qtyByLine.get(id) ?? 0), 0)
         if (q > 0) {
-          next[bl.id] = { quantity: String(q), comment: next[bl.id]?.comment ?? '' }
+          next[g.primaryLineId] = { quantity: String(q), comment: next[g.primaryLineId]?.comment ?? '' }
         }
-      })
+      }
       return next
     })
   }
@@ -400,11 +401,21 @@ export default function ProjectDetailClient({ initialData }: Props) {
   // stale server-side draft.
   async function saveLines(): Promise<boolean> {
     if (!currentReport) return false
-    const lines = (project?.budget_lines ?? []).map((bl) => ({
-      project_budget_line_id: bl.id,
-      reported_quantity: Number(inputs[bl.id]?.quantity ?? 0) || 0,
-      comment: inputs[bl.id]?.comment ?? '',
-    }))
+    // UE rapporterer én mengde per produkt (gruppe). Mengden føres KUN på
+    // hovedlinja (primaryLineId); de andre linjene i produktet (prisperioder/
+    // korreksjoner) settes eksplisitt til 0 så ingen stale verdi blir liggende
+    // (PUT /lines oppdaterer/innsetter, men sletter ikke utelatte linjer).
+    // UE-prisen er lik på tvers, så UE-kost er uberørt; admin avstemmer
+    // kundesiden per budsjettlinje som før.
+    const primaryIds = new Set(budgetGroups.map((g) => g.primaryLineId))
+    const lines = (project?.budget_lines ?? []).map((bl) => {
+      const isPrimary = primaryIds.has(bl.id)
+      return {
+        project_budget_line_id: bl.id,
+        reported_quantity: isPrimary ? (Number(inputs[bl.id]?.quantity ?? 0) || 0) : 0,
+        comment: isPrimary ? (inputs[bl.id]?.comment ?? '') : '',
+      }
+    })
     try {
       const res = await fetch(`/api/weekly-reports/${currentReport.id}/lines`, {
         method: 'PUT',
@@ -533,17 +544,27 @@ export default function ProjectDetailClient({ initialData }: Props) {
 
   const weekSubmissions = allReports.filter((r) => r.year === year && r.week_number === week)
   const weekLines = weekSubmissions.flatMap((r) => r.lines)
-  const weeklySummaryRows = project.budget_lines
-    .map((bl) => {
-      const lines = weekLines.filter((l) => l.project_budget_line_id === bl.id)
-      const approved = lines.filter((l) => l.status === 'approved').reduce((s, l) => s + l.reported_quantity, 0)
-      const pending = lines.filter((l) => l.status === 'pending').reduce((s, l) => s + l.reported_quantity, 0)
-      const rejected = lines.filter((l) => l.status === 'rejected').reduce((s, l) => s + l.reported_quantity, 0)
-      const total = approved + pending + rejected
-      const approvedValue = approved * bl.subcontractor_cost_price_snapshot
-      return { id: bl.id, product_name: bl.product_name, unit: bl.unit, total, approved, pending, rejected, approvedValue }
-    })
-    .filter((s) => s.total > 0)
+  // Gruppér per produkt (samme produkt = flere budsjettlinjer ved prisperioder/
+  // korreksjoner, lik UE-pris) → ÉN rad per produkt, som budsjett-oversikten.
+  // Summerer ukens rapporterte mengder over alle linjene i produktet.
+  const weeklySummaryRows = (() => {
+    const groups = new Map<string, { product_name: string; unit: string; price: number; lineIds: string[] }>()
+    for (const bl of project.budget_lines) {
+      const g = groups.get(bl.product_name) ?? { product_name: bl.product_name, unit: bl.unit, price: bl.subcontractor_cost_price_snapshot, lineIds: [] }
+      g.lineIds.push(bl.id)
+      groups.set(bl.product_name, g)
+    }
+    return Array.from(groups.values())
+      .map((g) => {
+        const lines = weekLines.filter((l) => g.lineIds.includes(l.project_budget_line_id))
+        const approved = lines.filter((l) => l.status === 'approved').reduce((s, l) => s + l.reported_quantity, 0)
+        const pending = lines.filter((l) => l.status === 'pending').reduce((s, l) => s + l.reported_quantity, 0)
+        const rejected = lines.filter((l) => l.status === 'rejected').reduce((s, l) => s + l.reported_quantity, 0)
+        const total = approved + pending + rejected
+        return { id: g.product_name, product_name: g.product_name, unit: g.unit, total, approved, pending, rejected, approvedValue: approved * g.price }
+      })
+      .filter((s) => s.total > 0)
+  })()
   const totalApprovedThisWeek = weeklySummaryRows.reduce((s, r) => s + r.approvedValue, 0)
 
   const productNameMap = new Map(project.budget_lines.map((bl) => [bl.product_id, bl.product_name]))
@@ -562,6 +583,13 @@ export default function ProjectDetailClient({ initialData }: Props) {
     }
     return Array.from(map.values()).map((lines) => {
       const first = lines[0]
+      // Hovedlinje = linja med størst POSITIV budsjettmengde (den ekte ordren), så
+      // produksjon aldri føres mot en ren korreksjonslinje (negativ mengde). Faller
+      // tilbake til største linje hvis ingen er positiv. UE rapporterer mot denne,
+      // og kundeomsetning posteres til dens prisperiode.
+      const positives = lines.filter((l) => l.budget_quantity > 0)
+      const pool = positives.length > 0 ? positives : lines
+      const primary = pool.reduce((m, l) => (l.budget_quantity > m.budget_quantity ? l : m), pool[0])
       const totalQty = lines.reduce((s, l) => s + l.budget_quantity, 0)
       let approved = 0
       let pending = 0
@@ -576,11 +604,15 @@ export default function ProjectDetailClient({ initialData }: Props) {
         product_name: first.product_name,
         product_description: first.product_description,
         unit: first.unit,
+        primaryLineId: primary.id,
+        lineIds: lines.map((l) => l.id),
         totalQty,
         approved,
         pending,
         remaining: totalQty - approved,
-        price: first.subcontractor_cost_price_snapshot,
+        // Hovedlinjas UE-pris (lik på tvers av prisperiodene — robust om antakelsen
+        // om lik UE-pris noen gang skulle brytes).
+        price: primary.subcontractor_cost_price_snapshot,
       }
     })
   })()
@@ -1070,17 +1102,26 @@ export default function ProjectDetailClient({ initialData }: Props) {
                     </tr>
                   </thead>
                   <tbody>
-                    {project.budget_lines.map((bl) => {
-                      const usage = calculateBudgetUsage(bl.id, bl.budget_quantity, allLinesWithStatus, currentReport?.id)
-                      const qty = inputs[bl.id]?.quantity ?? ''
-                      const comment = inputs[bl.id]?.comment ?? ''
+                    {budgetGroups.map((g) => {
+                      // Gruppe-bruk = sum over alle linjene i produktet (prisperioder/
+                      // korreksjoner), med inneværende kladd ekskludert. Input/lagring
+                      // går mot hovedlinja (primaryLineId).
+                      const usage = g.lineIds.reduce((acc, lineId) => {
+                        const bl = project.budget_lines.find((b) => b.id === lineId)
+                        if (!bl) return acc
+                        const u = calculateBudgetUsage(lineId, bl.budget_quantity, allLinesWithStatus, currentReport?.id)
+                        acc.approved += u.approved; acc.pending += u.pending; acc.remaining += u.remaining
+                        return acc
+                      }, { approved: 0, pending: 0, remaining: 0 })
+                      const qty = inputs[g.primaryLineId]?.quantity ?? ''
+                      const comment = inputs[g.primaryLineId]?.comment ?? ''
                       return (
-                        <tr key={bl.id} className="border-b border-border last:border-0 hover:bg-muted/50">
+                        <tr key={g.key} className="border-b border-border last:border-0 hover:bg-muted/50">
                           <td className="px-3 py-2">
-                            <div className="font-medium text-[var(--color-text-primary)]">{bl.product_name}</div>
+                            <div className="font-medium text-[var(--color-text-primary)]">{g.product_name}</div>
                           </td>
-                          <td className="px-3 py-2 text-[var(--color-text-secondary)]">{bl.unit}</td>
-                          <td className="px-3 py-2 text-right text-[var(--color-text-secondary)]">{bl.budget_quantity}</td>
+                          <td className="px-3 py-2 text-[var(--color-text-secondary)]">{g.unit}</td>
+                          <td className="px-3 py-2 text-right text-[var(--color-text-secondary)]">{g.totalQty}</td>
                           <td className="px-3 py-2 text-right text-[var(--color-text-secondary)]">{usage.approved}</td>
                           <td className={`px-3 py-2 text-right font-medium ${usage.remaining < 0 ? 'text-danger' : 'text-[var(--color-text-primary)]'}`}>
                             {usage.remaining}
@@ -1093,7 +1134,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
                               <NumberInput
                                 placeholder="0"
                                 value={qty}
-                                onChange={(raw) => setInputs((prev) => ({ ...prev, [bl.id]: { ...prev[bl.id], quantity: raw, comment: prev[bl.id]?.comment ?? '' } }))}
+                                onChange={(raw) => setInputs((prev) => ({ ...prev, [g.primaryLineId]: { ...prev[g.primaryLineId], quantity: raw, comment: prev[g.primaryLineId]?.comment ?? '' } }))}
                                 onBlur={saveLines}
                                 className="w-full px-2 py-1 text-sm border border-border rounded text-right focus:outline-none focus:border-primary"
                               />
@@ -1107,7 +1148,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
                                 type="text"
                                 placeholder="Valgfri"
                                 value={comment}
-                                onChange={(e) => setInputs((prev) => ({ ...prev, [bl.id]: { quantity: prev[bl.id]?.quantity ?? '', comment: e.target.value } }))}
+                                onChange={(e) => setInputs((prev) => ({ ...prev, [g.primaryLineId]: { quantity: prev[g.primaryLineId]?.quantity ?? '', comment: e.target.value } }))}
                                 onBlur={saveLines}
                                 className="w-full px-2 py-1 text-sm border border-border rounded focus:outline-none focus:border-primary"
                               />
