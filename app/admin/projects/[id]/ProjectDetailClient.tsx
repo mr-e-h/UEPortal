@@ -4,6 +4,7 @@ import { useEffect, useState, useRef } from 'react'
 import dynamic from 'next/dynamic'
 import { useParams, useRouter } from 'next/navigation'
 import Link from 'next/link'
+import { Building2, Lock, Pencil } from 'lucide-react'
 import { useProjectData } from './useProjectData'
 import { useMe } from '@/lib/useMe'
 import type { Product } from '@/types'
@@ -401,12 +402,15 @@ export default function ProjectDetailClient({ initialData }: Props) {
       {/* Header */}
       <div className="flex items-center gap-3">
         <Link href="/admin" className="text-[var(--color-text-muted)] hover:text-[var(--color-text-secondary)] text-sm">← Admin</Link>
-        <div className="flex-1">
-          <h1 className="text-xl font-bold text-[var(--color-text-primary)]">{project.name}</h1>
+        <div className="w-11 h-11 rounded-xl bg-muted flex items-center justify-center flex-none">
+          <Building2 size={20} className="text-[var(--color-text-secondary)]" />
+        </div>
+        <div className="flex-1 min-w-0">
+          <h1 className="text-2xl font-bold text-[var(--color-text-primary)] truncate">{project.name}</h1>
           <p className="text-sm text-[var(--color-text-muted)]">
             {project.project_number}
             {project.order_number && ` · Ordre: ${project.order_number}`}
-            {` · ${project.customer} · ${project.county}`}
+            {project.customer && ` · ${project.customer}`}
           </p>
         </div>
         {/* Lukk / Åpne — flips project.status between 'active' and 'completed'.
@@ -459,17 +463,18 @@ export default function ProjectDetailClient({ initialData }: Props) {
             setStatusError(null)
             fetchAll()
           }}
-          className={`text-sm px-3 py-1 rounded border transition-colors ${
+          className={`inline-flex items-center gap-1.5 text-sm font-medium px-3.5 py-2 rounded-lg border transition-colors ${
             project.status === 'active'
-              ? 'text-amber-700 border-amber-200 hover:bg-amber-50'
-              : 'text-green-700 border-green-200 hover:bg-green-50'
+              ? 'text-amber-700 border-amber-300 hover:bg-amber-50'
+              : 'text-green-700 border-green-300 hover:bg-green-50'
           }`}
         >
+          <Lock size={14} />
           {project.status === 'active' ? 'Lukk prosjekt' : 'Åpne på nytt'}
         </button>
         )}
         {!isSiteManager && (
-          <Link href={`/admin/projects/${id}/edit`} className="text-sm text-[var(--color-text-secondary)] border border-border px-3 py-1 rounded hover:bg-muted">Rediger</Link>
+          <Link href={`/admin/projects/${id}/edit`} className="inline-flex items-center gap-1.5 text-sm font-medium text-[var(--color-text-secondary)] border border-border px-3.5 py-2 rounded-lg hover:bg-muted transition-colors"><Pencil size={14} /> Rediger</Link>
         )}
       </div>
 
