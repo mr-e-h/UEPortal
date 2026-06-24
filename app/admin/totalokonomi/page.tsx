@@ -81,7 +81,7 @@ export default async function AdminDashboard() {
     monthlyActualsRes,
   ] = await Promise.all([
     sb.from('projects').select('*').neq('deleted', true),
-    sb.from('project_budget_lines').select('id, project_id, budget_quantity, customer_price_snapshot, subcontractor_cost_price_snapshot'),
+    sb.from('project_budget_lines').select('id, project_id, budget_quantity, customer_price_snapshot, subcontractor_cost_price_snapshot, source'),
     sb.from('weekly_reports').select('id, project_id, subcontractor_id, status, year, week_number, submitted_at, submission_number').gte('year', thisYear - 1).lte('year', thisYear),
     sb.from('change_orders').select('id, project_id, subcontractor_id, status, reviewed_at, submitted_at, total_customer_value, total_cost, reason').gte('submitted_at', lastYearStart).neq('status', 'draft'),
     sb.from('subcontractors').select('id, company_name'),
@@ -201,7 +201,10 @@ export default async function AdminDashboard() {
     internalSpans.push({
       id: p.id,
       name: p.name,
-      revenue: budgetSalesValue(lines) + emCustomerValue(ems),
+      // Ekskluder posterte EM-linjer (source='change_order') — godkjente EM legges
+      // til separat via emCustomerValue, ellers dobbelttelles EM-salget (samme fiks
+      // som computeProjectEconomy/orderValue).
+      revenue: budgetSalesValue(lines.filter((bl) => !bl.source || bl.source === 'manual')) + emCustomerValue(ems),
       startMonth: monthIndexFromISO(span.start),
       endMonth: monthIndexFromISO(span.end),
     })

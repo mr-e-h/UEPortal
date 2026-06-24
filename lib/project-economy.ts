@@ -64,12 +64,16 @@ export function emCustomerValue(changeOrders: Array<Pick<ChangeOrder, 'total_cus
  * så materiell teller likt overalt (ingen avvik i nevner/kontrakt mellom visningene).
  */
 export function orderValue(
-  budgetLines: BudgetLineLike[],
+  budgetLines: ProjectBudgetLine[],
   changeOrders: Array<Pick<ChangeOrder, 'status' | 'total_customer_value'>>,
   materials: Array<{ planned_quantity?: number | null; unit_price?: number | null }> = [],
 ): number {
+  // Ekskluder POSTERTE EM-linjer (source='change_order') fra ordrebok-summen —
+  // godkjente EM legges til separat, ellers dobbelttelles EM-kundeverdien (EM-er
+  // posteres til budsjettlinjene ved godkjenning). Speiler computeProjectEconomy.
+  const manual = budgetLines.filter((bl) => !bl.source || bl.source === 'manual')
   const approvedEM = changeOrders.filter((co) => co.status === 'approved')
-  return budgetSalesValue(budgetLines) + emCustomerValue(approvedEM) + materialOrderValue(materials)
+  return budgetSalesValue(manual) + emCustomerValue(approvedEM) + materialOrderValue(materials)
 }
 
 /** Sum UE-kost på EM-er. */
@@ -163,8 +167,12 @@ export function computeProjectEconomy({
   /** Faktisk materiellkost (Σ avstemt faktisk antall × pris) — påløper FØRST ved avstemming. */
   materialReconciledCost?: number
 }): ProjectEconomySummary {
-  // Opprinnelig ordrebok (salgsverdi mot kunde — det er kontrakten).
-  const originalBudget = budgetSalesValue(budgetLines)
+  // Opprinnelig ordrebok = MANUELLE linjer. Posterte EM-linjer (source='change_order',
+  // lagt inn i budsjettet ved godkjenning) EKSKLUDERES her — godkjente EM legges til
+  // via approvedEMValue under, ellers telles EM-kundeverdien to ganger. De posterte
+  // linjene beholdes i blPriceMap/delivered + ueReportedCost (faktisk leveranse/kost).
+  const manualLines = budgetLines.filter((bl) => !bl.source || bl.source === 'manual')
+  const originalBudget = budgetSalesValue(manualLines)
 
   // Godkjente EM-er øker kontraktsverdien; ventende er IKKE bindende ennå,
   // men trengs for «krever oppmerksomhet» og EM-netto-konteksten.
@@ -219,7 +227,10 @@ export function computeProjectEconomy({
   const ueLines = budgetLines.filter(
     (bl) => bl.assigned_subcontractor_id && bl.assigned_subcontractor_id !== '__intern__',
   )
-  const ueBudgetCost = budgetCostValue(ueLines)
+  // UE-budsjettkost = MANUELLE UE-linjer (posterte EM-linjer ekskludert; EM-kost
+  // trekkes fra separat via emCost i expectedProfit). ueLineIds beholder ALLE UE-
+  // linjer for ueReportedCost (faktisk rapportert arbeid, inkl. på EM-linjer).
+  const ueBudgetCost = budgetCostValue(ueLines.filter((bl) => !bl.source || bl.source === 'manual'))
   const ueLineIds = new Set(ueLines.map((bl) => bl.id))
   const blCostMap = new Map(budgetLines.map((bl) => [bl.id, bl.subcontractor_cost_price_snapshot ?? 0]))
   let ueReportedCost = 0
@@ -232,7 +243,9 @@ export function computeProjectEconomy({
     }
   }
   const internCost = internalCostTotal
-  const expectedProfit = totalContract - ueBudgetCost - internCost - materialReconciledCost
+  // EM-kost trekkes fra separat (godkjente EM) siden posterte EM-linjer er ekskludert
+  // fra ueBudgetCost — ellers ville EM-kost manglet i prognosen.
+  const expectedProfit = totalContract - ueBudgetCost - emCost(approvedEMs) - internCost - materialReconciledCost
 
   // Bar-segmenter (klemt til en fornuftig stabling).
   const delivered = Math.min(deliveredValue, totalContract)

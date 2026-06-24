@@ -9,7 +9,7 @@ import { useMe } from '@/lib/useMe'
 import type { Product } from '@/types'
 import { fmtProductLabel } from '@/lib/format'
 import { internalCostTotal, fallbackEndMonthIndex, planEndDate } from '@/lib/internal-costs'
-import { orderValue, budgetCostValue, materialReconciled } from '@/lib/project-economy'
+import { orderValue, computeProjectEconomy, materialReconciled, materialOrderValue as calcMaterialOrderValue } from '@/lib/project-economy'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import ErrorBox from '@/components/ui/ErrorBox'
 import { useConfirm } from '@/components/ui/useConfirm'
@@ -286,14 +286,20 @@ export default function ProjectDetailClient({ initialData }: Props) {
   // Engangs + løpende månedlige interne kostnader, utvidet over periodene.
   const totalInternalCost = internalCostTotal(internalCosts, fallbackEndMonthIndex(planEnd, new Date()))
 
-  // Budsjett-prognose = hero-ens «Forventet fortjeneste» (ordreverdi − UE-budsjettkost
-  // − internkost − avstemt materiellkost). Vises som referanse i Prognose-fanen ved
-  // siden av månedsplan-prognosen, via SAMME delte helpere så tallet er identisk med
-  // heroen.
-  const ueBudgetCost = budgetCostValue(
-    budgetLines.filter((bl) => bl.assigned_subcontractor_id && bl.assigned_subcontractor_id !== '__intern__'),
-  )
-  const budgetExpectedProfit = totalSales - ueBudgetCost - totalInternalCost - materialReconciled(materials).cost
+  // Budsjett-prognose = hero-ens «Forventet fortjeneste». Regnes via DEN SAMME
+  // computeProjectEconomy så tallet er identisk med heroen (også EM-håndteringen).
+  // Vises som referanse i Prognose-fanen ved siden av månedsplan-prognosen.
+  const { value: matRecVal, cost: matRecCost } = materialReconciled(materials)
+  const budgetExpectedProfit = computeProjectEconomy({
+    budgetLines,
+    weeklyReports: weeklyReportsWL,
+    changeOrders,
+    internalCostTotal: totalInternalCost,
+    productionEntries,
+    materialOrderValue: calcMaterialOrderValue(materials),
+    materialReconciledValue: matRecVal,
+    materialReconciledCost: matRecCost,
+  }).expectedProfit
 
   // "Select all" must match the visible filter — selecting hidden rows is
   // confusing and the count "X valgt" would be wrong. Filter the same way
