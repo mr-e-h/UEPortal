@@ -43,6 +43,7 @@ import type {
   WeeklyReportLine,
   ProductionEntry,
   ReconciliationLine,
+  ProjectMaterial,
 } from '@/types'
 import type { WRWithLines, ProjectManagerRow } from '@/app/admin/projects/[id]/useProjectData'
 
@@ -74,6 +75,13 @@ export interface ProjectDetailData {
    * liste her (linjene bærer kundeverdi). Seedes kun for canEconomy-roller.
    */
   reconciliationLines: ReconciliationLine[]
+  /**
+   * Materiell-budsjett (migrasjon 0021). ADMIN/PL-only (requireAdmin). Mater
+   * forventet fortjeneste + ordreverdi i prosjekt-heroen — MÅ seedes her, ellers
+   * regnes første render uten materiell og tallet «hopper» når klienten henter
+   * det. Tømmes for byggeleder (bærer kundeverdi).
+   */
+  materials: ProjectMaterial[]
 }
 
 function safeArr<T>(val: unknown): T[] {
@@ -122,6 +130,7 @@ export async function loadProjectDetail(
     invRes,
     peRes,
     rcRes,
+    matRes,
     // Cached global tables — resolved in parallel with the DB queries above.
     allProductsRaw,
     allSubs,
@@ -161,6 +170,9 @@ export async function loadProjectDetail(
     // 16. avstemmingslinjer (migrasjon 0018) — admin/PL-only, hentes alltid men
     //      nullstilles til [] for byggeleder under (de bærer kundeverdi).
     sb.from('project_reconciliation_lines').select('*').eq('project_id', projectId),
+    // 17. materiell-budsjett (migrasjon 0021) — admin/PL-only (requireAdmin).
+    //      Mater forventet fortjeneste/ordreverdi i heroen; tømmes for byggeleder.
+    sb.from('project_materials').select('*').eq('project_id', projectId).order('sort_order', { ascending: true }).order('material_code', { ascending: true }),
     // Cached global tables (Vercel Data Cache, no transatlantic hop on hit):
     getCachedProducts(),       // raw rows incl. customer_price — stripped below
     getCachedSubcontractors(), // all subcontractors
@@ -191,6 +203,7 @@ export async function loadProjectDetail(
       invoices: [],
       productionEntries: [],
       reconciliationLines: [],
+      materials: [],
     }
   }
 
@@ -292,6 +305,8 @@ export async function loadProjectDetail(
   const monthPlans = canEconomy ? safeArr<ProjectMonthPlan>(mpRes.data) : []
   const internalCosts = canEconomy ? safeArr<ProjectInternalCostEntry>(icsRes.data) : []
   const invoices = canEconomy ? safeArr<ProjectInvoice>(invRes.data) : []
+  // Materiell: requireAdmin-API → tøm for byggeleder (bærer kundeverdi).
+  const materials = canEconomy ? safeArr<ProjectMaterial>(matRes.data) : []
 
   return {
     project,
@@ -313,5 +328,6 @@ export async function loadProjectDetail(
     invoices,
     productionEntries,
     reconciliationLines,
+    materials,
   }
 }

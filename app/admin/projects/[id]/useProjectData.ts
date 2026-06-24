@@ -83,7 +83,7 @@ export function useProjectData(id: string, initialData?: ProjectDetailData) {
   const [productionEntries, setProductionEntries] = useState<ProductionEntry[]>(initialData?.productionEntries ?? [])
   const [reconciliationLines, setReconciliationLines] = useState<ReconciliationLine[]>(initialData?.reconciliationLines ?? [])
   const [productionVersions, setProductionVersions] = useState<ProductionVersion[]>([])
-  const [materials, setMaterials] = useState<ProjectMaterial[]>([])
+  const [materials, setMaterials] = useState<ProjectMaterial[]>(initialData?.materials ?? [])
   const [materialVersions, setMaterialVersions] = useState<ProjectMaterialVersion[]>([])
   // If we have SSR data, the page is immediately populated — no loading spinner.
   const [loading, setLoading] = useState(!initialData)
