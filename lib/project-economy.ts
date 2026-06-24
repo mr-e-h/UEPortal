@@ -33,15 +33,47 @@ export function materialOrderValue(
   return materials.reduce((s, m) => s + (Number(m.planned_quantity) || 0) * (Number(m.unit_price) || 0), 0)
 }
 
-type EmLike = Pick<ChangeOrder, 'total_customer_value' | 'total_cost'>
+/**
+ * Avstemt materiell: ordreverdi (Σ planlagt × pris) + faktisk kost (Σ faktisk ×
+ * pris) for linjene der reconciled=true. ÉN kilde — brukt av prosjekt-heroen OG
+ * Prognose-fanens budsjett-prognose-referanse, så de gir identisk materiellkost.
+ */
+export function materialReconciled(
+  materials: Array<{ reconciled?: boolean; planned_quantity?: number | null; actual_quantity?: number | null; unit_price?: number | null }>,
+): { value: number; cost: number } {
+  let value = 0
+  let cost = 0
+  for (const m of materials) {
+    if (!m.reconciled) continue
+    const price = Number(m.unit_price) || 0
+    value += (Number(m.planned_quantity) || 0) * price
+    cost += (Number(m.actual_quantity) || 0) * price
+  }
+  return { value, cost }
+}
 
 /** Sum kundeverdi på EM-er (f.eks. godkjente). */
-export function emCustomerValue(changeOrders: EmLike[]): number {
+export function emCustomerValue(changeOrders: Array<Pick<ChangeOrder, 'total_customer_value'>>): number {
   return changeOrders.reduce((s, co) => s + (co.total_customer_value ?? 0), 0)
 }
 
+/**
+ * Ordreverdi (kontrakt mot kunde) = ordrebok + GODKJENTE EM + materiell-ordreverdi.
+ * ÉN kilde til hva «ordreverdi» betyr — identisk med hero-ens `totalContract`
+ * (computeProjectEconomy). Brukes av prosjektlista, Prognose-fanen og fakturakortet
+ * så materiell teller likt overalt (ingen avvik i nevner/kontrakt mellom visningene).
+ */
+export function orderValue(
+  budgetLines: BudgetLineLike[],
+  changeOrders: Array<Pick<ChangeOrder, 'status' | 'total_customer_value'>>,
+  materials: Array<{ planned_quantity?: number | null; unit_price?: number | null }> = [],
+): number {
+  const approvedEM = changeOrders.filter((co) => co.status === 'approved')
+  return budgetSalesValue(budgetLines) + emCustomerValue(approvedEM) + materialOrderValue(materials)
+}
+
 /** Sum UE-kost på EM-er. */
-export function emCost(changeOrders: EmLike[]): number {
+export function emCost(changeOrders: Array<Pick<ChangeOrder, 'total_cost'>>): number {
   return changeOrders.reduce((s, co) => s + (co.total_cost ?? 0), 0)
 }
 

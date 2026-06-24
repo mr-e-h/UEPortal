@@ -9,6 +9,7 @@ import { useMe } from '@/lib/useMe'
 import type { Product } from '@/types'
 import { fmtProductLabel } from '@/lib/format'
 import { internalCostTotal, fallbackEndMonthIndex, planEndDate } from '@/lib/internal-costs'
+import { orderValue, budgetCostValue, materialReconciled } from '@/lib/project-economy'
 import ConfirmDialog from '@/components/ConfirmDialog'
 import ErrorBox from '@/components/ui/ErrorBox'
 import { useConfirm } from '@/components/ui/useConfirm'
@@ -265,16 +266,11 @@ export default function ProjectDetailClient({ initialData }: Props) {
   if (loading && !project) return <div className="flex items-center justify-center h-64 text-[var(--color-text-muted)]">Laster...</div>
   if (!project) return <div className="flex items-center justify-center h-64 text-[var(--color-text-muted)]">Prosjekt ikke funnet</div>
 
-  const manualLines = budgetLines.filter((bl) => !bl.source || bl.source === 'manual')
-
-  const originalBudgetSales = manualLines.reduce((s, bl) => s + bl.budget_quantity * bl.customer_price_snapshot, 0)
-
-  const approvedCOs = changeOrders.filter((co) => co.status === 'approved')
-  const coAddedSales = approvedCOs.reduce((s, co) => s + co.total_customer_value, 0)
-
-  // Salgsverdi (ordrebok + godkjente EM) — brukes av Prognose-fanen. Hele
-  // kost/fortjeneste-bildet bor i hero-ens Lønnsomhet (egen Kost-fane fjernet).
-  const totalSales = originalBudgetSales + coAddedSales
+  // Ordreverdi (kontrakt) via DELT kilde (orderValue) = hero-ens totalContract:
+  // ordrebok (alle linjer) + godkjente EM + materiell. Mater BÅDE Prognose-fanens
+  // «kontrakt» OG fakturakortets ordreverdi-nevner (begge via totalSales), så
+  // «ordreverdi» betyr det samme overalt — inkl. materiell.
+  const totalSales = orderValue(budgetLines, changeOrders, materials)
 
   // OverviewSection owns the heavy derived computations now (subFlowData,
   // internLines, totalUEBudgetCost, etc). Parent only keeps what the
@@ -289,6 +285,15 @@ export default function ProjectDetailClient({ initialData }: Props) {
   const planEnd = planEndDate(phases, milestones, project.end_date)
   // Engangs + løpende månedlige interne kostnader, utvidet over periodene.
   const totalInternalCost = internalCostTotal(internalCosts, fallbackEndMonthIndex(planEnd, new Date()))
+
+  // Budsjett-prognose = hero-ens «Forventet fortjeneste» (ordreverdi − UE-budsjettkost
+  // − internkost − avstemt materiellkost). Vises som referanse i Prognose-fanen ved
+  // siden av månedsplan-prognosen, via SAMME delte helpere så tallet er identisk med
+  // heroen.
+  const ueBudgetCost = budgetCostValue(
+    budgetLines.filter((bl) => bl.assigned_subcontractor_id && bl.assigned_subcontractor_id !== '__intern__'),
+  )
+  const budgetExpectedProfit = totalSales - ueBudgetCost - totalInternalCost - materialReconciled(materials).cost
 
   // "Select all" must match the visible filter — selecting hidden rows is
   // confusing and the count "X valgt" would be wrong. Filter the same way
@@ -620,6 +625,7 @@ export default function ProjectDetailClient({ initialData }: Props) {
           forecastInternalCost={forecastInternalCost}
           forecastOtherCost={forecastOtherCost}
           forecastProfit={forecastProfit}
+          budgetProfit={budgetExpectedProfit}
           hasForecast={hasForecast}
         />
       )}

@@ -11,6 +11,9 @@ interface Props {
   forecastInternalCost: number
   forecastOtherCost: number
   forecastProfit: number
+  /** Hero-ens budsjett-prognose (samme kilde/formel) — vises som referanse her
+   *  så de to «forventet fortjeneste»-tallene ikke forveksles. */
+  budgetProfit: number
   hasForecast: boolean
 }
 
@@ -27,6 +30,7 @@ export default function ForecastSection({
   forecastInternalCost,
   forecastOtherCost,
   forecastProfit,
+  budgetProfit,
   hasForecast,
 }: Props) {
   return (
@@ -58,9 +62,19 @@ export default function ForecastSection({
               )}
             </div>
             <div className={`rounded-xl shadow-sm p-4 border ${forecastProfit >= 0 ? 'bg-green-50 border-green-200' : 'bg-red-50 border-red-200'}`}>
-              <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Forventet fortjeneste</p>
+              <p className="text-xs text-[var(--color-text-muted)] uppercase tracking-wide">Forventet fortjeneste (månedsplan)</p>
               <p className={`text-2xl font-bold mt-1 ${forecastProfit >= 0 ? 'text-green-700' : 'text-red-700'}`}>
                 {fmt(forecastProfit)}
+              </p>
+              {/* Referanse: hero-ens budsjett-prognose (samme kilde) — så de to
+                  «forventet fortjeneste»-tallene ikke forveksles. */}
+              <p className="text-[11px] text-[var(--color-text-muted)] mt-1">
+                Budsjett-prognose: <span className="font-medium text-[var(--color-text-secondary)]">{fmt(budgetProfit)}</span>
+                {forecastProfit !== budgetProfit && (
+                  <span className={forecastProfit > budgetProfit ? 'text-green-600' : 'text-red-500'}>
+                    {' '}({forecastProfit > budgetProfit ? '+' : ''}{fmt(forecastProfit - budgetProfit)})
+                  </span>
+                )}
               </p>
             </div>
           </div>
