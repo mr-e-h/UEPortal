@@ -66,13 +66,13 @@ export default function ProjectDetailClient({ initialData }: Props) {
   // (tabs, dialog open/close, draft form values) stays here.
   // Pass initialData so the hook seeds state from SSR — no spinner on mount.
   const {
-    project, allProducts, budgetLines, reportLines, projectSubs, allSubs,
+    project, allProducts, budgetLines, projectSubs, allSubs,
     changeOrders, internalCosts, weeklyReportsWL, subPrices, milestones, phases, phaseTypes,
     budgetVersions, monthPlans, projectManagers, invoices, productionEntries, reconciliationLines,
     productionVersions, materials, materialVersions,
     loading, adminName,
     fetchAll, addBudgetLine: addBudgetLineHandler, addSubToProject: addSubHandler,
-    removeSubFromProject, updateReportStatus, updateChangeOrderStatus: updateCOStatus,
+    removeSubFromProject, updateChangeOrderStatus: updateCOStatus,
     deleteInternalCost, addProductionEntry, saveProductionBatch, saveReconciliationLine,
     setReconciliationStatus, saveMaterialReconciliation,
   } = useProjectData(id, initialData)
@@ -658,11 +658,10 @@ export default function ProjectDetailClient({ initialData }: Props) {
       {/* ── RAPPORTERINGER ───────────────────────────────────────────── */}
       {activeTab === 'rapporteringer' && (
         <ReportingsSection
-          reportLines={reportLines}
+          weeklyReports={weeklyReportsWL}
           budgetLines={budgetLines}
           allProducts={allProducts}
           allSubs={allSubs}
-          onUpdateStatus={updateReportStatus}
         />
       )}
 
